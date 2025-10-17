@@ -1,6 +1,6 @@
 """
-Financial graph construction module for QSW optimization.
-Builds weighted graphs encoding correlations and return relationships.
+Financial graph construction module for QSW optimization - FIXED VERSION
+Key fix: Simplified edge weight calculation that doesn't contradict itself
 """
 import numpy as np
 import networkx as nx
@@ -61,7 +61,8 @@ class FinancialGraphBuilder:
         for i in range(n_assets):
             for j in range(i + 1, n_assets):
                 if abs(correlation[i, j]) > threshold:
-                    weight = self._calculate_edge_weight(
+                    # FIX: Simplified edge weight calculation
+                    weight = self._calculate_edge_weight_simple(
                         correlation[i, j],
                         returns[i], returns[j],
                         std_dev[i], std_dev[j]
@@ -132,40 +133,57 @@ class FinancialGraphBuilder:
         
         return np.clip(threshold, 0.1, 0.6)
     
-    def _calculate_edge_weight(self,
-                              correlation: float,
-                              return_i: float,
-                              return_j: float,
-                              risk_i: float,
-                              risk_j: float) -> float:
+    def _calculate_edge_weight_simple(self,
+                                      correlation: float,
+                                      return_i: float,
+                                      return_j: float,
+                                      risk_i: float,
+                                      risk_j: float) -> float:
         """
-        Calculate sophisticated edge weight.
+        FIX: Simplified edge weight calculation.
         
-        Combines multiple factors:
-        - Correlation strength
-        - Return similarity
-        - Risk similarity
-        - Diversification benefit
+        OLD PROBLEM: Used both correlation AND (1-correlation), canceling signal
+        NEW APPROACH: Just use absolute correlation strength
+        
+        This gives the graph clear, interpretable structure:
+        - High correlation = strong edge = assets move together
+        - Low correlation = weak/no edge = assets independent
         """
-        # Return similarity factor (assets with similar returns)
-        return_diff = abs(return_i - return_j)
-        max_return = max(abs(return_i), abs(return_j), 1e-6)
-        return_similarity = np.exp(-return_diff / max_return)
+        # Primary weight: correlation strength
+        # Strong correlations (positive or negative) create strong edges
+        weight = abs(correlation)
         
-        # Risk similarity factor
-        risk_diff = abs(risk_i - risk_j)
-        max_risk = max(risk_i, risk_j, 1e-6)
-        risk_similarity = np.exp(-risk_diff / max_risk)
+        # Optional: Small boost for similar risk/return profiles
+        # This helps cluster assets by characteristics
+        return_similarity = 1.0 - abs(return_i - return_j) / (abs(return_i) + abs(return_j) + 1e-6)
+        risk_similarity = 1.0 - abs(risk_i - risk_j) / (risk_i + risk_j + 1e-6)
         
-        # Diversification benefit (prefer low correlation)
-        diversification_benefit = 1 - abs(correlation)
-        
-        # Combined weight with emphasis on correlation and diversification
-        weight = (
-            abs(correlation) * 0.4 +
-            return_similarity * 0.2 +
-            risk_similarity * 0.2 +
-            diversification_benefit * 0.2
-        )
+        # Combine: 80% correlation, 20% similarity
+        weight = 0.8 * abs(correlation) + 0.1 * return_similarity + 0.1 * risk_similarity
         
         return weight
+    
+    def _calculate_edge_weight_diversification_focused(self,
+                                                       correlation: float,
+                                                       return_i: float,
+                                                       return_j: float,
+                                                       risk_i: float,
+                                                       risk_j: float) -> float:
+        """
+        Alternative: Diversification-focused weighting.
+        
+        Use this if you want quantum walk to prefer uncorrelated assets.
+        Inverts correlation so low correlation = strong edge.
+        """
+        # Invert correlation: low correlation = high weight
+        diversification_weight = 1.0 - abs(correlation)
+        
+        # Scale by geometric mean of Sharpe ratios
+        sharpe_i = return_i / (risk_i + 1e-6)
+        sharpe_j = return_j / (risk_j + 1e-6)
+        sharpe_product = np.sqrt(max(0, sharpe_i * sharpe_j))
+        
+        # Combine: reward diversification between good assets
+        weight = diversification_weight * (1.0 + 0.5 * sharpe_product)
+        
+        return max(0, weight)

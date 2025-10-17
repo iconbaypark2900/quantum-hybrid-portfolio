@@ -1,6 +1,9 @@
 """
-Validation against Chang et al. (2025) results.
-Confirms QSW achieves documented performance improvements.
+Validation against Chang et al. (2025) results - FIXED VERSION
+Key fixes:
+1. Returns properly annualized (×252)
+2. Classical benchmark uses proper Markowitz optimization
+3. Covariance also annualized
 """
 import numpy as np
 import pandas as pd
@@ -8,6 +11,7 @@ from typing import Dict, List
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
+from scipy.optimize import minimize
 
 from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
 from config.qsw_config import QSWConfig
@@ -77,19 +81,24 @@ class ChangValidation:
             start_idx = np.random.randint(0, len(market_data) - 252)
             data_slice = market_data.iloc[start_idx:start_idx + 252]
             
-            # Calculate returns and covariance
-            returns = data_slice.pct_change().mean()
-            covariance = data_slice.pct_change().cov()
+            # FIX 1: Properly annualize returns and covariance
+            returns = data_slice.pct_change().mean() * 252  # Annualized
+            covariance = data_slice.pct_change().cov() * 252  # Annualized
             
+            # Skip if data quality issues
+            if np.any(np.isnan(returns)) or np.any(np.isnan(covariance)):
+                continue
+                
             # QSW optimization
             qsw_result = self.qsw_optimizer.optimize(returns, covariance)
             
-            # Classical mean-variance optimization (simplified)
-            classical_sharpe = self._calculate_classical_sharpe(returns, covariance)
+            # FIX 2: Classical mean-variance optimization (proper benchmark)
+            classical_sharpe = self._calculate_classical_sharpe_proper(returns, covariance)
             
             # Calculate improvement
-            improvement = (qsw_result.sharpe_ratio / classical_sharpe - 1) * 100
-            improvements.append(improvement)
+            if classical_sharpe > 0:
+                improvement = (qsw_result.sharpe_ratio / classical_sharpe - 1) * 100
+                improvements.append(improvement)
         
         results = {
             'mean_improvement': np.mean(improvements),
@@ -132,8 +141,9 @@ class ChangValidation:
             # Get data up to rebalance date
             historical_data = market_data[market_data.index <= date].iloc[-252:]
             
-            returns = historical_data.pct_change().mean()
-            covariance = historical_data.pct_change().cov()
+            # FIX: Properly annualize
+            returns = historical_data.pct_change().mean() * 252
+            covariance = historical_data.pct_change().cov() * 252
             
             # QSW optimization
             qsw_result = self.qsw_optimizer.optimize(
@@ -142,7 +152,7 @@ class ChangValidation:
             )
             
             # Classical optimization
-            classical_weights = self._classical_optimize(returns, covariance)
+            classical_weights = self._classical_optimize_proper(returns, covariance)
             
             # Calculate turnovers
             if prev_qsw_weights is not None:
@@ -182,8 +192,8 @@ class ChangValidation:
         omega_sharpes = []
         
         # Use fixed dataset for fair comparison
-        returns = market_data.iloc[-252:].pct_change().mean()
-        covariance = market_data.iloc[-252:].pct_change().cov()
+        returns = market_data.iloc[-252:].pct_change().mean() * 252  # FIX: Annualized
+        covariance = market_data.iloc[-252:].pct_change().cov() * 252  # FIX: Annualized
         
         for omega in tqdm(omega_values):
             config = QSWConfig(default_omega=omega)
@@ -232,8 +242,9 @@ class ChangValidation:
                 returns_mult = 1.0
                 vol_mult = 1.0
             
-            returns = market_data.iloc[-252:].pct_change().mean() * returns_mult
-            covariance = market_data.iloc[-252:].pct_change().cov() * vol_mult
+            # FIX: Properly annualize
+            returns = market_data.iloc[-252:].pct_change().mean() * 252 * returns_mult
+            covariance = market_data.iloc[-252:].pct_change().cov() * 252 * vol_mult
             
             result = self.qsw_optimizer.optimize(returns, covariance, market_regime=regime)
             
@@ -251,35 +262,86 @@ class ChangValidation:
         
         return regime_results
     
-    def _calculate_classical_sharpe(self, returns: np.ndarray, covariance: np.ndarray) -> float:
-        """Simple classical Sharpe calculation for comparison."""
-        # Equal weight portfolio
+    def _calculate_classical_sharpe_proper(self, returns: np.ndarray, covariance: np.ndarray) -> float:
+        """
+        FIX 2: Proper Markowitz mean-variance optimization.
+        This is the correct baseline, not equal-weight.
+        """
         n = len(returns)
-        weights = np.ones(n) / n
         
-        portfolio_return = np.dot(weights, returns)
-        portfolio_variance = np.dot(weights, np.dot(covariance, weights))
-        portfolio_volatility = np.sqrt(portfolio_variance)
+        def neg_sharpe(weights):
+            """Negative Sharpe ratio for minimization."""
+            portfolio_return = np.dot(weights, returns)
+            portfolio_variance = np.dot(weights, np.dot(covariance, weights))
+            portfolio_volatility = np.sqrt(portfolio_variance)
+            
+            if portfolio_volatility < 1e-10:
+                return 1e10  # Invalid portfolio
+            
+            return -portfolio_return / portfolio_volatility
         
-        return portfolio_return / portfolio_volatility if portfolio_volatility > 0 else 0
+        # Constraints: weights sum to 1
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+        
+        # Bounds: all weights between 0 and 1
+        bounds = tuple((0, 1) for _ in range(n))
+        
+        # Initial guess: equal weight
+        x0 = np.ones(n) / n
+        
+        # Optimize
+        result = minimize(
+            neg_sharpe,
+            x0,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'maxiter': 1000}
+        )
+        
+        if result.success:
+            return -result.fun  # Return positive Sharpe
+        else:
+            # Fallback to equal weight if optimization fails
+            weights = np.ones(n) / n
+            portfolio_return = np.dot(weights, returns)
+            portfolio_variance = np.dot(weights, np.dot(covariance, weights))
+            portfolio_volatility = np.sqrt(portfolio_variance)
+            return portfolio_return / portfolio_volatility if portfolio_volatility > 0 else 0
     
-    def _classical_optimize(self, returns: np.ndarray, covariance: np.ndarray) -> np.ndarray:
-        """Simple classical optimization for comparison."""
-        # Maximum Sharpe ratio portfolio (simplified)
+    def _classical_optimize_proper(self, returns: np.ndarray, covariance: np.ndarray) -> np.ndarray:
+        """
+        FIX 2: Proper Markowitz optimization for turnover comparison.
+        """
         n = len(returns)
         
-        # Use equal weight as baseline
-        weights = np.ones(n) / n
+        def neg_sharpe(weights):
+            portfolio_return = np.dot(weights, returns)
+            portfolio_variance = np.dot(weights, np.dot(covariance, weights))
+            portfolio_volatility = np.sqrt(portfolio_variance)
+            
+            if portfolio_volatility < 1e-10:
+                return 1e10
+            
+            return -portfolio_return / portfolio_volatility
         
-        # Simple improvement: overweight high Sharpe assets
-        sharpes = returns / np.sqrt(np.diag(covariance))
-        sharpes[np.isnan(sharpes)] = 0
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+        bounds = tuple((0, 1) for _ in range(n))
+        x0 = np.ones(n) / n
         
-        if np.sum(sharpes > 0) > 0:
-            weights = np.maximum(sharpes, 0)
-            weights = weights / np.sum(weights)
+        result = minimize(
+            neg_sharpe,
+            x0,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'maxiter': 1000}
+        )
         
-        return weights
+        if result.success:
+            return result.x
+        else:
+            return np.ones(n) / n
     
     def generate_validation_report(self):
         """Generate validation report with visualizations."""
