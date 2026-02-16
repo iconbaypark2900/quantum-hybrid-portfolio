@@ -1,0 +1,419 @@
+openapi: 3.0.3
+info:
+  title: Quantum Portfolio API
+  version: 1.0.0
+  description: Quantum-inspired portfolio optimization and backtesting API.
+servers:
+  - url: http://localhost:5000
+security:
+  - ApiKeyAuth: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    OptimizeRequest:
+      type: object
+      properties:
+        tickers:
+          type: array
+          items:
+            type: string
+          description: List of ticker symbols (e.g. ["AAPL","MSFT"])
+          example: ["AAPL", "MSFT", "GOOGL", "AMZN", "META"]
+        start_date:
+          type: string
+          format: date
+          description: Start date for market data (YYYY-MM-DD)
+          example: "2022-01-01"
+        end_date:
+          type: string
+          format: date
+          description: End date for market data (YYYY-MM-DD)
+          example: "2024-01-01"
+        returns:
+          type: array
+          items:
+            type: number
+          description: "Expected returns vector (production mode: send this instead of tickers)"
+        covariance:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+          description: "Covariance matrix (production mode: send this instead of tickers)"
+        objective:
+          type: string
+          enum: [max_sharpe, min_variance, target_return, risk_parity, hrp]
+          default: max_sharpe
+          description: Optimization objective
+        targetReturn:
+          type: number
+          description: "Annual target return as decimal (e.g. 0.10 for 10%). Required when objective is target_return."
+          example: 0.10
+        regime:
+          type: string
+          enum: [normal, bull, bear, volatile]
+          default: normal
+        omega:
+          type: number
+          default: 0.3
+          description: QSW mixing parameter (0.05 - 0.60)
+        evolutionTime:
+          type: integer
+          default: 10
+          description: QSW evolution time (1 - 50)
+        maxWeight:
+          type: number
+          default: 0.10
+          description: Maximum weight per asset (0.03 - 0.30)
+        turnoverLimit:
+          type: number
+          default: 0.20
+          description: Maximum portfolio turnover (0.05 - 0.50)
+        strategyPreset:
+          type: string
+          default: balanced
+          description: Strategy preset name
+        constraints:
+          type: object
+          description: Optional portfolio constraints (see /api/config/constraints)
+    BacktestRequest:
+      type: object
+      required: [tickers, start_date, end_date]
+      properties:
+        tickers:
+          type: array
+          items:
+            type: string
+          description: List of ticker symbols
+          example: ["AAPL", "MSFT", "GOOGL"]
+        start_date:
+          type: string
+          format: date
+          description: Backtest start date (YYYY-MM-DD)
+          example: "2022-01-01"
+        end_date:
+          type: string
+          format: date
+          description: Backtest end date (YYYY-MM-DD)
+          example: "2024-01-01"
+        rebalance_frequency:
+          type: string
+          enum: [weekly, monthly, quarterly, yearly]
+          default: monthly
+        objective:
+          type: string
+          enum: [max_sharpe, min_variance, target_return, risk_parity, hrp]
+          default: max_sharpe
+        target_return:
+          type: number
+          description: "Annual target return as decimal. Required when objective is target_return."
+          example: 0.10
+        strategy_preset:
+          type: string
+          default: balanced
+        constraints:
+          type: object
+          description: Optional portfolio constraints
+    ApiEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          description: Response payload
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+            duration_ms:
+              type: number
+    OptimizeResponse:
+      type: object
+      properties:
+        qsw_result:
+          type: object
+          description: Primary optimization result (weights, sharpe_ratio, expected_return, volatility, n_active)
+        benchmarks:
+          type: object
+          description: "Benchmark strategies: equal_weight, min_variance, risk_parity, max_sharpe, hrp"
+        holdings:
+          type: array
+          items:
+            type: object
+          description: Sorted holdings with weight > 0.5%
+        assets:
+          type: array
+          items:
+            type: object
+          description: Asset metadata (name, sector, annReturn, annVol, sharpe)
+        risk_metrics:
+          type: object
+          description: VaR and CVaR estimates
+    BacktestResponse:
+      type: object
+      properties:
+        total_return:
+          type: number
+        annual_return:
+          type: number
+        sharpe_ratio:
+          type: number
+        max_drawdown:
+          type: number
+        equity_curve:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              portfolio_value:
+                type: number
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service status
+  /api/portfolio/optimize:
+    post:
+      summary: Run portfolio optimization
+      description: >
+        Run quantum-inspired portfolio optimization. Provide either tickers + dates
+        (research mode, uses yfinance) or returns + covariance vectors directly (production mode).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimizeRequest'
+      responses:
+        "200":
+          description: Optimization result wrapped in standard API envelope
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OptimizeResponse'
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized (missing or invalid API key)
+        "429":
+          description: Rate limited
+  /api/portfolio/optimize/batch:
+    post:
+      summary: Run batch optimization (up to 100)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OptimizeRequest'
+                  maxItems: 100
+      responses:
+        "200":
+          description: Batch result list
+  /api/portfolio/backtest/batch:
+    post:
+      summary: Run batch backtest (up to 50 scenarios)
+      description: >
+        Run multiple backtests in a single request. Each item in the requests array
+        is a standard BacktestRequest payload (tickers, start_date, end_date, etc.).
+        Results are returned in order, each tagged with index and status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requests]
+              properties:
+                requests:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/BacktestRequest'
+                  maxItems: 50
+                  description: Array of backtest request payloads
+                stop_on_error:
+                  type: boolean
+                  default: false
+                  description: If true, stop processing after the first error
+      responses:
+        "200":
+          description: Batch backtest results wrapped in standard API envelope
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            description: Number of results returned
+                          results:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                index:
+                                  type: integer
+                                status:
+                                  type: string
+                                  enum: [ok, error]
+                                result:
+                                  $ref: '#/components/schemas/BacktestResponse'
+                                error:
+                                  type: string
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "429":
+          description: Rate limited
+  /api/portfolio/backtest:
+    post:
+      summary: Run historical backtest
+      description: >
+        Run a historical backtest with periodic rebalancing using the specified objective.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BacktestRequest'
+      responses:
+        "200":
+          description: Backtest results wrapped in standard API envelope
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BacktestResponse'
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+  /api/portfolio/efficient-frontier:
+    post:
+      summary: Compute efficient frontier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tickers:
+                  type: array
+                  items:
+                    type: string
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+                n_points:
+                  type: integer
+                  default: 15
+      responses:
+        "200":
+          description: Frontier points
+  /api/jobs/optimize:
+    post:
+      summary: Submit async optimization job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  $ref: '#/components/schemas/OptimizeRequest'
+                webhook_url:
+                  type: string
+                  format: uri
+      responses:
+        "202":
+          description: Job accepted
+  /api/jobs/backtest:
+    post:
+      summary: Submit async backtest job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  $ref: '#/components/schemas/BacktestRequest'
+                webhook_url:
+                  type: string
+                  format: uri
+      responses:
+        "202":
+          description: Job accepted
+  /api/jobs/{job_id}:
+    get:
+      summary: Get async job status
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status
+  /api/config/objectives:
+    get:
+      summary: List optimization objectives
+      responses:
+        "200":
+          description: Objectives
+  /api/config/presets:
+    get:
+      summary: List strategy presets
+      responses:
+        "200":
+          description: Presets
+  /api/config/constraints:
+    get:
+      summary: Get constraints schema
+      responses:
+        "200":
+          description: Constraint schema
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      security: []
+      responses:
+        "200":
+          description: Metrics text

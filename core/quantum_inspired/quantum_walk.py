@@ -12,6 +12,7 @@ from config.qsw_config import QSWConfig
 from .graph_builder import FinancialGraphBuilder
 from .evolution_dynamics import QuantumEvolution
 from .stability_enhancer import StabilityEnhancer
+from .performance_optimizer import OptimizedQuantumEvolution, OptimizedGraphBuilder
 
 @dataclass
 class QSWResult:
@@ -36,18 +37,26 @@ class QuantumStochasticWalkOptimizer:
     All running on classical hardware using quantum-inspired mathematics.
     """
     
-    def __init__(self, config: Optional[QSWConfig] = None):
+    def __init__(self, config: Optional[QSWConfig] = None, use_optimized: bool = True):
         """
         Initialize QSW optimizer.
-        
+
         Args:
             config: Configuration object. Uses defaults if not provided.
+            use_optimized: Whether to use optimized implementations
         """
         self.config = config or QSWConfig()
-        self.graph_builder = FinancialGraphBuilder(config)
-        self.evolution_engine = QuantumEvolution(config)
-        self.stability_enhancer = StabilityEnhancer(config)
+        self.use_optimized = use_optimized
         
+        if use_optimized:
+            self.graph_builder = OptimizedGraphBuilder(config)
+            self.evolution_engine = OptimizedQuantumEvolution(config)
+        else:
+            self.graph_builder = FinancialGraphBuilder(config)
+            self.evolution_engine = QuantumEvolution(config)
+            
+        self.stability_enhancer = StabilityEnhancer(config)
+
         # State tracking
         self.last_weights = None
         self.optimization_history = []
@@ -85,9 +94,20 @@ class QuantumStochasticWalkOptimizer:
         omega = self.config.get_omega_for_regime(market_regime)
         
         # Step 3: Run quantum-inspired evolution
-        raw_weights, evolution_metrics = self.evolution_engine.evolve(
-            graph, omega, self.config.evolution_time
-        )
+        evolution_method = getattr(self.config, 'evolution_method', 'continuous')  # Default to continuous
+        if evolution_method == 'discrete':
+            raw_weights, evolution_metrics = self.evolution_engine.evolve_discrete_time(
+                graph, omega, self.config.evolution_time
+            )
+        elif evolution_method == 'decoherent':
+            decoherence_rate = getattr(self.config, 'decoherence_rate', 0.1)
+            raw_weights, evolution_metrics = self.evolution_engine.evolve_with_decoherence(
+                graph, omega, self.config.evolution_time, decoherence_rate
+            )
+        else:  # Default to continuous
+            raw_weights, evolution_metrics = self.evolution_engine.evolve(
+                graph, omega, self.config.evolution_time
+            )
         
         # Step 4: Apply stability enhancement to reduce turnover
         if initial_weights is not None:
