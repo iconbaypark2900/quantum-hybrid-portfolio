@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+
+# Node
+frontend/node_modules
+frontend/build
+frontend/.env*
+frontend/npm-debug.log*
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Docs (keep lighter image)
+*.md
+!README.md
+
+# Tests, examples, notebooks (optional - remove to shrink image)
+# tests/
+# examples/
+# notebooks/
+
+# Misc
+.env
+.env.local
+*.log
+docker-compose*.yml

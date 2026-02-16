@@ -9,33 +9,39 @@ import yaml
 @dataclass
 class QSWConfig:
     """Configuration parameters for Quantum Stochastic Walk."""
-    
+
     # Core QSW parameters (optimal from Chang et al.)
     omega_range: Tuple[float, float] = (0.2, 0.4)
     default_omega: float = 0.3
-    
+
     # FIX: Reduced evolution_time from 100 to 10
     # REASON: evolution_time=100 causes over-smoothing where all portfolios
     # converge to similar weights (high overlap ~0.87). Lower time allows
     # more differentiation while still being stable.
     evolution_time: int = 10
     
+    # Evolution method: 'continuous', 'discrete', or 'decoherent'
+    evolution_method: str = 'continuous'
+    
+    # Decoherence rate (for decoherent evolution)
+    decoherence_rate: float = 0.1
+
     # Graph construction parameters
     correlation_threshold: float = 0.3
     adaptive_threshold: bool = True
     min_edge_weight: float = 0.01
-    
+
     # Stability enhancement parameters
     # Note: Consider relaxing max_turnover if getting zero turnover
     max_turnover: float = 0.2  # 20% maximum turnover
     stability_blend_factor: float = 0.7  # 70% new, 30% old
-    
+
     # Portfolio constraints
     min_weight: float = 0.001  # 0.1% minimum position
     max_weight: float = 0.10   # 10% maximum position
     min_assets: int = 10       # Minimum number of assets
     max_assets: int = 100      # Maximum number of assets
-    
+
     # Market regime parameters
     regime_thresholds: Dict[str, float] = None
     
