@@ -12,16 +12,7 @@ This project extends the original Quantum Hybrid Portfolio system with advanced 
 - **Uncertainty Handling**: Robust optimization for market uncertainty
 - **Comprehensive Risk Metrics**: Advanced risk calculations and analytics
 
-#### 2. Enhanced Visualization Components
-- **Correlation Heatmap**: Detailed asset correlation visualization
-- **Risk-Return Scatter**: Advanced risk-return analysis
-- **Portfolio Allocation Donut**: Clear weight distribution view
-- **Sector Allocation Bar**: Sector-wise allocation breakdown
-- **Factor Risk Decomposition**: Waterfall chart of risk factors
-- **Monte Carlo Simulation**: Risk simulation visualization
-- **Performance Benchmark Comparison**: Strategy comparison radar chart
-
-#### 3. Advanced Dashboard Features
+#### 2. Advanced Dashboard Features
 - **Multiple Themes**: Default, Ocean, Forest, and Sunset themes
 - **Strategy Presets**: Conservative, Aggressive, Balanced, and Momentum presets
 - **Export Functionality**: Export portfolio data, metrics, or all data
@@ -38,17 +29,11 @@ This project extends the original Quantum Hybrid Portfolio system with advanced 
    pip install -e .
    ```
 
-2. **Run the Enhanced Dashboard**:
+2. **Run the React Dashboard**:
    ```bash
-   python advanced_dashboard.py
+   cd frontend && npm install && npm start
    ```
-   The dashboard will be accessible at `http://localhost:8052`
-
-3. **Or run the original dashboard with enhanced features**:
-   ```bash
-   python enhanced_dashboard.py
-   ```
-   The dashboard will be accessible at `http://localhost:8051`
+   The dashboard will be accessible at `http://localhost:3000`. Use `./run_dashboard.sh` to start both API and dashboard.
 
 ### 🛠️ Architecture
 
@@ -57,15 +42,13 @@ The enhanced system maintains the original architecture while adding:
 ```
 core/
 ├── quantum_inspired/
-│   ├── advanced_quantum_optimizer.py  # New: Advanced quantum optimizer
-│   ├── enhanced_quantum_walk.py       # Existing: Enhanced QSW
-│   ├── quantum_walk.py              # Existing: Standard QSW
-│   └── ...                          # Other existing modules
+│   ├── advanced_quantum_optimizer.py  # Advanced quantum optimizer
+│   ├── enhanced_quantum_walk.py       # Enhanced QSW
+│   ├── quantum_walk.py                # Standard QSW
+│   └── ...                            # Other existing modules
 ├── ...
-enhanced_visualizations.py           # New: Enhanced visualization components
-enhanced_dashboard.py               # New: Enhanced dashboard
-advanced_dashboard.py               # New: Advanced dashboard with all features
-ENHANCED_IMPLEMENTATION_DOCS.md     # New: Documentation
+frontend/                            # React dashboard (main UI)
+ENHANCED_IMPLEMENTATION_DOCS.md       # Documentation
 ```
 
 ### 📊 New Features in Detail
@@ -76,15 +59,6 @@ The `AdvancedQuantumInspiredRobustOptimizer` combines:
 - Quantum Annealing for global optimization
 - Quantum Variational Approach for hyperparameter tuning
 - Robust optimization techniques for uncertainty handling
-
-#### Enhanced Visualizations
-- Interactive correlation heatmaps with hover details
-- Risk-return scatter plots with bubble sizing
-- Portfolio allocation donuts with "Others" category
-- Sector allocation bars with color coding
-- Factor risk decomposition waterfall charts
-- Monte Carlo simulation with confidence intervals
-- Performance benchmark comparisons with radar charts
 
 #### Advanced Dashboard Features
 - Four different color themes for customization
@@ -121,23 +95,6 @@ print(f"Sharpe Ratio: {result.sharpe_ratio}")
 print(f"Diversification Ratio: {result.diversification_ratio}")
 print(f"Alpha: {result.alpha}")
 print(f"Beta: {result.beta}")
-```
-
-#### Using Enhanced Visualizations
-```python
-from enhanced_visualizations import create_correlation_heatmap, create_risk_return_scatter
-import numpy as np
-
-# Create sample data
-n_assets = 10
-returns = np.random.uniform(0.05, 0.15, n_assets)
-volatility = np.random.uniform(0.15, 0.30, n_assets)
-weights = np.random.dirichlet([1.0] * n_assets)
-asset_names = [f'Asset_{i}' for i in range(n_assets)]
-
-# Generate visualizations
-heatmap_fig = create_correlation_heatmap(corr_matrix, asset_names)
-scatter_fig = create_risk_return_scatter(returns, volatility, weights, returns/volatility, asset_names)
 ```
 
 ### 🤝 Contributing

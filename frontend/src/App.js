@@ -1,5 +1,5 @@
 import React from "react";
-import EnhancedQuantumPortfolioDashboard from "./EnhancedQuantumDashboard";
+import EnhancedQuantumPortfolioDashboard from "./CustomizableQuantumDashboard";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";

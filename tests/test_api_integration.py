@@ -153,6 +153,21 @@ class TestOptimizeHappy:
         for key in ['sharpe_ratio', 'expected_return', 'volatility']:
             assert np.isfinite(r[key]), f"{key} is not finite"
 
+    def test_optimize_braket_annealing_returns_backend_type(self, client):
+        """Braket annealing objective returns backend_type (braket or classical_qubo)."""
+        payload = _optimize_payload(objective='braket_annealing')
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        if resp.status_code == 429:
+            pytest.skip("rate limited")
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert 'qsw_result' in data
+        assert 'holdings' in data
+        # Without real Braket device, backend_type should be classical_qubo
+        assert data.get('backend_type') in ('braket', 'classical_qubo')
+        weights = data['qsw_result']['weights']
+        assert abs(sum(weights) - 1.0) < 1e-4
+
 
 # ============================================================================
 # 3. Portfolio optimize — error paths

@@ -51,20 +51,23 @@ pip install -r requirements.txt
 
 ## ▶️ Running the Dashboard
 
-### Option 1: Using the startup script (Recommended)
+The main dashboard is the React application. Start it with:
+
 ```bash
-./start_dashboard.sh
+cd frontend
+npm install
+npm start
 ```
 
-### Option 2: Direct Python execution
+Or use the combined launcher (starts both API and frontend):
+
 ```bash
-python dashboard.py
+./run_dashboard.sh
 ```
 
 ### Access the Dashboard
 Open your browser and navigate to:
-- [http://localhost:8050](http://localhost:8050)
-- Or [http://0.0.0.0:8000](http://0.0.0.0:8050) if running remotely
+- [http://localhost:3000](http://localhost:3000)
 
 ## 🎛️ Controls Guide
 
@@ -105,9 +108,9 @@ For visualization issues:
 
 ## 📁 File Structure
 ```
-dashboard.py          # Main dashboard application
-start_dashboard.sh    # Startup script
-requirements.txt      # Dependencies (includes Dash)
+frontend/             # React dashboard (main UI)
+run_dashboard.sh      # Launches API + React dashboard
+requirements.txt      # Python dependencies
 ```
 
 ## 🤝 Contributing

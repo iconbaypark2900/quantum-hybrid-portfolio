@@ -2,15 +2,14 @@
 
 ## Overview
 
-This document describes the enhanced implementation of the Quantum Hybrid Portfolio system, which includes advanced quantum-inspired optimization algorithms, enhanced visualization components, and advanced dashboard features.
+This document describes the enhanced implementation of the Quantum Hybrid Portfolio system, which includes advanced quantum-inspired optimization algorithms and the React-based dashboard.
 
 ## Architecture
 
-The enhanced system consists of three main components:
+The enhanced system consists of two main components:
 
 1. **Advanced Quantum Optimization Algorithms**
-2. **Enhanced Visualization Components**
-3. **Advanced Dashboard Features**
+2. **React Dashboard** (see [DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md))
 
 ## 1. Advanced Quantum Optimization Algorithms
 
@@ -48,77 +47,9 @@ print(f"Expected Return: {result.expected_return}")
 print(f"Volatility: {result.volatility}")
 ```
 
-## 2. Enhanced Visualization Components
+## 2. Integration Points
 
-The `enhanced_visualizations.py` module provides advanced visualization capabilities:
-
-### 2.1 Available Visualizations
-
-- **Correlation Heatmap**: Shows asset correlation relationships
-- **Risk-Return Scatter**: Visualizes risk-return trade-offs
-- **Portfolio Allocation Donut**: Shows portfolio weight distribution
-- **Sector Allocation Bar**: Displays allocation by sector
-- **Performance Benchmark Comparison**: Radar chart comparing strategies
-- **Time Series Performance**: Shows portfolio performance over time
-- **Factor Risk Decomposition**: Waterfall chart of risk factors
-- **Portfolio Turnover Analysis**: Shows turnover over time
-- **Monte Carlo Simulation**: Risk simulation visualization
-
-### 2.2 Usage Example
-
-```python
-from enhanced_visualizations import create_correlation_heatmap, create_risk_return_scatter
-import numpy as np
-
-# Sample data
-n_assets = 10
-returns = np.random.uniform(0.05, 0.15, n_assets)
-volatility = np.random.uniform(0.15, 0.30, n_assets)
-weights = np.random.dirichlet([1.0] * n_assets)
-asset_names = [f'Asset_{i}' for i in range(n_assets)]
-
-# Create correlation matrix
-corr_matrix = np.random.rand(n_assets, n_assets)
-corr_matrix = (corr_matrix + corr_matrix.T) / 2
-np.fill_diagonal(corr_matrix, 1.0)
-
-# Generate visualizations
-heatmap_fig = create_correlation_heatmap(corr_matrix, asset_names)
-scatter_fig = create_risk_return_scatter(returns, volatility, weights, returns/volatility, asset_names)
-```
-
-## 3. Advanced Dashboard Features
-
-The `advanced_dashboard.py` provides enhanced dashboard functionality:
-
-### 3.1 New Features
-
-- **Multiple Theme Options**: Default, Ocean, Forest, Sunset themes
-- **Strategy Presets**: Conservative, Aggressive, Balanced, Momentum presets
-- **Export Functionality**: Export portfolio data, metrics, or all data
-- **Configuration Management**: Save and load configuration presets
-- **Status Indicators**: Real-time status feedback
-- **Advanced Controls**: More granular parameter controls
-
-### 3.2 Dashboard Tabs
-
-1. **Overview**: Key metrics and primary visualizations
-2. **Allocation**: Detailed portfolio allocation breakdown
-3. **Risk Analysis**: Comprehensive risk metrics and analysis
-4. **Performance**: Performance comparison and time series
-5. **Sensitivity**: Parameter sensitivity analysis
-
-### 3.3 Usage
-
-```bash
-python advanced_dashboard.py
-```
-
-The dashboard will be accessible at `http://localhost:8052`
-
-## 4. Integration Points
-
-### 4.1 Configuration System
+### 2.1 Configuration System
 
 The enhanced system integrates with the existing configuration system:
 
@@ -134,30 +65,27 @@ config = QSWConfig(
 )
 ```
 
-### 4.2 Backward Compatibility
+### 2.2 Backward Compatibility
 
 All new components maintain backward compatibility with existing code:
 
 - New optimizers follow the same interface as existing ones
-- Enhanced visualizations can be used independently
-- Dashboard maintains all original functionality
+- The React dashboard exposes all functionality via the API
 
-## 5. Testing
+## 3. Testing
 
 All components have been tested:
 
 - Advanced optimizer produces valid results
-- Visualization components render correctly
 - Dashboard functions properly with all features
 - All existing functionality remains intact
 
-## 6. Performance Considerations
+## 4. Performance Considerations
 
 - The advanced optimizer may take slightly longer to run due to additional computations
-- Visualization components are optimized for performance
 - Dashboard maintains responsive UI during optimization
 
-## 7. Future Extensions
+## 5. Future Extensions
 
 Potential areas for further enhancement:
 
