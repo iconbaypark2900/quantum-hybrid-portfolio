@@ -122,25 +122,15 @@ def create_quantum_regime_detector():
 
 ### Algorithm-Specific Quantum Implementations
 
-#### 1. Quantum Annealing for Portfolio Selection
-```python
-# Pseudocode for quantum annealing integration
-def quantum_annealing_portfolio_selection(returns, constraints):
-    """
-    Use quantum annealing for portfolio selection.
-    """
-    # Formulate as Ising model
-    h, J = portfolio_to_ising(returns, constraints)
-    
-    # Submit to quantum annealer
-    sampler = DWaveSampler()
-    response = sampler.sample_ising(h, J, num_reads=1000)
-    
-    # Decode solution
-    portfolio = decode_solution(response)
-    
-    return portfolio
-```
+#### 1. Quantum Annealing for Portfolio Selection (Implemented)
+Real implementation: **QUBO** formulation and AWS Braket (or classical) annealing.
+
+- **Module:** `core/quantum_inspired/braket_backend.py`
+  - `build_qubo_portfolio(returns, covariance, ...)` — builds linear/quadratic QUBO terms for binary asset selection.
+  - `run_braket_portfolio_optimization(...)` — submits to Braket when `USE_BRAKET` and device ARN are set; otherwise solves classically.
+  - `BraketAnnealingOptimizer` — same interface as other portfolio optimizers; use objective `braket_annealing` in the API.
+- **Example:** `examples/quantum_integration_example.py` — `BraketQuantumBackend`, `QuantumPortfolioProblem.to_quantum_format()` (uses `build_qubo_portfolio`), and `QuantumPortfolioOptimizer` with real or mock backend.
+- **Docs:** `docs/BRAKET.md`
 
 #### 2. QAOA for Risk-Return Optimization
 ```python

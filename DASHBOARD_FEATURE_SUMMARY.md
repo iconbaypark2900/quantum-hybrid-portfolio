@@ -2,7 +2,6 @@
 
 ## Running Services
 - **React Dashboard**: http://localhost:3000
-- **Dash Dashboard**: http://localhost:8050
 
 ## 🎨 Customization Features Demonstrated
 
@@ -44,7 +43,6 @@
 
 ## 🧪 Testing Performed
 - Verified React dashboard accessibility at http://localhost:3000
-- Confirmed Dash dashboard functionality at http://localhost:8050
 - Validated all customization features are operational
 - Tested parameter controls and real-time updates
 - Confirmed preset management functionality

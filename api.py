@@ -37,6 +37,9 @@ from services.market_data import fetch_market_data, validate_tickers
 from services.backtest import run_backtest as run_backtesting
 from services.data_provider import load_market_payload
 
+# Import Braket estimator
+from core.braket_estimator import estimate_braket_usage, BRAKET_QPU_PRICING
+
 # ─── Structured JSON Logging ───
 log_handler = logging.StreamHandler()
 formatter = jsonlogger_JsonFormatter(
@@ -687,7 +690,7 @@ def _run_backtest_payload(data):
     if rebalance_frequency not in valid_freqs:
         raise ValueError(f'Invalid rebalance frequency. Valid options: {valid_freqs}')
 
-    valid_objectives = ['max_sharpe', 'min_variance', 'target_return', 'risk_parity', 'hrp']
+    valid_objectives = ['max_sharpe', 'min_variance', 'target_return', 'risk_parity', 'hrp', 'braket_annealing']
     if objective not in valid_objectives:
         raise ValueError(f'Invalid objective. Valid options: {valid_objectives}')
 
@@ -858,6 +861,24 @@ def serialize_numpy(obj):
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
+def _safe_serialize_metrics(obj):
+    """Recursively convert metrics dict to JSON-serializable types."""
+    if isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    if isinstance(obj, (np.floating, np.float32, np.float64)):
+        v = float(obj)
+        return v if np.isfinite(v) else None
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: _safe_serialize_metrics(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_safe_serialize_metrics(v) for v in obj]
+    if isinstance(obj, (int, float, str, bool, type(None))):
+        return obj
+    return str(obj)
+
+
 @app.route('/api/portfolio/optimize', methods=['POST'])
 @require_api_key
 @limiter.limit("10 per minute")
@@ -879,6 +900,7 @@ def optimize_portfolio():
         regime = data.get('regime', 'normal')
         omega = data.get('omega', 0.3)
         evolution_time = data.get('evolutionTime', 10)
+        evolution_method = data.get('evolutionMethod', 'continuous')
         max_weight = data.get('maxWeight', 0.10)
         turnover_limit = data.get('turnoverLimit', 0.20)
         objective = data.get('objective', 'max_sharpe')
@@ -892,6 +914,8 @@ def optimize_portfolio():
             config.default_omega = omega
         if evolution_time is not None:
             config.evolution_time = evolution_time
+        if evolution_method is not None:
+            config.evolution_method = evolution_method
         if max_weight is not None:
             config.max_weight = max_weight
         if turnover_limit is not None:
@@ -1021,8 +1045,20 @@ def optimize_portfolio():
             'assets': [{'name': a['name'], 'sector': a['sector'], 'ann_return': float(a['ann_return']), 'ann_vol': float(a['ann_vol']), 'sharpe': float(a['sharpe'])} for a in assets],
             'objective': objective,
             'target_return': target_return,
-            'strategy_preset': strategy_preset
+            'strategy_preset': strategy_preset,
+            'evolution_method': config.evolution_method,
+            'evolution_time': config.evolution_time,
         }
+
+        # Add backend_type when present (e.g. braket_annealing)
+        if getattr(result, 'backend_type', None):
+            response['backend_type'] = result.backend_type
+
+        # Add graph_metrics and evolution_metrics when available
+        if getattr(result, 'graph_metrics', None) and result.graph_metrics:
+            response['graph_metrics'] = _safe_serialize_metrics(result.graph_metrics)
+        if getattr(result, 'evolution_metrics', None) and result.evolution_metrics:
+            response['evolution_metrics'] = _safe_serialize_metrics(result.evolution_metrics)
 
         # Include correlation matrix if available
         if tickers:
@@ -1337,6 +1373,7 @@ def get_objectives():
             {'id': 'target_return', 'name': 'Target Return', 'description': 'Minimize variance at target return'},
             {'id': 'risk_parity', 'name': 'Risk Parity', 'description': 'Equal risk contribution per asset'},
             {'id': 'hrp', 'name': 'Hierarchical Risk Parity', 'description': 'López de Prado HRP; robust out-of-sample, no matrix inversion'},
+            {'id': 'braket_annealing', 'name': 'AWS Braket Annealing', 'description': 'QUBO portfolio selection via AWS Braket or classical fallback'},
         ]
     })
 
@@ -1393,6 +1430,57 @@ def get_presets():
             {'id': 'defensive', 'name': 'Defensive', 'description': 'Minimum variance, low turnover'},
         ]
     })
+
+
+@app.route('/api/braket/estimate', methods=['GET', 'POST'])
+@require_api_key
+@limiter.limit("30 per minute")
+def braket_estimate():
+    """
+    Estimate Braket runtime and cost for a given scenario.
+    Supports GET (query params) or POST (JSON body).
+    Uses official Amazon Braket gate-based QPU pricing as reference.
+    """
+    if request.method == 'POST' and request.is_json:
+        params = request.get_json()
+    else:
+        params = request.args
+
+    scenario = params.get('scenario', 'single_optimize')
+    n_assets = int(params.get('n_assets', 10))
+    start_date = params.get('start_date')
+    end_date = params.get('end_date')
+    rebalance_frequency = params.get('rebalance_frequency', 'monthly')
+    batch_size = int(params.get('batch_size', 1))
+    shots_per_task = int(params.get('shots_per_task', 1000))
+    minutes_per_task = float(params.get('minutes_per_task', 3.0))
+    device = params.get('device', 'rigetti_ankaa')
+
+    # Optional: objectives list for batch (which use braket_annealing)
+    objectives = params.get('objectives')
+    if objectives is not None and not isinstance(objectives, list):
+        objectives = None
+
+    if device not in BRAKET_QPU_PRICING:
+        device = 'rigetti_ankaa'
+
+    try:
+        result = estimate_braket_usage(
+            scenario=scenario,
+            n_assets=n_assets,
+            start_date=start_date,
+            end_date=end_date,
+            rebalance_frequency=rebalance_frequency,
+            batch_size=batch_size,
+            objectives=objectives,
+            shots_per_task=shots_per_task,
+            minutes_per_task=minutes_per_task,
+            device=device,
+        )
+    except ValueError as e:
+        return error_response(str(e), code='VALIDATION_ERROR', status=400)
+
+    return success_response(result)
 
 
 # ─── Ticker catalog & search ───

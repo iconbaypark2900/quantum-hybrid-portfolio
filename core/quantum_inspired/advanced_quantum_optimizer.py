@@ -136,7 +136,7 @@ class AdvancedQuantumInspiredRobustOptimizer:
 
         # Calculate enhanced portfolio metrics
         metrics = self._calculate_enhanced_metrics(
-            stable_weights, returns, covariance, self.benchmark_weights
+            stable_weights, returns, covariance, self.benchmark_weights, sectors=sectors
         )
 
         # Calculate risk metrics
@@ -655,7 +655,8 @@ class AdvancedQuantumInspiredRobustOptimizer:
             covariance += np.eye(n_assets) * abs(np.min(eigenvalues)) * 1.1
 
     def _calculate_enhanced_metrics(self, weights: np.ndarray, returns: np.ndarray,
-                                  covariance: np.ndarray, benchmark_weights: np.ndarray) -> Dict:
+                                  covariance: np.ndarray, benchmark_weights: np.ndarray,
+                                  sectors: Optional[List[str]] = None) -> Dict:
         """Calculate enhanced portfolio performance metrics."""
         # Basic metrics
         portfolio_return = np.dot(weights, returns)
@@ -693,8 +694,11 @@ class AdvancedQuantumInspiredRobustOptimizer:
         risk_contributions = weights * marginal_contributions
         risk_contributions = risk_contributions / portfolio_volatility  # Normalize
 
-        # Sector exposures
-        sector_exposures = {}  # This would be populated if sector info is available
+        # Sector exposures: weight per sector when sector info is provided
+        sector_exposures = {}
+        if sectors is not None and len(sectors) == len(weights):
+            for i, sector in enumerate(sectors):
+                sector_exposures[sector] = sector_exposures.get(sector, 0.0) + float(weights[i])
 
         # Simplified max drawdown estimate (would need actual time series for real calc)
         max_drawdown = min(0, -portfolio_volatility * 2)  # Rough estimate
