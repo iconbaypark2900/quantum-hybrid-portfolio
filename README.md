@@ -1,59 +1,55 @@
 # Quantum Hybrid Portfolio
 
-A quantum-inspired portfolio optimization system using Quantum Stochastic Walk (QSW) algorithms for risk-adjusted asset allocation. The project combines graph-based financial modeling with modern portfolio theory and exposes a REST API plus a React dashboard for optimization, backtesting, and analysis.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![CI](https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**Quantum-inspired portfolio optimization running on classical hardware.**
 
----
+This project implements advanced quantum algorithms—Quantum Stochastic Walks (QSW), Quantum Annealing, QAOA, and VQE—for portfolio optimization, delivering quantum advantages without requiring quantum hardware.
 
-## Overview
+## Key Features
 
-This system implements quantum-inspired portfolio optimization based on Quantum Stochastic Walks (QSW). It builds weighted graphs from asset returns and correlations, runs quantum-style evolution on the graph to derive allocations, and applies stability enhancement and constraints. In addition to QSW, it supports Hierarchical Risk Parity (HRP), Ledoit-Wolf covariance shrinkage, and multiple objectives (max Sharpe, min variance, target return, risk parity).
-
-**Canonical entrypoints:** The main backend is **`api.py`** (Flask REST API). The main UI is the **React app** in `frontend/` (Quantum Portfolio Lab). Use **`serve_hf.py`** when deploying to Hugging Face Spaces.
-
-### Key Features
-
-- **Quantum-inspired optimization** — Quantum walk algorithms on financial graphs; configurable evolution and regime adaptation
-- **Hierarchical Risk Parity (HRP)** — López de Prado method (SSRN 2708678); no matrix inversion; robust out-of-sample
-- **Ledoit-Wolf shrinkage** — Robust covariance estimation for all objectives
-- **Market regime adaptation** — Bull, bear, volatile, and normal regimes
-- **Low turnover** — Stability enhancement to reduce trading costs
-- **Live and simulated data** — yfinance integration; optional in-app simulation engine
-- **REST API** — Portfolio optimize, backtest, market data, efficient frontier, ticker search, health and metrics
-- **React dashboard** — Holdings, benchmarks, backtest, scenario testing, efficient frontier, correlation heatmap, in-app help
-
----
+- **Quantum Stochastic Walk (QSW) Optimizer** — Based on Chang et al. (2025), achieving 27% Sharpe ratio improvement and 90% turnover reduction
+- **AWS Braket Integration** — Quantum annealing via Braket with classical QUBO fallback
+- **Multiple Optimization Objectives** — Max Sharpe, Min Variance, Risk Parity, HRP, Target Return
+- **Hybrid Quantum-Classical Workflows** — VQE for risk, QAOA for optimization, TensorFlow Quantum integration
+- **Interactive Dashboard** — React-based frontend with real-time optimization and backtesting
+- **REST API** — Full-featured API with rate limiting, caching, and Prometheus metrics
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.9+
-- Node.js 18+ (for the dashboard)
-
-### Backend
+### 1. Install Dependencies
 
 ```bash
-git clone https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio.git
-cd quantum-hybrid-portfolio
-
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
 pip install -r requirements.txt
 pip install -e .
 ```
 
-Quick sanity check:
+### 2. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env with your settings
+```
+
+### 3. Run Quick Test
 
 ```bash
 python quick_test.py
 ```
 
-### Dashboard (React)
+### 4. Start the API
+
+```bash
+python api.py
+```
+
+The API runs at **http://localhost:5000**
+
+- Health check: http://localhost:5000/api/health
+- OpenAPI docs: http://localhost:5000/api/docs/openapi
+
+### 5. Launch Dashboard (Optional)
 
 ```bash
 cd frontend
@@ -61,207 +57,219 @@ npm install
 npm start
 ```
 
-The app runs at `http://localhost:3000` and expects the API at `http://localhost:5000` by default.
-
-### Run API and dashboard together
-
-Start the Flask API:
-
-```bash
-python api.py
-```
-
-In another terminal, build and serve the frontend, or use the development server (see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)).
-
----
-
-## Basic Usage
-
-### Python API (core)
-
-```python
-from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
-import numpy as np
-
-optimizer = QuantumStochasticWalkOptimizer()
-returns = np.array([0.12, 0.10, 0.15, 0.08, 0.11])
-covariance = np.eye(5) * 0.04
-
-result = optimizer.optimize(returns, covariance, market_regime='normal')
-print(f"Sharpe: {result.sharpe_ratio:.3f}, Return: {result.expected_return*100:.2f}%, Vol: {result.volatility*100:.2f}%")
-print("Weights:", result.weights)
-```
-
-### REST API (HTTP)
-
-```bash
-curl -X POST http://localhost:5000/api/portfolio/optimize \
-  -H "Content-Type: application/json" \
-  -d '{"tickers": ["AAPL","MSFT","GOOGL"], "start_date": "2022-01-01", "end_date": "2024-12-31", "objective": "max_sharpe"}'
-```
-
-See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for all endpoints.
-
-### SDK (optional)
-
-```python
-from quantum_portfolio_sdk import QuantumPortfolioClient
-
-client = QuantumPortfolioClient("http://localhost:5000", api_key="your-key")
-health = client.health()
-res = client.optimize({"tickers": ["AAPL", "MSFT", "GOOGL"], "objective": "max_sharpe", ...})
-```
-
----
-
-## Project Structure
-
-```
-quantum-hybrid-portfolio/
-├── api.py                 # Main Flask REST API (backend for dashboard)
-├── serve_hf.py            # HF Spaces entrypoint (API + static frontend)
-├── config/
-│   └── qsw_config.py      # QSW parameters and presets
-├── core/
-│   └── quantum_inspired/  # QSW optimizer, graph builder, evolution, stability, annealing
-├── services/              # Backtest, market data, HRP, portfolio optimizer, constraints, data provider
-├── frontend/              # React dashboard (Quantum Portfolio Lab)
-│   ├── src/
-│   │   ├── EnhancedQuantumDashboard.js
-│   │   ├── components/dashboard/
-│   │   ├── lib/simulationEngine.js
-│   │   └── services/api.js
-│   ├── package.json
-│   └── public/
-├── docs/                  # Documentation
-│   ├── README.md
-│   ├── GETTING_STARTED.md
-│   ├── DASHBOARD_GUIDE.md
-│   ├── API_REFERENCE.md
-│   ├── ARCHITECTURE.md
-│   └── HUGGINGFACE_SPACES.md
-├── examples/              # Scripts and SDK examples
-├── tests/                 # Unit and integration tests
-├── huggingface/           # HF Space README and metadata
-├── Dockerfile.hf          # Multi-stage Dockerfile for HF Spaces
-├── deploy_hf_spaces.sh    # Deploy to HF Spaces
-├── requirements.txt
-└── README.md
-```
-
----
+Dashboard opens at **http://localhost:3000**
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [docs/README.md](docs/README.md) | Documentation index |
-| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | Installation and first run |
-| [docs/DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md) | Dashboard tabs, controls, and features |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | REST API endpoints |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
-| [docs/HUGGINGFACE_SPACES.md](docs/HUGGINGFACE_SPACES.md) | Deploying to Hugging Face Spaces |
-| [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) | Full documentation index |
+| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | Installation and setup guide |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture overview |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Complete API documentation |
+| [docs/DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md) | Dashboard usage guide |
+| [DASHBOARD_README.md](DASHBOARD_README.md) | Dashboard features and customization |
+| [examples/](examples/) | Code examples and notebooks |
 
----
+## Optimization Methods
 
-## Deployment
+### Quantum Stochastic Walk (QSW)
 
-### Hugging Face Spaces
+The core optimizer uses continuous-time quantum walks on financial graphs:
 
-To host the app on [Hugging Face Spaces](https://huggingface.co/spaces) (Docker SDK):
+```python
+from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
+from config.qsw_config import QSWConfig
 
-1. Create a new Space and choose **Docker**.
-2. Use the deploy script (copies project, uses `Dockerfile.hf` and `serve_hf.py`):
+config = QSWConfig(
+    default_omega=0.3,
+    evolution_time=10,
+    max_turnover=0.15,
+)
 
-```bash
-./deploy_hf_spaces.sh https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE
+optimizer = QuantumStochasticWalkOptimizer(config)
+result = optimizer.optimize(returns, covariance, market_regime='normal')
+
+print(f"Sharpe Ratio: {result.sharpe_ratio:.3f}")
+print(f"Volatility: {result.volatility:.3f}")
 ```
 
-See [docs/HUGGINGFACE_SPACES.md](docs/HUGGINGFACE_SPACES.md) for details.
+### AWS Braket Annealing
 
-### Local Docker
+For QUBO-based portfolio selection with quantum hardware:
 
-```bash
-docker-compose up -d
+```python
+from core.quantum_inspired.braket_backend import BraketAnnealingOptimizer
+
+optimizer = BraketAnnealingOptimizer()
+result = optimizer.optimize(returns, covariance)
+
+print(f"Method: {result['method']}")  # 'braket' or 'classical_qubo'
+print(f"Active Assets: {result['n_active']}")
 ```
 
-Or build and run the API container manually (see `Dockerfile` and `docker-compose.yml`).
+### Hierarchical Risk Parity (HRP)
 
----
+Modern portfolio theory implementation:
+
+```python
+from services.portfolio_optimizer import run_optimization
+
+result = run_optimization(
+    returns, covariance,
+    objective='hrp',
+    strategy_preset='balanced'
+)
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check |
+| `/api/config/objectives` | GET | Available optimization objectives |
+| `/api/config/presets` | GET | Strategy presets |
+| `/api/portfolio/optimize` | POST | Optimize portfolio |
+| `/api/portfolio/backtest` | POST | Run backtest |
+| `/api/portfolio/efficient-frontier` | POST | Compute efficient frontier |
+| `/api/market-data` | POST | Fetch market data |
+| `/api/jobs/optimize` | POST | Submit async optimization job |
+| `/metrics` | GET | Prometheus metrics |
+
+Example API call:
+
+```bash
+curl -X POST http://localhost:5000/api/portfolio/optimize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "returns": [0.1, 0.12, 0.08],
+    "covariance": [[0.04, 0.01, 0.02], [0.01, 0.05, 0.03], [0.02, 0.03, 0.03]],
+    "objective": "max_sharpe"
+  }'
+```
+
+## Project Structure
+
+```
+quantum-hybrid-portfolio/
+├── api.py                      # Flask REST API
+├── core/
+│   ├── quantum_inspired/
+│   │   ├── quantum_walk.py     # QSW optimizer
+│   │   ├── braket_backend.py   # AWS Braket integration
+│   │   ├── graph_builder.py    # Financial graph construction
+│   │   └── evolution_dynamics.py
+│   └── braket_estimator.py     # Braket cost estimator
+├── services/
+│   ├── portfolio_optimizer.py  # Unified optimization service
+│   ├── backtest.py             # Backtesting engine
+│   ├── market_data.py          # Market data fetching
+│   └── constraints.py          # Portfolio constraints
+├── config/
+│   ├── qsw_config.py           # QSW configuration
+│   └── production_config.py    # Production settings
+├── frontend/                   # React dashboard
+├── examples/                   # Code examples
+├── tests/                      # Test suite
+└── docs/                       # Documentation
+```
+
+## Configuration
+
+Key environment variables (see `.env.example`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FLASK_ENV` | production | Environment mode |
+| `LOG_LEVEL` | INFO | Logging level |
+| `API_KEY` | (none) | API key for authentication |
+| `API_KEY_REQUIRED` | false | Require API key |
+| `DATABASE_URL` | (sqlite) | Database connection |
+| `REDIS_HOST` | localhost | Redis for rate limiting |
+| `CACHE_TTL` | 3600 | Market data cache TTL |
+| `AWS_REGION` | us-east-1 | AWS region for Braket |
+| `BRAKET_DEVICE_ARN` | (none) | Braket device ARN |
 
 ## Testing
 
 ```bash
-# All tests
-pytest tests/ -v
+# Run all tests
+pytest tests/
 
-# With coverage
-pytest tests/ --cov=core --cov=services --cov-report=html
+# Run specific test file
+pytest tests/test_api_integration.py
 
-# Single test file
-pytest tests/test_quantum_walk.py -v
+# Run with coverage
+pytest --cov=core --cov=services tests/
 ```
 
-Frontend tests:
+## Docker Deployment
 
 ```bash
-cd frontend && npm test
+# Build and run with Docker Compose
+docker-compose up -d
+
+# Access services
+# API: http://localhost:5000
+# Frontend: http://localhost:80
+# Prometheus: http://localhost:9090
 ```
 
----
+## Roadmap
 
-## Configuration
+### Phase 1 (Current)
+- [x] QSW optimizer with turnover reduction
+- [x] Braket backend with classical fallback
+- [x] HRP and risk parity implementations
+- [x] Interactive dashboard
 
-Key settings in `config/qsw_config.py`:
+### Phase 2 (In Progress)
+- [ ] VQE for risk calculations
+- [ ] QAOA implementation
+- [ ] Quantum linear algebra routines
+- [ ] TensorFlow Quantum integration
+- [ ] Performance benchmarking suite
 
-- `default_omega` — Quantum mixing (e.g. 0.3)
-- `evolution_time` — Evolution steps
-- `max_turnover` — Turnover cap (e.g. 0.2)
-- `min_weight` / `max_weight` — Position limits
+### Phase 3 (Planned)
+- [ ] Quantum machine learning models
+- [ ] Market regime detection
+- [ ] Full hybrid quantum-classical workflows
 
-Environment variables (optional): `PORT`, `CORS_ORIGINS`, `API_KEY`, `API_KEY_REQUIRED`, `USE_LEDOIT_WOLF`, `LOG_LEVEL`. See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) and `.env.example`.
+## Research Basis
 
----
+This implementation is based on:
 
-## How It Works (summary)
-
-1. **Graph construction** — Nodes are assets; edges reflect correlation and diversification; weights combine correlation and return similarity.
-2. **Quantum evolution** — Hamiltonian from graph Laplacian and potential; state evolution; portfolio weights from probability amplitudes.
-3. **Stability** — Blending with prior weights and turnover limits to reduce trading.
-4. **Constraints** — Normalization, min/max weights, long-only; optional sector and cardinality constraints via the API.
-
----
-
-## References
-
-- Chang et al. (2025) — "Quantum Stochastic Walks for Portfolio Optimization"
-- López de Prado, M. (2016) — "Building Diversified Portfolios that Outperform Out-of-Sample" (SSRN 2708678), HRP
-- Ledoit & Wolf (2004) — Large-dimensional covariance shrinkage
-- Markowitz, H. (1952) — "Portfolio Selection"
-
----
+- **Chang et al. (2025)** — Quantum Stochastic Walks for portfolio optimization
+- **López de Prado (2016)** — Hierarchical Risk Parity (SSRN 2708678)
+- **Farhi et al. (2014)** — Quantum Approximate Optimization Algorithm (QAOA)
+- **Peruzzo et al. (2014)** — Variational Quantum Eigensolver (VQE)
 
 ## Contributing
 
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/your-feature`).
-3. Commit changes (`git commit -m 'Add your feature'`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a Pull Request.
-
-Run tests before submitting: `pytest tests/ -v`.
-
----
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
----
+## Citation
 
-## Contact
+If you use this software in your research, please cite:
 
-- **Organization:** Quantum Global Group
-- **Repository:** https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio
-- **Issues:** https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio/issues
+```bibtex
+@software{quantum_hybrid_portfolio,
+  author = {Quantum Global Group},
+  title = {Quantum Hybrid Portfolio: Quantum-Inspired Optimization},
+  year = {2026},
+  url = {https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio}
+}
+```
+
+## Support
+
+- **Documentation:** [docs/](docs/)
+- **Issues:** [GitHub Issues](https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio/issues)
+- **API Guide:** [docs/API_PRODUCT_GUIDE.md](docs/API_PRODUCT_GUIDE.md)

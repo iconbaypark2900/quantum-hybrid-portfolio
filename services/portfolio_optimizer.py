@@ -14,6 +14,11 @@ from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer, Q
 from config.qsw_config import QSWConfig
 from services.constraints import PortfolioConstraints, compute_sector_masks
 
+try:
+    from core.quantum_inspired.braket_backend import BraketAnnealingOptimizer
+except ImportError:
+    BraketAnnealingOptimizer = None
+
 
 @dataclass
 class OptimizationResult:
@@ -28,6 +33,7 @@ class OptimizationResult:
     graph_metrics: Optional[Dict] = None
     evolution_metrics: Optional[Dict] = None
     asset_names: Optional[List[str]] = None  # If set, weights align to these (after filtering)
+    backend_type: Optional[str] = None  # e.g. "braket" or "classical_qubo" for braket_annealing
 
 
 def run_optimization(
@@ -115,6 +121,8 @@ def run_optimization(
             returns, covariance, min_weight, max_weight,
             constraints, sectors
         )
+    elif objective == 'braket_annealing' and BraketAnnealingOptimizer is not None:
+        result = _run_braket_annealing(returns, covariance, initial_weights)
     else:
         result = _run_qsw_optimization(
             returns, covariance, config, market_regime, initial_weights
@@ -146,6 +154,7 @@ def run_optimization(
             n_active=int(np.sum(full_weights > 0.005)),
             graph_metrics=result.graph_metrics,
             evolution_metrics=result.evolution_metrics,
+            backend_type=result.backend_type,
         )
     return result
 
@@ -232,6 +241,33 @@ def _run_qsw_optimization(
         n_active=int(np.sum(result.weights > 0.005)),
         graph_metrics=result.graph_metrics,
         evolution_metrics=result.evolution_metrics,
+    )
+
+
+def _run_braket_annealing(
+    returns: np.ndarray,
+    covariance: np.ndarray,
+    initial_weights: Optional[np.ndarray],
+) -> OptimizationResult:
+    """Run AWS Braket annealing (QUBO) or classical QUBO fallback."""
+    if BraketAnnealingOptimizer is None:
+        raise ValueError(
+            "Braket annealing requires amazon-braket-sdk. "
+            "Install with: pip install amazon-braket-sdk"
+        )
+    optimizer = BraketAnnealingOptimizer()
+    out = optimizer.optimize(
+        returns, covariance, market_regime="normal", initial_weights=initial_weights
+    )
+    return OptimizationResult(
+        weights=out["weights"],
+        sharpe_ratio=out["sharpe_ratio"],
+        expected_return=out["expected_return"],
+        volatility=out["volatility"],
+        turnover=out.get("turnover", 0.0),
+        objective="braket_annealing",
+        n_active=out["n_active"],
+        backend_type=out.get("method"),
     )
 
 

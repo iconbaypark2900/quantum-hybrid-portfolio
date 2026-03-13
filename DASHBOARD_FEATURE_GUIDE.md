@@ -2,9 +2,7 @@
 
 ## Dashboard Overview
 
-The Quantum Portfolio Dashboard consists of two main interfaces:
-1. **React Dashboard** (http://localhost:3000) - Advanced customization features
-2. **Dash Dashboard** (http://localhost:8050) - Traditional dashboard interface
+The Quantum Portfolio Dashboard is the React application at http://localhost:3000.
 
 ## React Dashboard Features (http://localhost:3000)
 
@@ -147,7 +145,7 @@ Toggle which strategies appear in comparison charts:
 If you encounter issues:
 1. Refresh the page to reset any temporary glitches
 2. Use the "Reset All Parameters" button to return to defaults
-3. Check that both the React app (port 3000) and Dash app (port 8050) are running
+3. Check that the React app (port 3000) and API (port 5000) are running
 4. Clear browser cache if visual elements don't load properly
 
 ## Tips for Best Experience

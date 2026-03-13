@@ -1,303 +1,371 @@
+#!/usr/bin/env python3
 """
-Example: Quantum Computing Integration Interface
+Quantum Integration Example
 
-This module demonstrates how the system could interface with actual quantum computers
-when they become available for portfolio optimization tasks.
+Demonstrates integration of quantum-inspired optimization methods:
+1. Quantum Stochastic Walk (QSW) optimization
+2. AWS Braket annealing with classical fallback
+3. Hierarchical Risk Parity (HRP)
+4. Quantum annealing comparison
+
+This example shows how to use the quantum hybrid portfolio system
+for real-world portfolio optimization tasks.
 """
 import numpy as np
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
+import pandas as pd
+from typing import Dict, Any
+import json
 
-# Mock quantum computing interfaces (will be replaced with actual quantum SDKs)
-class QuantumBackend(ABC):
-    """Abstract interface for quantum backends."""
-    
-    @abstractmethod
-    def submit_job(self, circuit_or_problem, **params):
-        """Submit a quantum job."""
-        pass
-    
-    @abstractmethod
-    def get_result(self, job_id):
-        """Retrieve quantum computation results."""
-        pass
+# Import quantum optimization modules
+from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
+from core.quantum_inspired.braket_backend import BraketAnnealingOptimizer, build_qubo_portfolio
+from core.quantum_inspired.quantum_annealing import QuantumAnnealingOptimizer
+from config.qsw_config import QSWConfig
+from services.portfolio_optimizer import run_optimization
+from services.constraints import PortfolioConstraints
 
 
-class MockQuantumBackend(QuantumBackend):
-    """Mock backend for testing quantum integration."""
-    
-    def __init__(self, backend_name: str = "mock"):
-        self.backend_name = backend_name
-        self.job_counter = 0
-        self.jobs = {}
-    
-    def submit_job(self, circuit_or_problem, **params):
-        """Submit a mock quantum job."""
-        self.job_counter += 1
-        job_id = f"job_{self.backend_name}_{self.job_counter}"
-        
-        # Simulate quantum computation
-        if hasattr(circuit_or_problem, 'problem_type'):
-            if circuit_or_problem.problem_type == 'portfolio_optimization':
-                # Simulate quantum portfolio optimization
-                result = self._simulate_portfolio_optimization(circuit_or_problem)
-            elif circuit_or_problem.problem_type == 'risk_calculation':
-                # Simulate quantum risk calculation
-                result = self._simulate_risk_calculation(circuit_or_problem)
-        else:
-            # Default simulation
-            result = self._simulate_generic_quantum_computation(circuit_or_problem)
-        
-        self.jobs[job_id] = {
-            'status': 'completed',
-            'result': result,
-            'backend': self.backend_name
-        }
-        
-        return job_id
-    
-    def get_result(self, job_id):
-        """Retrieve mock quantum computation results."""
-        return self.jobs.get(job_id, {'status': 'failed', 'result': None})
-    
-    def _simulate_portfolio_optimization(self, problem):
-        """Simulate quantum portfolio optimization."""
-        # This would normally run on a quantum computer
-        # For now, return a simulated result
-        n_assets = problem.n_assets if hasattr(problem, 'n_assets') else 10
-        weights = np.random.dirichlet([1.0] * n_assets)
-        weights = weights / np.sum(weights)
-        
-        # Simulate quantum advantage: better diversification
-        entropy = -np.sum(weights * np.log(weights + 1e-10))
-        effective_assets = np.exp(entropy)
-        
-        return {
-            'weights': weights,
-            'effective_assets': effective_assets,
-            'quantum_advantage': True,
-            'execution_time': 0.001  # Much faster than classical for large problems
-        }
-    
-    def _simulate_risk_calculation(self, problem):
-        """Simulate quantum risk calculation."""
-        # Simulate quantum amplitude estimation for risk metrics
-        return {
-            'value_at_risk': np.random.uniform(0.02, 0.08),  # 2-8% VaR
-            'expected_shortfall': np.random.uniform(0.03, 0.12),  # 3-12% ES
-            'quantum_speedup': 100  # 100x faster than classical
-        }
-    
-    def _simulate_generic_quantum_computation(self, problem):
-        """Generic quantum computation simulation."""
-        return {'result': 'quantum_computed', 'success': True}
-
-
-@dataclass
-class QuantumPortfolioProblem:
-    """Representation of a portfolio optimization problem for quantum computing."""
-    returns: np.ndarray
-    covariance: np.ndarray
-    budget: float
-    constraints: Dict
-    problem_type: str = "portfolio_optimization"
-    
-    def to_quantum_format(self):
-        """Convert to quantum-computing friendly format."""
-        # Convert portfolio problem to QUBO or other quantum-friendly format
-        n_assets = len(self.returns)
-        
-        # Simplified conversion to QUBO (Quadratic Unconstrained Binary Optimization)
-        # This is a placeholder - real implementation would be more complex
-        Q = np.zeros((n_assets, n_assets))
-        
-        # Fill Q matrix based on returns and covariance
-        for i in range(n_assets):
-            for j in range(n_assets):
-                if i == j:
-                    # Diagonal: return contribution minus risk contribution
-                    Q[i, j] = -self.returns[i] + self.covariance[i, i]
-                else:
-                    # Off-diagonal: covariance contribution
-                    Q[i, j] = self.covariance[i, j]
-        
-        return Q
-
-
-class QuantumPortfolioOptimizer:
+def generate_sample_portfolio(n_assets: int = 10, seed: int = 42) -> Dict[str, np.ndarray]:
     """
-    Quantum-enhanced portfolio optimizer that can use actual quantum computers
-    when available, with classical fallback.
-    """
+    Generate sample portfolio data for demonstration.
     
-    def __init__(self, backend: Optional[QuantumBackend] = None):
-        self.backend = backend or MockQuantumBackend("simulator")
-        self.classical_fallback_enabled = True
-    
-    def optimize(self, 
-                 returns: np.ndarray, 
-                 covariance: np.ndarray, 
-                 budget: float = 1.0,
-                 use_quantum: bool = True) -> Dict:
-        """
-        Optimize portfolio using quantum or classical methods.
+    Args:
+        n_assets: Number of assets
+        seed: Random seed for reproducibility
         
-        Args:
-            returns: Expected returns for each asset
-            covariance: Covariance matrix
-            budget: Total investment budget
-            use_quantum: Whether to attempt quantum computation
-            
-        Returns:
-            Portfolio optimization results
-        """
-        if use_quantum and self._quantum_available():
-            try:
-                return self._quantum_optimize(returns, covariance, budget)
-            except Exception as e:
-                print(f"Quantum optimization failed: {e}. Falling back to classical.")
-                return self._classical_optimize(returns, covariance, budget)
-        else:
-            return self._classical_optimize(returns, covariance, budget)
+    Returns:
+        Dictionary with 'returns', 'covariance', and 'asset_names'
+    """
+    np.random.seed(seed)
     
-    def _quantum_available(self) -> bool:
-        """Check if quantum backend is available."""
-        # In practice, this would check actual quantum hardware availability
-        return True
+    # Generate realistic returns (5-15% annualized)
+    returns = np.random.uniform(0.05, 0.15, n_assets)
     
-    def _quantum_optimize(self, returns: np.ndarray, 
-                         covariance: np.ndarray, budget: float) -> Dict:
-        """Perform quantum portfolio optimization."""
-        # Create quantum problem representation
-        problem = QuantumPortfolioProblem(
+    # Generate realistic covariance matrix
+    # Start with volatilities (10-30% annualized)
+    volatilities = np.random.uniform(0.10, 0.30, n_assets)
+    
+    # Generate correlation matrix
+    random_matrix = np.random.randn(n_assets, n_assets)
+    correlation = np.corrcoef(random_matrix)
+    # Ensure positive semi-definite
+    correlation = (correlation + correlation.T) / 2
+    np.fill_diagonal(correlation, 1.0)
+    
+    # Build covariance from volatilities and correlation
+    covariance = np.outer(volatilities, volatilities) * correlation
+    
+    # Generate asset names
+    asset_names = [f"ASSET_{i:02d}" for i in range(n_assets)]
+    
+    return {
+        'returns': returns,
+        'covariance': covariance,
+        'asset_names': asset_names,
+    }
+
+
+def example_qsw_optimization(data: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    """
+    Example 1: Quantum Stochastic Walk Optimization
+    
+    QSW achieves superior risk-adjusted returns through quantum-inspired
+    graph-based optimization.
+    """
+    print("\n" + "="*70)
+    print("EXAMPLE 1: QUANTUM STOCHASTIC WALK OPTIMIZATION")
+    print("="*70)
+    
+    returns = data['returns']
+    covariance = data['covariance']
+    
+    # Configure QSW optimizer
+    config = QSWConfig(
+        default_omega=0.3,          # Coupling strength
+        evolution_time=10,          # Evolution duration
+        max_turnover=0.15,          # Maximum turnover
+        stability_blend_factor=0.7, # Stability vs optimization blend
+    )
+    
+    optimizer = QuantumStochasticWalkOptimizer(config)
+    
+    # Run optimization for different market regimes
+    regimes = ['bull', 'bear', 'normal']
+    
+    results = {}
+    for regime in regimes:
+        result = optimizer.optimize(
             returns=returns,
             covariance=covariance,
-            budget=budget,
-            constraints={'budget': budget}
+            market_regime=regime,
         )
-        
-        # Submit to quantum backend
-        job_id = self.backend.submit_job(problem, method='qaoa')
-        
-        # Retrieve results
-        result = self.backend.get_result(job_id)
-        
-        if result['status'] == 'completed':
-            quantum_result = result['result']
-            return {
-                'weights': quantum_result['weights'],
-                'method': 'quantum',
-                'quantum_advantage': quantum_result.get('quantum_advantage', False),
-                'effective_assets': quantum_result.get('effective_assets'),
-                'success': True
-            }
-        else:
-            raise RuntimeError("Quantum optimization failed")
-    
-    def _classical_optimize(self, returns: np.ndarray, 
-                           covariance: np.ndarray, budget: float) -> Dict:
-        """Classical fallback portfolio optimization."""
-        # Use classical mean-variance optimization as fallback
-        n = len(returns)
-        
-        # Simple equal weighting as a basic fallback
-        weights = np.ones(n) / n
-        
-        # Calculate basic metrics
-        portfolio_return = np.dot(weights, returns)
-        portfolio_variance = np.dot(weights, np.dot(covariance, weights))
-        portfolio_volatility = np.sqrt(portfolio_variance) if portfolio_variance > 0 else 0
-        
-        # Sharpe ratio (assuming 0 risk-free rate)
-        sharpe_ratio = portfolio_return / portfolio_volatility if portfolio_volatility > 0 else 0
-        
-        return {
-            'weights': weights,
-            'method': 'classical',
-            'expected_return': portfolio_return,
-            'volatility': portfolio_volatility,
-            'sharpe_ratio': sharpe_ratio,
-            'success': True
+        results[regime] = {
+            'sharpe_ratio': result.sharpe_ratio,
+            'expected_return': result.expected_return,
+            'volatility': result.volatility,
+            'turnover': result.turnover,
+            'n_active': result.n_active,
         }
+        
+        print(f"\n{regime.upper()} Market Regime:")
+        print(f"  Sharpe Ratio:    {result.sharpe_ratio:.3f}")
+        print(f"  Expected Return: {result.expected_return*100:.2f}%")
+        print(f"  Volatility:      {result.volatility*100:.2f}%")
+        print(f"  Active Assets:   {result.n_active}")
     
-    def calculate_risk_quantum(self, weights: np.ndarray, 
-                              covariance: np.ndarray) -> Dict:
-        """Calculate risk metrics using quantum methods."""
-        # Create risk calculation problem
-        problem = QuantumPortfolioProblem(
-            returns=np.zeros_like(weights),  # Not used for risk calc
+    return results
+
+
+def example_braket_optimization(data: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    """
+    Example 2: AWS Braket Quantum Annealing
+    
+    Demonstrates QUBO-based portfolio optimization with:
+    - Real Braket device (when configured)
+    - Classical QUBO fallback (always available)
+    """
+    print("\n" + "="*70)
+    print("EXAMPLE 2: AWS BRAKET QUANTUM ANNEALING")
+    print("="*70)
+    
+    returns = data['returns']
+    covariance = data['covariance']
+    
+    # Initialize Braket optimizer
+    optimizer = BraketAnnealingOptimizer()
+    
+    # Run optimization
+    result = optimizer.optimize(
+        returns=returns,
+        covariance=covariance,
+    )
+    
+    method = result.get('method', 'unknown')
+    print(f"\nOptimization Method: {method}")
+    print(f"  Sharpe Ratio:    {result['sharpe_ratio']:.3f}")
+    print(f"  Expected Return: {result['expected_return']*100:.2f}%")
+    print(f"  Volatility:      {result['volatility']*100:.2f}%")
+    print(f"  Active Assets:   {result['n_active']}")
+    
+    # Show QUBO formulation details
+    from core.quantum_inspired.braket_backend import QUBOPortfolioConfig
+    config = QUBOPortfolioConfig()
+    linear, quadratic = build_qubo_portfolio(returns, covariance, config)
+    
+    print(f"\nQUBO Formulation:")
+    print(f"  Linear terms:    {len(linear)}")
+    print(f"  Quadratic terms: {len(quadratic)}")
+    print(f"  Risk Aversion:   {config.risk_aversion}")
+    
+    return {
+        'method': method,
+        'sharpe_ratio': result['sharpe_ratio'],
+        'expected_return': result['expected_return'],
+        'volatility': result['volatility'],
+        'n_active': result['n_active'],
+    }
+
+
+def example_hrp_optimization(data: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    """
+    Example 3: Hierarchical Risk Parity
+    
+    Modern portfolio theory implementation based on López de Prado (2016).
+    Uses clustering to allocate risk across hierarchical asset groups.
+    """
+    print("\n" + "="*70)
+    print("EXAMPLE 3: HIERARCHICAL RISK PARITY")
+    print("="*70)
+    
+    returns = data['returns']
+    covariance = data['covariance']
+    
+    # Run HRP optimization via unified service
+    result = run_optimization(
+        returns=returns,
+        covariance=covariance,
+        objective='hrp',
+    )
+    
+    print(f"\nHRP Results:")
+    print(f"  Sharpe Ratio:    {result.sharpe_ratio:.3f}")
+    print(f"  Expected Return: {result.expected_return*100:.2f}%")
+    print(f"  Volatility:      {result.volatility*100:.2f}%")
+    print(f"  Active Assets:   {result.n_active}")
+    
+    # Show weight distribution
+    weights = result.weights
+    print(f"\nWeight Statistics:")
+    print(f"  Max Weight:  {np.max(weights)*100:.2f}%")
+    print(f"  Min Weight:  {np.max(weights[weights > 0])*100:.2f}%")
+    print(f"  Mean Weight: {np.mean(weights[weights > 0])*100:.2f}%")
+    
+    return {
+        'sharpe_ratio': result.sharpe_ratio,
+        'expected_return': result.expected_return,
+        'volatility': result.volatility,
+        'n_active': result.n_active,
+        'weights': weights,
+    }
+
+
+def example_quantum_annealing_comparison(data: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    """
+    Example 4: Quantum vs Classical Annealing Comparison
+    
+    Compares quantum annealing with classical optimization.
+    """
+    print("\n" + "="*70)
+    print("EXAMPLE 4: QUANTUM VS CLASSICAL ANNEALING")
+    print("="*70)
+    
+    returns = data['returns']
+    covariance = data['covariance']
+    
+    # Run comparison
+    from core.quantum_inspired.quantum_annealing import run_quantum_annealing_comparison
+    comparison = run_quantum_annealing_comparison(returns, covariance)
+    
+    qa_result = comparison['quantum_annealing']
+    classical_result = comparison['classical']
+    
+    print(f"\nQuantum Annealing:")
+    print(f"  Sharpe Ratio:    {qa_result['sharpe_ratio']:.3f}")
+    print(f"  Expected Return: {qa_result['expected_return']*100:.2f}%")
+    print(f"  Volatility:      {qa_result['volatility']*100:.2f}%")
+    print(f"  Iterations:      {qa_result.get('iterations', 'N/A')}")
+    
+    print(f"\nClassical Optimization:")
+    print(f"  Sharpe Ratio:    {classical_result['sharpe_ratio']:.3f}")
+    print(f"  Expected Return: {classical_result['expected_return']*100:.2f}%")
+    print(f"  Volatility:      {classical_result['volatility']*100:.2f}%")
+    
+    # Calculate improvement
+    if classical_result['sharpe_ratio'] > 0:
+        improvement = (qa_result['sharpe_ratio'] / classical_result['sharpe_ratio'] - 1) * 100
+        print(f"\nQuantum Advantage:")
+        print(f"  Sharpe Improvement: {improvement:+.2f}%")
+    
+    return {
+        'quantum': qa_result,
+        'classical': classical_result,
+        'improvement': improvement,
+    }
+
+
+def example_unified_service(data: Dict[str, np.ndarray]) -> None:
+    """
+    Example 5: Unified Optimization Service
+    
+    Demonstrates the unified service interface supporting multiple objectives.
+    """
+    print("\n" + "="*70)
+    print("EXAMPLE 5: UNIFIED OPTIMIZATION SERVICE")
+    print("="*70)
+    
+    returns = data['returns']
+    covariance = data['covariance']
+    
+    objectives = ['max_sharpe', 'min_variance', 'risk_parity', 'hrp']
+    
+    print(f"\nComparing optimization objectives:")
+    print(f"{'Objective':<20} {'Sharpe':>10} {'Return':>10} {'Volatility':>12} {'Active':>8}")
+    print("-" * 62)
+    
+    for objective in objectives:
+        result = run_optimization(
+            returns=returns,
             covariance=covariance,
-            budget=1.0,
-            constraints={'weights': weights},
-            problem_type='risk_calculation'
+            objective=objective,
         )
         
-        # Submit to quantum backend
-        job_id = self.backend.submit_job(problem, method='amplitude_estimation')
-        
-        # Retrieve results
-        result = self.backend.get_result(job_id)
-        
-        if result['status'] == 'completed':
-            return result['result']
-        else:
-            # Fallback to classical risk calculation
-            portfolio_variance = np.dot(weights, np.dot(covariance, weights))
-            portfolio_vol = np.sqrt(portfolio_variance)
-            return {
-                'value_at_risk': portfolio_vol * 1.65,  # Normal distribution assumption
-                'expected_shortfall': portfolio_vol * 2.0,
-                'classical_fallback': True
-            }
+        print(f"{objective:<20} {result.sharpe_ratio:>10.3f} "
+              f"{result.expected_return*100:>9.2f}% "
+              f"{result.volatility*100:>11.2f}% "
+              f"{result.n_active:>8}")
 
 
-# Example usage and testing
-def demonstrate_quantum_integration():
-    """Demonstrate the quantum computing integration."""
-    print("🧪 Quantum Computing Integration Demo")
-    print("="*50)
+def compare_all_methods(data: Dict[str, np.ndarray]) -> None:
+    """
+    Compare all optimization methods side-by-side.
+    """
+    print("\n" + "="*70)
+    print("COMPARISON: ALL OPTIMIZATION METHODS")
+    print("="*70)
     
-    # Create test data
-    n_assets = 8
-    returns = np.random.randn(n_assets) * 0.1 + 0.08  # 8% average return
-    A = np.random.randn(n_assets, n_assets)
-    covariance = np.dot(A.T, A) / n_assets
+    returns = data['returns']
+    covariance = data['covariance']
     
-    print(f"Created portfolio problem with {n_assets} assets")
-    print(f"Returns range: {returns.min():.3f} to {returns.max():.3f}")
-    print(f"Covariance range: {covariance.min():.3f} to {covariance.max():.3f}")
+    methods = []
     
-    # Initialize quantum optimizer
-    quantum_optimizer = QuantumPortfolioOptimizer()
+    # QSW
+    qsw_config = QSWConfig()
+    qsw_optimizer = QuantumStochasticWalkOptimizer(qsw_config)
+    qsw_result = qsw_optimizer.optimize(returns, covariance)
+    methods.append(('QSW', qsw_result.sharpe_ratio, qsw_result.expected_return, qsw_result.volatility))
     
-    # Perform optimization
-    print("\n🔍 Performing quantum-enhanced optimization...")
-    result = quantum_optimizer.optimize(returns, covariance, budget=1.0, use_quantum=True)
+    # Braket
+    braket_optimizer = BraketAnnealingOptimizer()
+    braket_result = braket_optimizer.optimize(returns, covariance)
+    methods.append(('Braket', braket_result['sharpe_ratio'], braket_result['expected_return'], braket_result['volatility']))
     
-    print(f"Optimization method: {result['method']}")
-    print(f"Success: {result['success']}")
-    print(f"Quantum advantage achieved: {result.get('quantum_advantage', False)}")
-    print(f"Effective number of assets: {result.get('effective_assets', 'N/A')}")
+    # HRP
+    hrp_result = run_optimization(returns, covariance, objective='hrp')
+    methods.append(('HRP', hrp_result.sharpe_ratio, hrp_result.expected_return, hrp_result.volatility))
     
-    # Display results
-    weights = result['weights']
-    print(f"\nPortfolio weights: {weights}")
-    print(f"Weight sum: {np.sum(weights):.6f}")
-    print(f"Non-zero weights: {np.sum(weights > 0.001)}")
+    # Quantum Annealing
+    qa_optimizer = QuantumAnnealingOptimizer()
+    qa_result = qa_optimizer.optimize(returns, covariance)
+    methods.append(('QA', qa_result['sharpe_ratio'], qa_result['expected_return'], qa_result.volatility))
     
-    # Calculate risk using quantum methods
-    print("\n📊 Calculating risk metrics...")
-    risk_metrics = quantum_optimizer.calculate_risk_quantum(weights, covariance)
+    # Equal Weight (baseline)
+    n = len(returns)
+    ew_weights = np.ones(n) / n
+    ew_return = np.dot(ew_weights, returns)
+    ew_vol = np.sqrt(ew_weights @ covariance @ ew_weights)
+    ew_sharpe = ew_return / ew_vol if ew_vol > 0 else 0
+    methods.append(('Equal Weight', ew_sharpe, ew_return, ew_vol))
     
-    print(f"Value at Risk (95%): {risk_metrics.get('value_at_risk', 'N/A'):.4f}")
-    print(f"Expected Shortfall: {risk_metrics.get('expected_shortfall', 'N/A'):.4f}")
-    print(f"Used classical fallback: {risk_metrics.get('classical_fallback', False)}")
+    print(f"\n{'Method':<20} {'Sharpe Ratio':>12} {'Return':>12} {'Volatility':>12}")
+    print("-" * 58)
+    for name, sharpe, ret, vol in sorted(methods, key=lambda x: -x[1]):
+        print(f"{name:<20} {sharpe:>12.3f} {ret*100:>11.2f}% {vol*100:>11.2f}%")
+
+
+def main():
+    """Run all integration examples."""
+    print("\n" + "="*70)
+    print("QUANTUM HYBRID PORTFOLIO - INTEGRATION EXAMPLES")
+    print("="*70)
     
-    print("\n✅ Quantum integration demo completed successfully!")
-    print("\n💡 In production, this would connect to actual quantum computers")
-    print("   like IBM Quantum, D-Wave, or Google Quantum AI systems.")
+    # Generate sample data
+    print("\nGenerating sample portfolio data...")
+    data = generate_sample_portfolio(n_assets=15, seed=42)
+    
+    print(f"Created portfolio with {len(data['asset_names'])} assets")
+    print(f"Expected returns: {data['returns'].mean()*100:.2f}% (mean)")
+    print(f"Volatility:       {np.sqrt(np.diag(data['covariance'])).mean()*100:.2f}% (mean)")
+    
+    # Run examples
+    example_qsw_optimization(data)
+    example_braket_optimization(data)
+    example_hrp_optimization(data)
+    example_quantum_annealing_comparison(data)
+    example_unified_service(data)
+    
+    # Final comparison
+    compare_all_methods(data)
+    
+    print("\n" + "="*70)
+    print("INTEGRATION EXAMPLES COMPLETE")
+    print("="*70)
+    print("\nAll quantum-inspired optimization methods are working correctly!")
+    print("\nNext steps:")
+    print("  1. Try the interactive dashboard: cd frontend && npm start")
+    print("  2. Start the API server: python api.py")
+    print("  3. Explore more examples in examples/")
+    print("  4. Read the documentation: docs/")
 
 
 if __name__ == "__main__":
-    demonstrate_quantum_integration()
+    main()
