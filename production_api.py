@@ -44,10 +44,10 @@ app.config['JWT_SECRET_KEY'] = CONFIG.JWT_SECRET_KEY
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(seconds=CONFIG.JWT_ACCESS_TOKEN_EXPIRES)
 jwt = JWTManager(app)
 
-# Configure rate limiter
+# Configure rate limiter (flask-limiter 3.0+: key_func first, app= as kwarg)
 limiter = Limiter(
-    app,
-    key_func=get_remote_address,
+    get_remote_address,
+    app=app,
     default_limits=["1000 per hour"]
 )
 
