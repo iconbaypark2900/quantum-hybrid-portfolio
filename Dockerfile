@@ -1,52 +1,51 @@
-# Production Dockerfile for Quantum Portfolio Optimization System
+# Hugging Face Spaces Dockerfile for Quantum Portfolio Lab
+# Builds React frontend + Python API, serves both on port 7860
+
+# ─── Stage 1: Build React frontend ───
+FROM node:18-slim AS frontend-build
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY frontend/ ./
+ENV CI=false
+RUN npm run build
+
+# ─── Stage 2: Python runtime ───
 FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV FLASK_APP=production_api.py
-ENV FLASK_ENV=production
+# HF Spaces: run as user 1000
+RUN useradd -m -u 1000 user
+ENV HOME=/home/user
+ENV PATH=$HOME/.local/bin:$PATH
+WORKDIR $HOME/app
 
-# Install system dependencies
+# System deps
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
         g++ \
         libgomp1 \
-        postgresql-client \
-        redis-tools \
         curl \
-        gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Create application directory and user
-RUN groupadd -r quantum && useradd -r -g quantum quantum
-WORKDIR /app
-
-# Copy requirements first to leverage Docker cache
+# Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir gunicorn psycopg2-binary redis hiredis flask-limiter flask-jwt-extended sentry-sdk[flask]
+    && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy app code
+COPY --chown=user . .
 
-# Change ownership to quantum user
-RUN chown -R quantum:quantum /app
-USER quantum
+# Copy built frontend from stage 1
+COPY --from=frontend-build --chown=user /app/frontend/build ./frontend/build
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/data
+USER user
 
-# HF Spaces expects 7860; default 5000 for local
-ARG APP_PORT=7860
-ENV PORT=${APP_PORT}
-EXPOSE ${APP_PORT}
+# HF Spaces default port
+ENV PORT=7860
+EXPOSE 7860
 
-# Health check (use 7860 - APP_PORT is build-time only)
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:7860/health || exit 1
-
-# Start command (bind to PORT so HF Spaces health check succeeds)
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 1 --worker-class gthread --threads 2 --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - production_api:app"]
+# Serve API + frontend
+CMD ["python", "serve_hf.py"]
