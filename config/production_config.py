@@ -6,14 +6,22 @@ from dataclasses import dataclass
 from typing import Optional
 import logging
 
-# Configure logging for production
+# Configure logging for production (file only if dir exists; stream always)
+def _logging_handlers():
+    handlers = [logging.StreamHandler()]
+    log_dir = '/var/log/quantum_portfolio'
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        handlers.insert(0, logging.FileHandler(os.path.join(log_dir, 'production.log')))
+    except (OSError, PermissionError):
+        pass  # Use only StreamHandler (e.g. HF Spaces, containers)
+    return handlers
+
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('/var/log/quantum_portfolio/production.log'),
-        logging.StreamHandler()
-    ]
+    handlers=_logging_handlers()
 )
 
 
