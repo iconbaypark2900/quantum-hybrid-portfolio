@@ -178,8 +178,12 @@ class QAOAOptimizer:
         """
         returns = np.asarray(returns)
         covariance = np.asarray(covariance)
-        n_assets = len(returns)
-        
+        n_original = len(returns)
+        returns_full = returns.copy()
+        covariance_full = covariance.copy()
+        n_assets = n_original
+        top_indices = None
+
         # Limit assets for current hardware
         if n_assets > self.config.max_assets:
             logger.warning(
@@ -191,7 +195,7 @@ class QAOAOptimizer:
             returns = returns[top_indices]
             covariance = covariance[np.ix_(top_indices, top_indices)]
             n_assets = self.config.max_assets
-        
+
         # Build QUBO formulation
         linear, quadratic = self._build_portfolio_qubo(returns, covariance)
         
@@ -215,8 +219,18 @@ class QAOAOptimizer:
         binary_selection = result["binary_selection"]
         weights = self._binary_to_weights(binary_selection, returns, covariance)
         
-        # Calculate portfolio metrics
-        metrics = self._calculate_metrics(weights, returns, covariance)
+        # Expand to full universe if we reduced (so len(weights) matches original assets)
+        if top_indices is not None:
+            full_weights = np.zeros(n_original)
+            full_weights[top_indices] = weights
+            weights = full_weights
+        
+        # Calculate portfolio metrics (use full returns/cov when we expanded weights)
+        metrics = self._calculate_metrics(
+            weights,
+            returns_full if top_indices is not None else returns,
+            covariance_full if top_indices is not None else covariance,
+        )
         
         out = {
             "weights": weights,

@@ -733,7 +733,10 @@ def calculate_portfolio_metrics(weights, returns, covariance_matrix):
 
 def compute_var(assets, weights, confidence=0.95, n_simulations=2000):
     """Compute Value at Risk (VaR) and Conditional VaR."""
-    n_assets = len(weights)
+    # Align lengths (e.g. QAOA may return fewer weights when it reduces assets)
+    n_assets = min(len(assets), len(weights))
+    assets = assets[:n_assets]
+    weights = np.asarray(weights)[:n_assets]
     
     # Simple VaR calculation using historical simulation
     # Generate scenario returns based on asset correlations
