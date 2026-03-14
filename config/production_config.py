@@ -103,10 +103,17 @@ class ProductionConfig:
     
     def __post_init__(self):
         """Validate configuration after initialization"""
+        # Use placeholder secrets when not set (e.g. HF Spaces, demo) - not for real production
         if not self.SECRET_KEY:
-            raise ValueError("SECRET_KEY must be set in production")
+            self.SECRET_KEY = os.getenv(
+                "SECRET_KEY",
+                "hf-demo-secret-change-in-production-" + str(os.getpid())
+            )
         if not self.JWT_SECRET_KEY:
-            raise ValueError("JWT_SECRET_KEY must be set in production")
+            self.JWT_SECRET_KEY = os.getenv(
+                "JWT_SECRET_KEY",
+                "hf-demo-jwt-secret-change-in-production-" + str(os.getpid())
+            )
         if self.DEBUG:
             raise ValueError("DEBUG should be False in production")
         if self.TESTING:
