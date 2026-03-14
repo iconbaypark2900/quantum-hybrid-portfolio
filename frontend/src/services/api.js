@@ -16,7 +16,7 @@ if (API_KEY) {
 const api = axios.create({
   baseURL: API_BASE,
   headers: defaultHeaders,
-  timeout: 60000,
+  timeout: 300000,  // 5 min for long-running optimizations (e.g. IBM QAOA on real hardware)
 });
 
 // ─── Response Interceptor ───

@@ -11,6 +11,7 @@ QAOA is a hybrid quantum-classical algorithm that alternates between
 problem and mixer Hamiltonians to find approximate solutions to combinatorial
 optimization problems like portfolio selection.
 """
+import os
 import numpy as np
 from typing import Dict, Optional, Tuple, List, Any
 from dataclasses import dataclass
@@ -55,6 +56,16 @@ except ImportError:
     BRAKET_AVAILABLE = False
     logger.info("AWS Braket SDK not installed.")
 
+# Try to import IBM Quantum Runtime
+try:
+    from qiskit_ibm_runtime import QiskitRuntimeService, Sampler as IBMSampler
+    IBM_RUNTIME_AVAILABLE = True
+except ImportError:
+    IBM_RUNTIME_AVAILABLE = False
+    QiskitRuntimeService = None  # type: ignore
+    IBMSampler = None  # type: ignore
+    logger.info("qiskit-ibm-runtime not installed. IBM Quantum backend unavailable.")
+
 
 @dataclass
 class QAOAConfig:
@@ -70,8 +81,9 @@ class QAOAConfig:
     initial_state: str = 'superposition'  # 'superposition' or 'custom'
     
     # Backend selection
-    backend: str = 'classical'  # 'classical', 'qiskit', 'pennylane', 'braket', 'tfq'
+    backend: str = 'classical'  # 'classical', 'qiskit', 'pennylane', 'braket', 'tfq', 'ibm'
     device_name: Optional[str] = None  # For quantum hardware
+    ibm_backend: Optional[str] = None  # e.g. 'ibm_brisbane', 'simulator_stabilizer'; None = auto-select
     
     # Portfolio-specific
     risk_aversion: float = 0.5
@@ -103,29 +115,47 @@ class QAOAOptimizer:
             config: Configuration object. Uses defaults if not provided.
         """
         self.config = config or QAOAConfig()
-        self._backend = self._initialize_backend()
+        self._backend, self._ibm_backend_name = self._initialize_backend()
         
-    def _initialize_backend(self) -> Any:
-        """Initialize the quantum backend based on config."""
+    def _initialize_backend(self) -> Tuple[Any, Optional[str]]:
+        """Initialize the quantum backend based on config. Returns (backend, ibm_backend_name)."""
         backend_name = self.config.backend
-        
+        ibm_backend_name: Optional[str] = None
+
         if backend_name == 'qiskit' and QISKIT_AVAILABLE:
             from qiskit.primitives import Sampler
-            return Sampler()
+            return Sampler(), None
+        elif backend_name == 'ibm' and IBM_RUNTIME_AVAILABLE:
+            token = os.environ.get("IBM_QUANTUM_TOKEN") or os.environ.get("QISKIT_IBM_TOKEN")
+            if not token:
+                logger.warning("IBM_QUANTUM_TOKEN not set. Falling back to classical QAOA.")
+                return 'classical', None
+            try:
+                service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
+                if self.config.ibm_backend:
+                    backend = service.backend(self.config.ibm_backend)
+                else:
+                    backend = service.least_busy(operational=True, simulator=True)
+                ibm_backend_name = backend.name
+                self._ibm_backend_obj = backend
+                logger.info(f"IBM Quantum backend: {ibm_backend_name}")
+                return 'ibm_native', ibm_backend_name
+            except Exception as e:
+                logger.warning(f"IBM Quantum init failed: {e}. Falling back to classical QAOA.")
+                return 'classical', None
         elif backend_name == 'pennylane' and PENNYLANE_AVAILABLE:
             dev = qml.device('default.qubit', wires=self.config.max_assets)
-            return dev
+            return dev, None
         elif backend_name == 'braket' and BRAKET_AVAILABLE:
             if self.config.device_name:
-                return AwsDevice(self.config.device_name)
+                return AwsDevice(self.config.device_name), None
             else:
-                return LocalSimulator()
+                return LocalSimulator(), None
         elif backend_name == 'tfq' and TENSORFLOW_QUANTUM_AVAILABLE:
-            return tfq  # TensorFlow Quantum uses TF ops directly
+            return tfq, None
         else:
-            # Default to classical simulation
             logger.info(f"Using classical QAOA simulation (backend={backend_name})")
-            return 'classical'
+            return 'classical', None
     
     def optimize(
         self,
@@ -168,7 +198,9 @@ class QAOAOptimizer:
         # Run QAOA
         if self._backend == 'classical':
             result = self._run_classical_qaoa(linear, quadratic, n_assets)
-        elif self._backend == 'qiskit':
+        elif self._backend == 'ibm_native':
+            result = self._run_ibm_qaoa_native(linear, quadratic, n_assets)
+        elif self.config.backend in ('qiskit', 'ibm'):
             result = self._run_qiskit_qaoa(linear, quadratic, n_assets)
         elif self._backend == 'pennylane':
             result = self._run_pennylane_qaoa(linear, quadratic, n_assets)
@@ -186,7 +218,7 @@ class QAOAOptimizer:
         # Calculate portfolio metrics
         metrics = self._calculate_metrics(weights, returns, covariance)
         
-        return {
+        out = {
             "weights": weights,
             "sharpe_ratio": metrics["sharpe_ratio"],
             "expected_return": metrics["expected_return"],
@@ -197,6 +229,11 @@ class QAOAOptimizer:
             "qaoa_layers": self.config.p,
             "turnover": self._calculate_turnover(weights, initial_weights),
         }
+        if self.config.backend == "ibm" and hasattr(self, "_ibm_backend_name") and self._ibm_backend_name:
+            out["ibm_backend_name"] = self._ibm_backend_name
+            if hasattr(self, "_ibm_job_id") and self._ibm_job_id:
+                out["ibm_job_id"] = self._ibm_job_id
+        return out
     
     def _build_portfolio_qubo(
         self,
@@ -545,13 +582,145 @@ class QAOAOptimizer:
         
         return best_solution
     
+    def _extract_sampler_counts(self, pub_result: Any, n_qubits: int) -> Dict[str, int]:
+        """Extract measurement counts from SamplerV2 pub result."""
+        counts: Dict[str, int] = {}
+        if hasattr(pub_result, "join_data"):
+            try:
+                joined = pub_result.join_data()
+                if hasattr(joined, "get_counts"):
+                    c = joined.get_counts()
+                    if isinstance(c, dict):
+                        counts = c
+                    else:
+                        counts = dict(c) if c else {}
+            except Exception:
+                pass
+        if not counts and hasattr(pub_result, "data"):
+            data = pub_result.data
+            for attr in ("meas", "cr"):
+                reg = getattr(data, attr, None)
+                if reg is not None:
+                    if hasattr(reg, "get_counts"):
+                        c = reg.get_counts()
+                        if c:
+                            counts = dict(c) if not isinstance(c, dict) else c
+                            break
+                    elif isinstance(reg, dict):
+                        counts = dict(reg)
+                        break
+        return counts
+    
+    def _run_ibm_qaoa_native(
+        self,
+        linear: Dict[int, float],
+        quadratic: Dict[Tuple[int, int], float],
+        n_qubits: int,
+    ) -> Dict:
+        """Run QAOA on IBM Quantum using Session + SamplerV2 (native API)."""
+        backend = getattr(self, "_ibm_backend_obj", None)
+        if backend is None:
+            logger.warning("IBM backend not set. Falling back to classical.")
+            return self._run_classical_qaoa(linear, quadratic, n_qubits)
+        
+        try:
+            from qiskit.quantum_info import SparsePauliOp
+            from qiskit.circuit.library import QAOAAnsatz
+            from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+            from qiskit_ibm_runtime import SamplerV2
+            from scipy.optimize import minimize
+            
+            # Build cost Hamiltonian
+            pauli_list, coeffs = [], []
+            for i, coef in linear.items():
+                if i < n_qubits:
+                    z_ops = ["I"] * n_qubits
+                    z_ops[i] = "Z"
+                    pauli_list.append("".join(reversed(z_ops)))
+                    coeffs.append(coef)
+            for (i, j), coef in quadratic.items():
+                if i < n_qubits and j < n_qubits:
+                    z_ops = ["I"] * n_qubits
+                    z_ops[i], z_ops[j] = "Z", "Z"
+                    pauli_list.append("".join(reversed(z_ops)))
+                    coeffs.append(coef)
+            cost_op = SparsePauliOp.from_list(list(zip(pauli_list, coeffs)))
+            
+            # QAOA ansatz (params: gammas then betas)
+            ansatz = QAOAAnsatz(cost_op, reps=self.config.p)
+            ansatz.measure_all()
+            
+            n_params = 2 * self.config.p
+            shots = self.config.shots
+            
+            def energy_from_counts(counts: dict) -> float:
+                """Compute expectation value from measurement counts."""
+                total = sum(counts.values())
+                if total == 0:
+                    return float("inf")
+                energy = 0.0
+                for bitstr, cnt in counts.items():
+                    bits = np.array([int(b) for b in bitstr])
+                    e = self._compute_qubo_energy(bits, linear, quadratic)
+                    energy += e * (cnt / total)
+                return energy
+            
+            sampler = SamplerV2(mode=backend)
+
+            def objective(params: np.ndarray) -> float:
+                bound = ansatz.assign_parameters(dict(zip(ansatz.parameters, params)))
+                pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
+                isa_circuit = pm.run(bound)
+                job = sampler.run([isa_circuit], shots=shots)
+                result = job.result()
+                # SamplerV2 result format
+                pub_result = result[0]
+                counts = self._extract_sampler_counts(pub_result, n_qubits)
+                return energy_from_counts(counts)
+            
+            x0 = np.random.uniform(0, np.pi, n_params)
+            res = minimize(
+                objective, x0, method="COBYLA",
+                options={"maxiter": min(self.config.max_iterations, 50)},
+            )
+            
+            # Final run to get best bitstring
+            bound = ansatz.assign_parameters(dict(zip(ansatz.parameters, res.x)))
+            pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
+            isa_circuit = pm.run(bound)
+            job = sampler.run([isa_circuit], shots=shots)
+            result = job.result()
+            pub_result = result[0]
+            counts = self._extract_sampler_counts(pub_result, n_qubits)
+            
+            # Best bitstring by count
+            if not counts:
+                binary = self._qaoa_local_search(linear, quadratic, n_qubits, 100)
+            else:
+                best_str = max(counts.keys(), key=lambda k: counts[k])
+                binary = np.array([int(b) for b in best_str])
+            
+            energy = self._compute_qubo_energy(binary, linear, quadratic)
+            return {
+                "binary_selection": binary,
+                "method": "qaoa",
+                "backend": "ibm",
+                "energy": energy,
+            }
+        except Exception as e:
+            import traceback
+            logger.warning(f"IBM native QAOA failed: {e}. Using classical fallback.")
+            print(f"[QAOA] IBM native failed: {e}", flush=True)
+            traceback.print_exc()
+            return self._run_classical_qaoa(linear, quadratic, n_qubits)
+    
     def _run_qiskit_qaoa(
         self,
         linear: Dict[int, float],
         quadratic: Dict[Tuple[int, int], float],
         n_qubits: int,
     ) -> Dict:
-        """Run QAOA using Qiskit."""
+        """Run QAOA using Qiskit (local simulator)."""
         if not QISKIT_AVAILABLE:
             logger.warning("Qiskit not available, falling back to classical")
             return self._run_classical_qaoa(linear, quadratic, n_qubits)
@@ -605,7 +774,10 @@ class QAOAOptimizer:
             }
             
         except Exception as e:
+            import traceback
             logger.warning(f"Qiskit QAOA failed: {e}. Using classical fallback.")
+            print(f"[QAOA] IBM/Qiskit failed: {e}", flush=True)
+            traceback.print_exc()
             return self._run_classical_qaoa(linear, quadratic, n_qubits)
     
     def _run_pennylane_qaoa(

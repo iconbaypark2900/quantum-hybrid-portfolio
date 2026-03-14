@@ -690,7 +690,7 @@ def _run_backtest_payload(data):
     if rebalance_frequency not in valid_freqs:
         raise ValueError(f'Invalid rebalance frequency. Valid options: {valid_freqs}')
 
-    valid_objectives = ['max_sharpe', 'min_variance', 'target_return', 'risk_parity', 'hrp', 'braket_annealing']
+    valid_objectives = ['max_sharpe', 'min_variance', 'target_return', 'risk_parity', 'hrp', 'braket_annealing', 'qaoa_ibm']
     if objective not in valid_objectives:
         raise ValueError(f'Invalid objective. Valid options: {valid_objectives}')
 
@@ -1374,6 +1374,7 @@ def get_objectives():
             {'id': 'risk_parity', 'name': 'Risk Parity', 'description': 'Equal risk contribution per asset'},
             {'id': 'hrp', 'name': 'Hierarchical Risk Parity', 'description': 'López de Prado HRP; robust out-of-sample, no matrix inversion'},
             {'id': 'braket_annealing', 'name': 'AWS Braket Annealing', 'description': 'QUBO portfolio selection via AWS Braket or classical fallback'},
+            {'id': 'qaoa_ibm', 'name': 'QAOA on IBM Quantum', 'description': 'Quantum Approximate Optimization Algorithm on IBM Quantum hardware or simulator; requires IBM_QUANTUM_TOKEN'},
         ]
     })
 

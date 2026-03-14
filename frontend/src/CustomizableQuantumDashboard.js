@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, createContext, useContext } from "react";
 import { FaCaretUp, FaCaretDown, FaCheck, FaEdit, FaBriefcase, FaChartLine, FaShieldAlt, FaSlidersH, FaCircle, FaRegCircle, FaAdjust, FaBolt, FaDotCircle, FaUndo, FaStar } from "react-icons/fa";
+import { getObjectives, optimizePortfolio, fetchMarketData } from "./services/api";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, ReferenceLine } from "recharts";
 
 const DashboardThemeContext = createContext(null);
@@ -671,9 +672,45 @@ export default function QuantumPortfolioDashboard() {
     "QSW", "Equal Weight", "Min Variance", "Risk Parity", "Max Sharpe",
     "QSW-Discrete", "QSW-Decoherent", "Quantum Annealing"
   ]));
+  // Live API (backend optimization including QAOA on IBM Quantum)
+  const [apiObjectives, setApiObjectives] = useState([]);
+  const [apiObjective, setApiObjective] = useState("max_sharpe");
+  const [apiResult, setApiResult] = useState(null);
+  const [apiLoading, setApiLoading] = useState(false);
 
   // Presets
   const allPresets = [...savedPresets, ...customPresets];
+
+  // Fetch API objectives on mount (includes QAOA on IBM Quantum)
+  useEffect(() => {
+    getObjectives().then((d) => setApiObjectives(d?.objectives || [])).catch(() => {});
+  }, []);
+
+  // Run backend optimization (e.g. QAOA on IBM Quantum)
+  const runApiOptimization = async () => {
+    setApiResult(null);
+    setApiLoading(true);
+    const tickers = customTickerList && customTickerList.length >= nAssets
+      ? customTickerList.slice(0, nAssets)
+      : DEFAULT_TICKERS.slice(0, nAssets);
+    const end = new Date();
+    const start = new Date();
+    start.setFullYear(start.getFullYear() - 1);
+    try {
+      const result = await optimizePortfolio({
+        tickers,
+        start_date: start.toISOString().slice(0, 10),
+        end_date: end.toISOString().slice(0, 10),
+        objective: apiObjective,
+        strategy_preset: "balanced",
+      });
+      setApiResult(result);
+    } catch (e) {
+      setApiResult({ error: e?.message || "Optimization failed" });
+    } finally {
+      setApiLoading(false);
+    }
+  };
 
   // Apply preset
   const applyPreset = (preset) => {
@@ -1227,6 +1264,53 @@ export default function QuantumPortfolioDashboard() {
               <span>{key}</span>
             </label>
           ))}
+
+          <div style={{ height: 1, background: activeTheme.border, margin: "16px 0" }} />
+          <div style={{ fontSize: 10, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>Live API (IBM QAOA, etc.)</div>
+          <div style={{ fontSize: 10, color: activeTheme.textMuted, marginBottom: 8 }}>Run optimization on backend with real market data.</div>
+          <select
+            value={apiObjective}
+            onChange={(e) => setApiObjective(e.target.value)}
+            style={{
+              width: "100%", padding: "8px 10px", marginBottom: 8, borderRadius: 6, border: `1px solid ${activeTheme.border}`,
+              background: activeTheme.surface, color: activeTheme.text, fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+              outline: "none", boxSizing: "border-box", cursor: "pointer"
+            }}
+            aria-label="Optimization objective"
+          >
+            {apiObjectives.length > 0 ? (
+              apiObjectives.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))
+            ) : (
+              <>
+                <option value="max_sharpe">Max Sharpe Ratio</option>
+                <option value="min_variance">Min Variance</option>
+                <option value="qaoa_ibm">QAOA on IBM Quantum</option>
+                <option value="hrp">Hierarchical Risk Parity</option>
+                <option value="risk_parity">Risk Parity</option>
+              </>
+            )}
+          </select>
+          <button
+            onClick={runApiOptimization}
+            disabled={apiLoading}
+            style={{
+              width: "100%", padding: "10px", background: apiLoading ? activeTheme.border : activeTheme.accent,
+              border: "none", borderRadius: 6, color: activeTheme.bg, fontSize: 12, fontWeight: 600,
+              cursor: apiLoading ? "not-allowed" : "pointer", fontFamily: "'JetBrains Mono', monospace"
+            }}
+          >
+            {apiLoading ? "Running…" : "Run API Optimization"}
+          </button>
+          {apiResult?.error && (
+            <div style={{ fontSize: 11, color: activeTheme.red, marginTop: 8 }}>{apiResult.error}</div>
+          )}
+          {apiResult && !apiResult.error && (
+            <div style={{ fontSize: 11, color: activeTheme.green, marginTop: 8 }}>
+              {apiResult.backend_type ? `Backend: ${apiResult.backend_type}` : ""} Sharpe: {(apiResult.sharpe_ratio || 0).toFixed(3)}
+            </div>
+          )}
 
           <div style={{ height: 1, background: activeTheme.border, margin: "16px 0" }} />
           <div style={{ fontSize: 10, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>Simulation</div>

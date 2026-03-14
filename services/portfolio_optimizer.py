@@ -4,6 +4,7 @@ Supports multiple objectives (max_sharpe, min_variance, target_return, risk_pari
 and strategy presets (growth, income, balanced, aggressive, defensive).
 Phase 2: sector limits, cardinality, blacklist/whitelist.
 """
+import os
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -18,6 +19,14 @@ try:
     from core.quantum_inspired.braket_backend import BraketAnnealingOptimizer
 except ImportError:
     BraketAnnealingOptimizer = None
+
+try:
+    from core.quantum_inspired.qaoa_optimizer import QAOAOptimizer, QAOAConfig
+    QAOA_AVAILABLE = True
+except ImportError:
+    QAOA_AVAILABLE = False
+    QAOAOptimizer = None  # type: ignore
+    QAOAConfig = None  # type: ignore
 
 
 @dataclass
@@ -123,6 +132,8 @@ def run_optimization(
         )
     elif objective == 'braket_annealing' and BraketAnnealingOptimizer is not None:
         result = _run_braket_annealing(returns, covariance, initial_weights)
+    elif objective == 'qaoa_ibm' and QAOAOptimizer is not None:
+        result = _run_qaoa_ibm(returns, covariance, initial_weights)
     else:
         result = _run_qsw_optimization(
             returns, covariance, config, market_regime, initial_weights
@@ -241,6 +252,39 @@ def _run_qsw_optimization(
         n_active=int(np.sum(result.weights > 0.005)),
         graph_metrics=result.graph_metrics,
         evolution_metrics=result.evolution_metrics,
+    )
+
+
+def _run_qaoa_ibm(
+    returns: np.ndarray,
+    covariance: np.ndarray,
+    initial_weights: Optional[np.ndarray],
+) -> OptimizationResult:
+    """Run QAOA on IBM Quantum (or simulator) or classical fallback."""
+    if QAOAOptimizer is None or QAOAConfig is None:
+        raise ValueError(
+            "QAOA on IBM requires qiskit and qiskit-ibm-runtime. "
+            "Install with: pip install qiskit qiskit-algorithms qiskit-ibm-runtime"
+        )
+    config = QAOAConfig(
+        backend="ibm",
+        ibm_backend=os.environ.get("IBM_QUANTUM_BACKEND"),  # e.g. ibm_brisbane, simulator_stabilizer
+        max_assets=min(8, len(returns)),  # Limit for hardware
+    )
+    optimizer = QAOAOptimizer(config)
+    out = optimizer.optimize(
+        returns, covariance, market_regime="normal", initial_weights=initial_weights
+    )
+    backend_type = out.get("ibm_backend_name") or out.get("backend", "qaoa_ibm")
+    return OptimizationResult(
+        weights=out["weights"],
+        sharpe_ratio=out["sharpe_ratio"],
+        expected_return=out["expected_return"],
+        volatility=out["volatility"],
+        turnover=out.get("turnover", 0.0),
+        objective="qaoa_ibm",
+        n_active=out["n_active"],
+        backend_type=str(backend_type),
     )
 
 
