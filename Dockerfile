@@ -39,23 +39,14 @@ USER quantum
 # Create necessary directories
 RUN mkdir -p /app/logs /app/data
 
-# Expose port
-EXPOSE 5000
+# HF Spaces expects 7860; default 5000 for local
+ARG APP_PORT=7860
+ENV PORT=${APP_PORT}
+EXPOSE ${APP_PORT}
 
-# Health check
+# Health check (use 7860 - APP_PORT is build-time only)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD curl -f http://localhost:7860/health || exit 1
 
-# Start command
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", \
-     "--workers", "4", \
-     "--worker-class", "gthread", \
-     "--threads", "2", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "--max-requests", "1000", \
-     "--max-requests-jitter", "100", \
-     "--preload", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-", \
-     "production_api:app"]
+# Start command (bind to PORT so HF Spaces health check succeeds)
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 1 --worker-class gthread --threads 2 --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - production_api:app"]
