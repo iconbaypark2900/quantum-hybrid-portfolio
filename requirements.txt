@@ -36,3 +36,8 @@ python-dotenv==1.1.1
 amazon-braket-sdk>=1.60.0
 amazon-braket-schemas>=1.18.0
 boto3>=1.28.0
+
+# IBM Quantum (optional: for QAOA on real hardware)
+qiskit>=1.0
+qiskit-algorithms>=0.3.0
+qiskit-ibm-runtime>=0.21.0

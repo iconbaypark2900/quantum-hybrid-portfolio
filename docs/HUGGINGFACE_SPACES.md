@@ -7,6 +7,24 @@ This guide explains how to host the Quantum Portfolio Lab on [Hugging Face Space
 - Hugging Face account
 - Git
 
+## Quick Start (from this repo)
+
+```bash
+# 1. Create a new Space at https://huggingface.co/new-space (Docker SDK)
+# 2. Prepare for HF deployment
+./scripts/prepare_hf_deploy.sh
+
+# 3. Add Space as remote and push
+git remote add space https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE_NAME
+git add Dockerfile
+git commit -m "Deploy to Hugging Face Spaces"
+git push space main
+
+# 4. In Space Settings → Variables and secrets, add:
+#    IBM_QUANTUM_TOKEN (Secret) = your token from quantum.ibm.com
+#    IBM_QUANTUM_BACKEND (Variable) = simulator_stabilizer (fast) or ibm_torino (real QPU)
+```
+
 ## Option A: Push This Repo to a New Space
 
 1. **Create a new Space** at https://huggingface.co/new-space
@@ -77,20 +95,24 @@ HF Spaces will:
 3. Build the Python image with frontend artifacts (Stage 2)
 4. Run `python serve_hf.py` — serves API + frontend on port 7860
 
-## Environment Variables
+## Environment Variables & Secrets
 
-You can set in **Space Settings → Variables**:
+Set in **Space Settings → Variables and secrets**:
 
-| Variable | Description |
-|----------|-------------|
-| `LOG_LEVEL` | INFO, DEBUG, etc. |
-| `CACHE_TTL` | Market data cache TTL (seconds) |
+| Variable | Type | Description |
+|----------|------|-------------|
+| `LOG_LEVEL` | Variable | INFO, DEBUG, etc. |
+| `CACHE_TTL` | Variable | Market data cache TTL (seconds) |
+| `IBM_QUANTUM_TOKEN` | **Secret** | IBM Quantum API token (for QAOA on real hardware) |
+| `IBM_QUANTUM_BACKEND` | Variable | Optional: `simulator_stabilizer` (fast) or `ibm_torino`, `ibm_brisbane` (real QPU) |
+
+**IBM QAOA:** Without `IBM_QUANTUM_TOKEN`, the app falls back to classical QAOA. With the token, select **QAOA on IBM Quantum** in the objective dropdown. Real QPU runs can take 3–5+ minutes; use `simulator_stabilizer` for faster demos.
 
 ## Limits
 
 - **CPU Spaces** — Free tier has sleep; wake on visit
 - **No persistence** — Data is lost on restart (use `/data` with persistent storage upgrade if needed)
-- **Timeout** — Long optimizations may hit request timeouts on free tier
+- **Timeout** — Frontend waits up to 5 min for optimizations; IBM real hardware can take longer during peak queue times
 
 ## Troubleshooting
 
