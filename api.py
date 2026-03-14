@@ -1056,6 +1056,8 @@ def optimize_portfolio():
         # Add backend_type when present (e.g. braket_annealing)
         if getattr(result, 'backend_type', None):
             response['backend_type'] = result.backend_type
+        # Top-level sharpe_ratio for Live API summary (frontend reads apiResult.sharpe_ratio)
+        response['sharpe_ratio'] = float(result.sharpe_ratio)
 
         # Add graph_metrics and evolution_metrics when available
         if getattr(result, 'graph_metrics', None) and result.graph_metrics:
