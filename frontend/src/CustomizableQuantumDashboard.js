@@ -1308,7 +1308,7 @@ export default function QuantumPortfolioDashboard() {
           )}
           {apiResult && !apiResult.error && (
             <div style={{ fontSize: 11, color: activeTheme.green, marginTop: 8 }}>
-              {apiResult.backend_type ? `Backend: ${apiResult.backend_type}` : ""} Sharpe: {(apiResult.sharpe_ratio || 0).toFixed(3)}
+              {apiResult.backend_type ? `Backend: ${apiResult.backend_type}` : ""} Sharpe: {((apiResult.sharpe_ratio ?? apiResult.qsw_result?.sharpe_ratio) || 0).toFixed(3)}
             </div>
           )}
 

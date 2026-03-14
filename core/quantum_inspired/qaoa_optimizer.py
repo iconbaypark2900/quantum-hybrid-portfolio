@@ -129,11 +129,19 @@ class QAOAOptimizer:
             token = os.environ.get("IBM_QUANTUM_TOKEN") or os.environ.get("QISKIT_IBM_TOKEN")
             if not token:
                 logger.warning("IBM_QUANTUM_TOKEN not set. Falling back to classical QAOA.")
-                return 'classical', None
+                return 'classical', 'classical'
             try:
                 service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
                 if self.config.ibm_backend:
-                    backend = service.backend(self.config.ibm_backend)
+                    try:
+                        backend = service.backend(self.config.ibm_backend)
+                    except Exception as e:
+                        logger.warning(f"Requested backend {self.config.ibm_backend} unavailable: {e}. Trying simulator_stabilizer.")
+                        try:
+                            backend = service.backend("simulator_stabilizer")
+                        except Exception:
+                            logger.warning("simulator_stabilizer also unavailable. Falling back to classical.")
+                            return 'classical', 'classical'
                 else:
                     backend = service.least_busy(operational=True, simulator=True)
                 ibm_backend_name = backend.name
@@ -142,7 +150,7 @@ class QAOAOptimizer:
                 return 'ibm_native', ibm_backend_name
             except Exception as e:
                 logger.warning(f"IBM Quantum init failed: {e}. Falling back to classical QAOA.")
-                return 'classical', None
+                return 'classical', 'classical'
         elif backend_name == 'pennylane' and PENNYLANE_AVAILABLE:
             dev = qml.device('default.qubit', wires=self.config.max_assets)
             return dev, None
@@ -243,8 +251,13 @@ class QAOAOptimizer:
             "qaoa_layers": self.config.p,
             "turnover": self._calculate_turnover(weights, initial_weights),
         }
-        if self.config.backend == "ibm" and hasattr(self, "_ibm_backend_name") and self._ibm_backend_name:
-            out["ibm_backend_name"] = self._ibm_backend_name
+        # Report actual backend used (so UI shows simulator_stabilizer or "classical" not "ibm")
+        if self.config.backend == "ibm":
+            # When we fell back to classical, result has "backend": "classical"
+            if result.get("backend") == "classical":
+                out["ibm_backend_name"] = "classical"
+            else:
+                out["ibm_backend_name"] = getattr(self, "_ibm_backend_name", None) or "classical"
             if hasattr(self, "_ibm_job_id") and self._ibm_job_id:
                 out["ibm_job_id"] = self._ibm_job_id
         return out
@@ -726,6 +739,7 @@ class QAOAOptimizer:
             logger.warning(f"IBM native QAOA failed: {e}. Using classical fallback.")
             print(f"[QAOA] IBM native failed: {e}", flush=True)
             traceback.print_exc()
+            self._ibm_backend_name = "classical"  # So UI shows "classical" not requested backend
             return self._run_classical_qaoa(linear, quadratic, n_qubits)
     
     def _run_qiskit_qaoa(
