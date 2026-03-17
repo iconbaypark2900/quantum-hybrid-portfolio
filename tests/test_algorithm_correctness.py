@@ -148,7 +148,7 @@ class TestHRPCorrectness:
 
     def test_lower_variance_asset_gets_higher_weight(self):
         """On 2-asset data, HRP raw weights give higher weight to lower-variance asset."""
-        from services.hrp import hrp_weights
+        from core.optimizers.hrp import hrp_weights
         cov = np.array([[0.04, 0.01], [0.01, 0.16]])
         w = hrp_weights(cov)
         assert w[0] > w[1], "Lower-variance asset should have higher HRP weight"

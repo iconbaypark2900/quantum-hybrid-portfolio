@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from services.risk_models import ledoit_wolf_covariance
-from services.hrp import hrp_weights
+from core.optimizers.hrp import hrp_weights
 from services.portfolio_optimizer import run_optimization, OptimizationResult
 from services.constraints import PortfolioConstraints
 
@@ -91,7 +91,7 @@ class TestLedoitWolfCovariance:
 
 
 class TestHRPWeights:
-    """Tests for services.hrp.hrp_weights."""
+    """Tests for core.optimizers.hrp.hrp_weights."""
 
     def test_weights_sum_to_one(self):
         """HRP weights sum to 1."""

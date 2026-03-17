@@ -5,13 +5,14 @@
 
 **Quantum-inspired portfolio optimization running on classical hardware.**
 
-This project implements advanced quantum algorithms—Quantum Stochastic Walks (QSW), Quantum Annealing, QAOA, and VQE—for portfolio optimization, delivering quantum advantages without requiring quantum hardware.
+This project implements quantum-inspired portfolio optimization: hybrid pipelines, QUBO+SA, VQE, and classical methods, delivering robust allocations without requiring quantum hardware.
 
 ## Key Features
 
-- **Quantum Stochastic Walk (QSW) Optimizer** — Based on Chang et al. (2025), achieving 27% Sharpe ratio improvement and 90% turnover reduction
-- **AWS Braket Integration** — Quantum annealing via Braket with classical QUBO fallback
-- **Multiple Optimization Objectives** — Max Sharpe, Min Variance, Risk Parity, HRP, Target Return
+- **Hybrid 3-Stage Pipeline** — Screening, quantum-inspired selection, optimization (Buonaiuto/Herman 2025)
+- **QUBO + Simulated Annealing** — Discrete optimization (Orús et al. 2019)
+- **VQE PauliTwoDesign** — Variational quantum eigensolver-inspired weights (Scientific Reports 2023)
+- **Multiple Optimization Objectives** — Equal weight, Markowitz, Min Variance, HRP, Target Return
 - **Hybrid Quantum-Classical Workflows** — VQE for risk, QAOA for optimization, TensorFlow Quantum integration
 - **Interactive Dashboard** — React-based frontend with real-time optimization and backtesting
 - **REST API** — Full-featured API with rate limiting, caching, and Prometheus metrics
@@ -72,53 +73,27 @@ Dashboard opens at **http://localhost:3000**
 
 ## Optimization Methods
 
-### Quantum Stochastic Walk (QSW)
-
-The core optimizer uses continuous-time quantum walks on financial graphs:
-
-```python
-from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
-from config.qsw_config import QSWConfig
-
-config = QSWConfig(
-    default_omega=0.3,
-    evolution_time=10,
-    max_turnover=0.15,
-)
-
-optimizer = QuantumStochasticWalkOptimizer(config)
-result = optimizer.optimize(returns, covariance, market_regime='normal')
-
-print(f"Sharpe Ratio: {result.sharpe_ratio:.3f}")
-print(f"Volatility: {result.volatility:.3f}")
-```
-
-### AWS Braket Annealing
-
-For QUBO-based portfolio selection with quantum hardware:
-
-```python
-from core.quantum_inspired.braket_backend import BraketAnnealingOptimizer
-
-optimizer = BraketAnnealingOptimizer()
-result = optimizer.optimize(returns, covariance)
-
-print(f"Method: {result['method']}")  # 'braket' or 'classical_qubo'
-print(f"Active Assets: {result['n_active']}")
-```
-
-### Hierarchical Risk Parity (HRP)
-
-Modern portfolio theory implementation:
+All methods use the unified `run_optimization` service:
 
 ```python
 from services.portfolio_optimizer import run_optimization
 
-result = run_optimization(
-    returns, covariance,
-    objective='hrp',
-    strategy_preset='balanced'
-)
+# Hybrid 3-stage pipeline (default)
+result = run_optimization(returns, covariance, objective='hybrid')
+
+# Classical methods
+result = run_optimization(returns, covariance, objective='markowitz')   # Max Sharpe
+result = run_optimization(returns, covariance, objective='min_variance')
+result = run_optimization(returns, covariance, objective='hrp')          # Hierarchical Risk Parity
+result = run_optimization(returns, covariance, objective='equal_weight') # 1/N baseline
+
+# Quantum-inspired
+result = run_optimization(returns, covariance, objective='qubo_sa')      # QUBO + Simulated Annealing
+result = run_optimization(returns, covariance, objective='vqe')         # VQE PauliTwoDesign
+result = run_optimization(returns, covariance, objective='target_return', target_return=0.10)
+
+print(f"Sharpe Ratio: {result.sharpe_ratio:.3f}")
+print(f"Volatility: {result.volatility:.3f}")
 ```
 
 ## API Endpoints
@@ -153,20 +128,16 @@ curl -X POST http://localhost:5000/api/portfolio/optimize \
 quantum-hybrid-portfolio/
 ├── api.py                      # Flask REST API
 ├── core/
-│   ├── quantum_inspired/
-│   │   ├── quantum_walk.py     # QSW optimizer
-│   │   ├── braket_backend.py   # AWS Braket integration
-│   │   ├── graph_builder.py    # Financial graph construction
-│   │   └── evolution_dynamics.py
-│   └── braket_estimator.py     # Braket cost estimator
+│   ├── portfolio_optimizer.py  # Unified run_optimization (hybrid, qubo_sa, vqe, etc.)
+│   ├── optimizers/             # equal_weight, markowitz, hrp, qubo_sa, vqe, hybrid_pipeline
+│   ├── quantum_inspired/       # quantum_annealing (optional)
+│   └── methods/                # HRP, QUBO-SA, VQE implementations
 ├── services/
-│   ├── portfolio_optimizer.py  # Unified optimization service
+│   ├── portfolio_optimizer.py  # Thin wrapper around core.portfolio_optimizer
 │   ├── backtest.py             # Backtesting engine
 │   ├── market_data.py          # Market data fetching
 │   └── constraints.py          # Portfolio constraints
-├── config/
-│   ├── qsw_config.py           # QSW configuration
-│   └── production_config.py    # Production settings
+├── config/                     # Production settings
 ├── frontend/                   # React dashboard
 ├── examples/                   # Code examples
 ├── tests/                      # Test suite
@@ -217,14 +188,12 @@ docker-compose up -d
 ## Roadmap
 
 ### Phase 1 (Current)
-- [x] QSW optimizer with turnover reduction
-- [x] Braket backend with classical fallback
+- [x] Hybrid pipeline, QUBO-SA, VQE optimizers
 - [x] HRP and risk parity implementations
 - [x] Interactive dashboard
+- [x] Legacy objective mapping (max_sharpe→markowitz, risk_parity→hrp)
 
 ### Phase 2 (In Progress)
-- [ ] VQE for risk calculations
-- [ ] QAOA implementation
 - [ ] Quantum linear algebra routines
 - [ ] TensorFlow Quantum integration
 - [ ] Performance benchmarking suite
@@ -238,7 +207,7 @@ docker-compose up -d
 
 This implementation is based on:
 
-- **Chang et al. (2025)** — Quantum Stochastic Walks for portfolio optimization
+- **Buonaiuto/Herman (2025)** — 3-Stage Hybrid Pipeline for portfolio optimization
 - **López de Prado (2016)** — Hierarchical Risk Parity (SSRN 2708678)
 - **Farhi et al. (2014)** — Quantum Approximate Optimization Algorithm (QAOA)
 - **Peruzzo et al. (2014)** — Variational Quantum Eigensolver (VQE)

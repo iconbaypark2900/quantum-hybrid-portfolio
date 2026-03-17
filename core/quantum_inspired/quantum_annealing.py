@@ -7,9 +7,6 @@ from typing import Tuple, Dict, Optional
 from scipy.optimize import minimize
 from dataclasses import dataclass
 
-from config.qsw_config import QSWConfig
-
-
 @dataclass
 class QAConfig:
     """Configuration for Quantum Annealing optimizer."""

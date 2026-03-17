@@ -8,10 +8,8 @@ This module provides comprehensive benchmarking tools for:
 - Generating benchmark reports
 
 Benchmarks include:
-- QSW vs classical optimization
-- QAOA performance analysis
-- VQE risk calculation accuracy
-- Linear algebra routine comparison
+- Hybrid pipeline, QUBO-SA, and VQE (notebook-based methods)
+- Classical optimization (Markowitz, min-variance, HRP, equal-weight)
 """
 import numpy as np
 import time
@@ -52,9 +50,8 @@ class PortfolioBenchmark:
     Benchmarking suite for portfolio optimization methods.
     
     Provides standardized benchmarks for comparing:
-    - Quantum-inspired algorithms (QSW, QAOA, VQE)
+    - Notebook-based methods (Hybrid, QUBO-SA, VQE)
     - Classical optimization methods
-    - Hybrid approaches
     """
     
     def __init__(self, n_runs: int = 5):
@@ -107,44 +104,32 @@ class PortfolioBenchmark:
         
         return returns, covariance
     
-    def benchmark_qsw(
+    def _benchmark_objective(
         self,
         returns: np.ndarray,
         covariance: np.ndarray,
+        objective: str,
+        name: str,
         n_runs: Optional[int] = None,
     ) -> BenchmarkResult:
-        """
-        Benchmark Quantum Stochastic Walk optimization.
-        
-        Args:
-            returns: Expected returns
-            covariance: Covariance matrix
-            n_runs: Override default n_runs
-            
-        Returns:
-            Benchmark result
-        """
-        from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
-        from config.qsw_config import QSWConfig
-        
+        """Benchmark run_optimization with given objective."""
+        from services.portfolio_optimizer import run_optimization
+
         n_runs = n_runs or self.n_runs
         runtimes = []
         sharpe_ratios = []
-        
+
         for _ in range(n_runs):
             start = time.perf_counter()
-            
-            config = QSWConfig()
-            optimizer = QuantumStochasticWalkOptimizer(config)
-            result = optimizer.optimize(returns, covariance)
-            
+            result = run_optimization(returns, covariance, objective=objective)
             runtime = time.perf_counter() - start
             runtimes.append(runtime)
             sharpe_ratios.append(result.sharpe_ratio)
-        
+
+        turnover = getattr(result, "turnover", 0.0)
         return BenchmarkResult(
-            name="QSW Benchmark",
-            method="quantum_stochastic_walk",
+            name=name,
+            method=objective,
             runtime_seconds=np.mean(runtimes),
             sharpe_ratio=np.mean(sharpe_ratios),
             expected_return=result.expected_return,
@@ -153,108 +138,43 @@ class PortfolioBenchmark:
             additional_metrics={
                 "runtime_std": np.std(runtimes),
                 "sharpe_std": np.std(sharpe_ratios),
-                "turnover": result.turnover,
+                "turnover": turnover,
             },
         )
-    
-    def benchmark_qaoa(
+
+    def benchmark_hybrid(
         self,
         returns: np.ndarray,
         covariance: np.ndarray,
         n_runs: Optional[int] = None,
     ) -> BenchmarkResult:
-        """
-        Benchmark QAOA optimization.
-        
-        Args:
-            returns: Expected returns
-            covariance: Covariance matrix
-            n_runs: Override default n_runs
-            
-        Returns:
-            Benchmark result
-        """
-        from core.quantum_inspired.qaoa_optimizer import QAOAOptimizer, QAOAConfig
-        
-        n_runs = n_runs or self.n_runs
-        runtimes = []
-        sharpe_ratios = []
-        
-        config = QAOAConfig(p=2, backend='classical')
-        optimizer = QAOAOptimizer(config)
-        
-        for _ in range(n_runs):
-            start = time.perf_counter()
-            
-            result = optimizer.optimize(returns, covariance)
-            
-            runtime = time.perf_counter() - start
-            runtimes.append(runtime)
-            sharpe_ratios.append(result['sharpe_ratio'])
-        
-        return BenchmarkResult(
-            name="QAOA Benchmark",
-            method="qaoa",
-            runtime_seconds=np.mean(runtimes),
-            sharpe_ratio=np.mean(sharpe_ratios),
-            expected_return=result['expected_return'],
-            volatility=result['volatility'],
-            n_active=result['n_active'],
-            additional_metrics={
-                "runtime_std": np.std(runtimes),
-                "sharpe_std": np.std(sharpe_ratios),
-                "qaoa_layers": config.p,
-            },
+        """Benchmark hybrid pipeline optimization."""
+        return self._benchmark_objective(
+            returns, covariance, "hybrid", "Hybrid Pipeline", n_runs
         )
-    
-    def benchmark_braket(
+
+    def benchmark_qubo_sa(
         self,
         returns: np.ndarray,
         covariance: np.ndarray,
         n_runs: Optional[int] = None,
     ) -> BenchmarkResult:
-        """
-        Benchmark Braket annealing optimization.
-        
-        Args:
-            returns: Expected returns
-            covariance: Covariance matrix
-            n_runs: Override default n_runs
-            
-        Returns:
-            Benchmark result
-        """
-        from core.quantum_inspired.braket_backend import BraketAnnealingOptimizer
-        
-        n_runs = n_runs or self.n_runs
-        runtimes = []
-        sharpe_ratios = []
-        
-        optimizer = BraketAnnealingOptimizer()
-        
-        for _ in range(n_runs):
-            start = time.perf_counter()
-            
-            result = optimizer.optimize(returns, covariance)
-            
-            runtime = time.perf_counter() - start
-            runtimes.append(runtime)
-            sharpe_ratios.append(result['sharpe_ratio'])
-        
-        return BenchmarkResult(
-            name="Braket Benchmark",
-            method=result.get('method', 'unknown'),
-            runtime_seconds=np.mean(runtimes),
-            sharpe_ratio=np.mean(sharpe_ratios),
-            expected_return=result['expected_return'],
-            volatility=result['volatility'],
-            n_active=result['n_active'],
-            additional_metrics={
-                "runtime_std": np.std(runtimes),
-                "sharpe_std": np.std(sharpe_ratios),
-            },
+        """Benchmark QUBO + Simulated Annealing."""
+        return self._benchmark_objective(
+            returns, covariance, "qubo_sa", "QUBO-SA", n_runs
         )
-    
+
+    def benchmark_vqe(
+        self,
+        returns: np.ndarray,
+        covariance: np.ndarray,
+        n_runs: Optional[int] = None,
+    ) -> BenchmarkResult:
+        """Benchmark VQE optimization."""
+        return self._benchmark_objective(
+            returns, covariance, "vqe", "VQE PauliTwoDesign", n_runs
+        )
+
     def benchmark_classical(
         self,
         returns: np.ndarray,
@@ -370,54 +290,6 @@ class PortfolioBenchmark:
         
         return results
     
-    def benchmark_vqe_risk(
-        self,
-        returns: np.ndarray,
-        covariance: np.ndarray,
-        weights: np.ndarray,
-        n_runs: Optional[int] = None,
-    ) -> BenchmarkResult:
-        """
-        Benchmark VQE risk calculations.
-        
-        Args:
-            returns: Expected returns
-            covariance: Covariance matrix
-            weights: Portfolio weights
-            n_runs: Override default n_runs
-            
-        Returns:
-            Benchmark result
-        """
-        from core.quantum_inspired.vqe_risk import VQEOptimizer
-        
-        n_runs = n_runs or self.n_runs
-        runtimes = []
-        
-        optimizer = VQEOptimizer()
-        
-        for _ in range(n_runs):
-            start = time.perf_counter()
-            
-            result = optimizer.calculate_minimum_variance(covariance)
-            
-            runtime = time.perf_counter() - start
-            runtimes.append(runtime)
-        
-        return BenchmarkResult(
-            name="VQE Risk Benchmark",
-            method=result.get('method', 'unknown'),
-            runtime_seconds=np.mean(runtimes),
-            sharpe_ratio=0.0,  # Not applicable for risk calculation
-            expected_return=0.0,
-            volatility=result.get('minimum_volatility', 0.0),
-            n_active=0,
-            additional_metrics={
-                "runtime_std": np.std(runtimes),
-                "minimum_variance": result.get('minimum_variance', 0),
-            },
-        )
-    
     def run_full_benchmark(
         self,
         n_assets: int = 20,
@@ -440,34 +312,27 @@ class PortfolioBenchmark:
         
         all_results: List[BenchmarkResult] = []
         
-        # Run benchmarks
+        # Run benchmarks (notebook-based methods)
         try:
-            all_results.append(self.benchmark_qsw(returns, covariance))
+            all_results.append(self.benchmark_hybrid(returns, covariance))
         except Exception as e:
-            logger.warning(f"QSW benchmark failed: {e}")
+            logger.warning(f"Hybrid benchmark failed: {e}")
         
         try:
-            all_results.append(self.benchmark_qaoa(returns, covariance))
+            all_results.append(self.benchmark_qubo_sa(returns, covariance))
         except Exception as e:
-            logger.warning(f"QAOA benchmark failed: {e}")
+            logger.warning(f"QUBO-SA benchmark failed: {e}")
         
         try:
-            all_results.append(self.benchmark_braket(returns, covariance))
+            all_results.append(self.benchmark_vqe(returns, covariance))
         except Exception as e:
-            logger.warning(f"Braket benchmark failed: {e}")
+            logger.warning(f"VQE benchmark failed: {e}")
         
         try:
             classical_results = self.benchmark_classical(returns, covariance)
             all_results.extend(classical_results)
         except Exception as e:
             logger.warning(f"Classical benchmark failed: {e}")
-        
-        try:
-            n = len(returns)
-            weights = np.ones(n) / n
-            all_results.append(self.benchmark_vqe_risk(returns, covariance, weights))
-        except Exception as e:
-            logger.warning(f"VQE risk benchmark failed: {e}")
         
         # Generate summary
         summary = self._generate_summary(all_results)

@@ -10,7 +10,7 @@
 - [x] **`examples/quantum_integration_example.py`** — Recreated
 - [x] **`tests/test_braket_backend.py`** — New verification tests for Braket backend
 - [x] **`DOCUMENTATION_INDEX.md`** — Restored (master documentation index)
-- [x] **Braket estimator API** — Already exists at `/api/braket/estimate` (verified)
+- [x] **Braket estimator API** — Removed; `braket_annealing` maps to classical `qubo_sa` fallback.
 
 ---
 
@@ -168,8 +168,7 @@ The following endpoints support the new quantum features:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/portfolio/optimize` | POST | Supports `qaoa`, `braket_annealing` objectives |
-| `/api/braket/estimate` | GET/POST | Braket cost estimation |
+| `/api/portfolio/optimize` | POST | Supports `qaoa`, `braket_annealing` (→ qubo_sa), hybrid, etc. |
 | `/api/config/objectives` | GET | Lists all available objectives |
 
 ---

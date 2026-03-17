@@ -1,0 +1,218 @@
+# Migration: QSW → Notebook Methods
+
+## Files to DELETE entirely
+
+```
+core/quantum_inspired/quantum_walk.py
+core/quantum_inspired/enhanced_quantum_walk.py
+core/quantum_inspired/graph_builder.py
+core/quantum_inspired/evolution_dynamics.py
+core/quantum_inspired/stability_enhancer.py
+core/quantum_inspired/performance_optimizer.py
+core/quantum_inspired/advanced_quantum_optimizer.py
+core/quantum_inspired/braket_backend.py
+core/quantum_inspired/qaoa_optimizer.py
+core/quantum_inspired/vqe_risk.py
+core/quantum_inspired/hybrid_workflow.py
+core/quantum_inspired/quantum_linear_algebra.py
+core/quantum_inspired/quantum_ml.py
+core/braket_estimator.py
+config/qsw_config.py
+production_api.py          (replaced by api.py)
+enhanced_api.py            (replaced by api.py)
+fixed_enhanced_api.py      (replaced by api.py)
+quantum_portfolio_dashboard.jsx   (contains telemetry injections — dangerous)
+services/hrp.py            (now in core/optimizers/hrp.py)
+validation/chang_validation.py
+test_enhanced_system.py
+```
+
+## Files to ADD (already created)
+
+```
+core/optimizers/__init__.py
+core/optimizers/equal_weight.py
+core/optimizers/markowitz.py
+core/optimizers/hrp.py
+core/optimizers/qubo_sa.py
+core/optimizers/vqe.py
+core/optimizers/hybrid_pipeline.py
+services/portfolio_optimizer.py    (full rewrite)
+config/api_config.py
+```
+
+## Changes needed in api.py
+
+### 1. Remove QSW imports
+Delete any imports of:
+- QuantumStochasticWalkOptimizer
+- QSWConfig
+- QSWResult
+- graph_builder, evolution_dynamics, stability_enhancer
+- braket_backend, BraketAnnealingOptimizer
+
+### 2. Update the optimize import
+```python
+# OLD
+from services.portfolio_optimizer import run_optimization, OptimizationResult
+# NEW — same import, new implementation underneath
+from services.portfolio_optimizer import run_optimization, OptimizationResult, OBJECTIVES_CONFIG
+```
+
+### 3. Replace /api/config/objectives handler
+```python
+@app.route('/api/config/objectives', methods=['GET'])
+def get_objectives():
+    from config.api_config import OBJECTIVES_CONFIG
+    return success_response(OBJECTIVES_CONFIG)
+```
+
+### 4. Replace /api/config/presets handler
+```python
+@app.route('/api/config/presets', methods=['GET'])
+def get_presets():
+    from config.api_config import PRESETS_CONFIG
+    return success_response(PRESETS_CONFIG)
+```
+
+### 5. Update the optimize endpoint payload parsing
+The optimize endpoint currently reads QSW-specific params (omega, evolution_time,
+evolution_method). Replace with new params:
+
+```python
+@app.route('/api/portfolio/optimize', methods=['POST'])
+@require_api_key
+@limiter.limit("20 per minute")
+def optimize_portfolio():
+    data = request.json or {}
+
+    # --- Market data (unchanged) ---
+    tickers    = data.get('tickers')
+    start_date = data.get('start_date')
+    end_date   = data.get('end_date')
+    returns    = data.get('returns')
+    covariance = data.get('covariance')
+
+    # --- Method selection ---
+    objective  = data.get('objective', 'hybrid')
+
+    # --- Per-method params ---
+    target_return = data.get('target_return')
+    K             = data.get('K')
+    K_screen      = data.get('K_screen')
+    K_select      = data.get('K_select')
+    lambda_risk   = float(data.get('lambda_risk', 1.0))
+    gamma         = float(data.get('gamma', 8.0))
+    n_layers      = int(data.get('n_layers', 3))
+    n_restarts    = int(data.get('n_restarts', 8))
+    weight_min    = float(data.get('weight_min', 0.005))
+    weight_max    = float(data.get('weight_max', 0.30))
+    seed          = int(data.get('seed', 42))
+
+    # ... fetch market data if tickers provided (unchanged logic) ...
+
+    result = run_optimization(
+        returns=np.array(returns),
+        covariance=np.array(covariance),
+        objective=objective,
+        target_return=target_return,
+        asset_names=assets,
+        K=K,
+        K_screen=K_screen,
+        K_select=K_select,
+        lambda_risk=lambda_risk,
+        gamma=gamma,
+        n_layers=n_layers,
+        n_restarts=n_restarts,
+        weight_min=weight_min,
+        weight_max=weight_max,
+        seed=seed,
+    )
+
+    # Build response (same shape as before)
+    holdings = [
+        {"name": name, "weight": float(w)}
+        for name, w in zip(assets, result.weights)
+        if w > 1e-4
+    ]
+
+    response = {
+        "weights": result.weights.tolist(),
+        "holdings": holdings,
+        "sharpe_ratio": result.sharpe_ratio,
+        "expected_return": result.expected_return,
+        "volatility": result.volatility,
+        "n_active": result.n_active,
+        "objective": result.objective,
+        "stage_info": result.stage_info,
+    }
+    return success_response(response)
+```
+
+### 6. Update /api/portfolio/efficient-frontier
+```python
+from services.portfolio_optimizer import compute_efficient_frontier
+
+# In the endpoint:
+frontier = compute_efficient_frontier(
+    returns=np.array(returns),
+    covariance=np.array(covariance),
+    n_points=data.get('n_points', 30),
+)
+return success_response({"frontier": frontier})
+```
+
+## Frontend changes needed
+
+### services/api.js — no changes required
+The API contract (endpoints, request shape) is backward-compatible.
+`objective` now accepts the new values; old QSW params (omega, evolution_time)
+can be ignored server-side.
+
+### EnhancedQuantumDashboard.js
+1. Update the objective dropdown to show new values:
+   - equal_weight, markowitz, min_variance, hrp, qubo_sa, vqe, hybrid, target_return
+2. Remove: omega slider, evolution_time slider, evolution_method dropdown
+3. Add (optional): K_screen / K_select inputs for hybrid, shown only when objective=hybrid
+4. Add: lambda_risk and gamma inputs for qubo_sa/hybrid (advanced section)
+
+### simulationEngine.js
+The simulation mode uses the JS QSW approximation. For MVP, leave simulation
+mode as-is — it's acceptable for demos. When in LIVE mode the real backend
+methods are used. A future task would be to write JS approximations of the
+notebook methods for offline simulation.
+
+## Tests to update
+
+Delete:
+- tests/test_quantum_walk.py
+- tests/test_graph_builder.py
+- tests/test_braket_backend.py
+
+Keep and update:
+- tests/test_services.py  →  update imports, use new objective strings
+- tests/test_api_integration.py  →  update payload shapes
+
+New tests to add:
+- tests/test_optimizers.py  →  unit tests for each method in core/optimizers/
+```python
+def test_equal_weight():
+    mu = np.array([0.1, 0.2, 0.15])
+    S  = np.eye(3) * 0.04
+    w  = equal_weight(mu, S)
+    assert np.allclose(w, 1/3)
+
+def test_markowitz_weights_sum_to_one():
+    ...
+
+def test_hrp_weights_sum_to_one():
+    ...
+
+def test_qubo_sa_cardinality():
+    # With K=3, exactly 3 assets should have non-zero weight
+    ...
+
+def test_hybrid_pipeline_stages():
+    # Check stage_info contains expected keys
+    ...
+```
