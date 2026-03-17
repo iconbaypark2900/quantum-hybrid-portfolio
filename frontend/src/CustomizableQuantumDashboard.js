@@ -293,6 +293,179 @@ function computeVaR(data, weights, confidence) {
   return { var95: var95 * 100, cvar: cvar * 100 };
 }
 
+// ─── HRP HELPER ───
+function computeHRPWeightsArr(data) {
+  const n = data.assets.length;
+  if (n <= 1) return new Array(n).fill(1);
+  const dist = [];
+  for (let i = 0; i < n; i++) {
+    dist[i] = [];
+    for (let j = 0; j < n; j++) {
+      dist[i][j] = Math.sqrt(0.5 * (1 - (data.corr[i]?.[j] ?? (i === j ? 1 : 0))));
+    }
+  }
+  const clusters = Array.from({ length: n }, (_, i) => [i]);
+  const active = new Array(n).fill(true);
+  while (active.filter(Boolean).length > 1) {
+    let minDist = Infinity, mergeA = -1, mergeB = -1;
+    for (let i = 0; i < clusters.length; i++) {
+      if (!active[i]) continue;
+      for (let j = i + 1; j < clusters.length; j++) {
+        if (!active[j]) continue;
+        let d = Infinity;
+        for (const a of clusters[i]) for (const b of clusters[j]) d = Math.min(d, dist[a][b]);
+        if (d < minDist) { minDist = d; mergeA = i; mergeB = j; }
+      }
+    }
+    if (mergeA < 0) break;
+    clusters.push([...clusters[mergeA], ...clusters[mergeB]]);
+    active.push(true);
+    active[mergeA] = false;
+    active[mergeB] = false;
+  }
+  const sortedIndices = clusters[clusters.length - 1] || Array.from({ length: n }, (_, i) => i);
+  function clusterVariance(indices) {
+    if (indices.length === 0) return 1;
+    const invV = indices.map(i => 1 / (data.assets[i].annVol * data.assets[i].annVol || 1));
+    const ivSum = invV.reduce((a, b) => a + b, 0) || 1;
+    const w = invV.map(v => v / ivSum);
+    let variance = 0;
+    for (let ii = 0; ii < indices.length; ii++) {
+      for (let jj = 0; jj < indices.length; jj++) {
+        const ii2 = indices[ii], jj2 = indices[jj];
+        variance += w[ii] * w[jj] * (data.corr[ii2]?.[jj2] ?? (ii2 === jj2 ? 1 : 0)) * data.assets[ii2].annVol * data.assets[jj2].annVol;
+      }
+    }
+    return Math.max(1e-10, variance);
+  }
+  const weights = new Array(n).fill(1);
+  function recursiveBisect(items) {
+    if (items.length <= 1) return;
+    const mid = Math.floor(items.length / 2);
+    const left = items.slice(0, mid);
+    const right = items.slice(mid);
+    const vL = clusterVariance(left);
+    const vR = clusterVariance(right);
+    const alpha = 1 - vL / (vL + vR);
+    for (const i of left) weights[i] *= alpha;
+    for (const i of right) weights[i] *= (1 - alpha);
+    recursiveBisect(left);
+    recursiveBisect(right);
+  }
+  recursiveBisect(sortedIndices);
+  const sum = weights.reduce((a, b) => a + b, 0) || 1;
+  return weights.map(w => w / sum);
+}
+
+// ─── NOTEBOOK METHODS SIMULATION APPROXIMATIONS ───
+function runOptimisation(data, { objective = 'hybrid', K = null, KScreen = null, KSelect = null, wMin = 0.005, wMax = 0.30 } = {}) {
+  const n = data.assets.length;
+  if (n === 0) return { weights: [], portReturn: 0, portVol: 0, sharpe: 0, nActive: 0, objective, stage_info: null };
+
+  const portMetrics = (w) => {
+    let r = 0, v = 0;
+    for (let i = 0; i < n; i++) {
+      r += w[i] * data.assets[i].annReturn;
+      for (let j = 0; j < n; j++) v += w[i] * w[j] * data.corr[i][j] * data.assets[i].annVol * data.assets[j].annVol;
+    }
+    const vol = Math.sqrt(Math.max(0, v));
+    return { portReturn: r, portVol: vol, sharpe: r / (vol || 1) };
+  };
+
+  const clamp = (w) => {
+    const clamped = w.map(v => Math.min(v, wMax));
+    for (let i = 0; i < n; i++) if (clamped[i] < wMin) clamped[i] = 0;
+    const s = clamped.reduce((a, b) => a + b, 0);
+    return s > 0 ? clamped.map(v => v / s) : new Array(n).fill(1 / n);
+  };
+
+  let weights = new Array(n).fill(0);
+  let stage_info = null;
+
+  switch (objective) {
+    case 'equal_weight': {
+      weights = new Array(n).fill(1 / n);
+      break;
+    }
+    case 'markowitz': {
+      const sw = data.assets.map(a => Math.max(0, a.sharpe));
+      const swSum = sw.reduce((a, b) => a + b, 0) || 1;
+      weights = sw.map(v => v / swSum);
+      break;
+    }
+    case 'min_variance': {
+      const invVol = data.assets.map(a => 1 / (a.annVol || 1));
+      const ivSum = invVol.reduce((a, b) => a + b, 0) || 1;
+      weights = invVol.map(v => v / ivSum);
+      break;
+    }
+    case 'hrp': {
+      weights = computeHRPWeightsArr(data);
+      break;
+    }
+    case 'qubo_sa': {
+      const k = K || Math.min(5, n);
+      const sortedIdx = Array.from({ length: n }, (_, i) => i).sort((a, b) => data.assets[b].sharpe - data.assets[a].sharpe);
+      const selected = sortedIdx.slice(0, k);
+      weights = new Array(n).fill(0);
+      for (const idx of selected) weights[idx] = 1 / k;
+      stage_info = { stage2_selected_names: selected.map(i => data.assets[i].name) };
+      break;
+    }
+    case 'vqe': {
+      const saResult = runQuantumAnnealingOptimization(data, wMax);
+      weights = saResult.weights;
+      break;
+    }
+    case 'hybrid': {
+      const kSc = KScreen || Math.min(Math.ceil(n * 0.6), n);
+      const kSel = KSelect || Math.min(5, kSc);
+      const sortedIdx = Array.from({ length: n }, (_, i) => i).sort((a, b) => data.assets[b].sharpe - data.assets[a].sharpe);
+      const screened = sortedIdx.slice(0, kSc);
+      const selected = [screened[0]];
+      const remaining = screened.slice(1);
+      while (selected.length < kSel && remaining.length > 0) {
+        let bestIdx = 0, bestScore = -Infinity;
+        for (let ri = 0; ri < remaining.length; ri++) {
+          const candidate = remaining[ri];
+          const avgCorr = selected.reduce((sum, s) => sum + Math.abs(data.corr[s][candidate] || 0), 0) / selected.length;
+          const score = data.assets[candidate].sharpe - avgCorr;
+          if (score > bestScore) { bestScore = score; bestIdx = ri; }
+        }
+        selected.push(remaining[bestIdx]);
+        remaining.splice(bestIdx, 1);
+      }
+      const sw = selected.map(i => Math.max(0, data.assets[i].sharpe));
+      const swSum = sw.reduce((a, b) => a + b, 0) || 1;
+      weights = new Array(n).fill(0);
+      for (let j = 0; j < selected.length; j++) weights[selected[j]] = sw[j] / swSum;
+      const m = portMetrics(weights.map((v, i) => Math.min(v, wMax)));
+      stage_info = {
+        stage1_screened_count: kSc,
+        stage2_selected_names: selected.map(i => data.assets[i].name),
+        stage2_selected_idx: selected,
+        stage3_sharpe: m.sharpe,
+      };
+      break;
+    }
+    default: {
+      weights = new Array(n).fill(1 / n);
+    }
+  }
+
+  weights = clamp(weights);
+  const m = portMetrics(weights);
+  return {
+    weights,
+    portReturn: m.portReturn,
+    portVol: m.portVol,
+    sharpe: m.sharpe,
+    nActive: weights.filter(w => w > wMin).length,
+    objective,
+    stage_info,
+  };
+}
+
 // ─── ACCESSIBILITY-FRIENDLY STYLES ───
 const colors = {
   bg: "#0A0E1A",
@@ -321,15 +494,16 @@ const colors = {
 };
 
 const chartColors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899", "#F97316"];
-const benchmarkColors = { 
-  "QSW": "#3B82F6", 
-  "QSW-Discrete": "#8B5CF6", 
-  "QSW-Decoherent": "#06B6D4", 
-  "Quantum Annealing": "#EC4899",
-  "Equal Weight": "#8B9DC3", 
-  "Min Variance": "#10B981", 
-  "Risk Parity": "#F59E0B", 
-  "Max Sharpe": "#8B5CF6" 
+const benchmarkColors = {
+  "Hybrid": "#00d4aa",
+  "Markowitz": "#3B82F6",
+  "HRP": "#22c55e",
+  "QUBO-SA": "#f59e0b",
+  "VQE": "#8B5CF6",
+  "Equal Weight": "#8B9DC3",
+  "Min Variance": "#10B981",
+  "Risk Parity": "#06B6D4",
+  "Max Sharpe": "#EC4899",
 };
 
 // ─── CUSTOMIZABLE COMPONENTS ───
@@ -647,20 +821,23 @@ export default function QuantumPortfolioDashboard() {
   // Parameters
   const [nAssets, setNAssets] = useState(20);
   const [regime, setRegime] = useState("normal");
-  const [omega, setOmega] = useState(0.30);
-  const [evolutionTime, setEvolutionTime] = useState(10);
+  const [objective, setObjective] = useState('hybrid');
+  const [cardinality, setCardinality] = useState(null);
+  const [kScreen, setKScreen] = useState(null);
+  const [kSelect, setKSelect] = useState(null);
+  const [weightMin, setWeightMin] = useState(0.005);
+  const [weightMax, setWeightMax] = useState(0.20);
   const [maxWeight, setMaxWeight] = useState(0.10);
   const [turnoverLimit, setTurnoverLimit] = useState(0.20);
   const [dataSeed, setDataSeed] = useState(42);
   const [activeTab, setActiveTab] = useState("portfolio");
-  const [evolutionMethod, setEvolutionMethod] = useState("continuous");
   const [dashboardTitle, setDashboardTitle] = useState("Quantum Portfolio Lab");
-  const [dashboardSubtitle, setDashboardSubtitle] = useState("QSW-Inspired Optimization Explorer");
+  const [dashboardSubtitle, setDashboardSubtitle] = useState("Hybrid Portfolio Optimization Lab");
   const [activeTheme, setActiveTheme] = useState(colors);
   const [savedPresets, setSavedPresets] = useState([
-    { name: "Conservative", nAssets: 10, omega: 0.25, evolutionTime: 15, maxWeight: 0.15, regime: "normal" },
-    { name: "Aggressive", nAssets: 30, omega: 0.45, evolutionTime: 5, maxWeight: 0.08, regime: "bull" },
-    { name: "Balanced", nAssets: 20, omega: 0.30, evolutionTime: 10, maxWeight: 0.10, regime: "normal" }
+    { name: "Conservative", nAssets: 10, objective: 'hrp',      weightMax: 0.15, regime: "normal" },
+    { name: "Aggressive",   nAssets: 20, objective: 'hybrid',   weightMax: 0.25, cardinality: 8, regime: "bull" },
+    { name: "Balanced",     nAssets: 15, objective: 'markowitz',weightMax: 0.20, regime: "normal" },
   ]);
   const [customPresets, setCustomPresets] = useState([]);
   const [isDragging, setIsDragging] = useState(null);
@@ -668,8 +845,8 @@ export default function QuantumPortfolioDashboard() {
   const [customTickersString, setCustomTickersString] = useState("");
   // Which strategies/benchmarks to show (all enabled by default)
   const [selectedStrategies, setSelectedStrategies] = useState(new Set([
-    "QSW", "Equal Weight", "Min Variance", "Risk Parity", "Max Sharpe",
-    "QSW-Discrete", "QSW-Decoherent", "Quantum Annealing"
+    "Hybrid", "Markowitz", "HRP", "QUBO-SA", "VQE",
+    "Equal Weight", "Min Variance", "Risk Parity", "Max Sharpe",
   ]));
 
   // Presets
@@ -678,11 +855,10 @@ export default function QuantumPortfolioDashboard() {
   // Apply preset
   const applyPreset = (preset) => {
     setNAssets(preset.nAssets);
-    setOmega(preset.omega);
-    setEvolutionTime(preset.evolutionTime);
-    setMaxWeight(preset.maxWeight);
-    setRegime(preset.regime);
-    if (preset.evolutionMethod) setEvolutionMethod(preset.evolutionMethod);
+    if (preset.objective)   setObjective(preset.objective);
+    if (preset.weightMax)   setWeightMax(preset.weightMax);
+    if (preset.cardinality !== undefined) setCardinality(preset.cardinality || null);
+    if (preset.regime)      setRegime(preset.regime);
     if (preset.turnoverLimit) setTurnoverLimit(preset.turnoverLimit);
   };
 
@@ -691,12 +867,11 @@ export default function QuantumPortfolioDashboard() {
     const newPreset = {
       name: `Preset ${customPresets.length + 1}`,
       nAssets,
-      omega,
-      evolutionTime,
-      maxWeight,
+      objective,
+      weightMax,
+      cardinality,
       regime,
-      evolutionMethod,
-      turnoverLimit
+      turnoverLimit,
     };
     setCustomPresets([...customPresets, newPreset]);
   };
@@ -778,18 +953,30 @@ export default function QuantumPortfolioDashboard() {
     return generateMarketData(nAssets, 504, regime, dataSeed, customTickerList);
   }, [nAssets, regime, dataSeed, customTickerList]);
 
-  // QSW optimization with selected method
+  const OBJECTIVE_OPTIONS = [
+    { value: 'hybrid',        label: 'Hybrid Pipeline',  badge: 'NB05', slow: true  },
+    { value: 'markowitz',     label: 'Markowitz',        badge: '1952', slow: false },
+    { value: 'hrp',           label: 'HRP',              badge: '2016', slow: false },
+    { value: 'min_variance',  label: 'Min Variance',     badge: null,   slow: false },
+    { value: 'qubo_sa',       label: 'QUBO-SA',          badge: 'NB04', slow: true  },
+    { value: 'vqe',           label: 'VQE',              badge: 'NB04', slow: true  },
+    { value: 'equal_weight',  label: 'Equal Weight',     badge: null,   slow: false },
+  ];
+
+  // Portfolio optimisation using selected notebook method
   const qsw = useMemo(() => {
     if (!data || !data.assets || data.assets.length === 0) {
-      return {weights:[],portReturn:0,portVol:0,sharpe:0,nActive:0};
+      return { weights: [], portReturn: 0, portVol: 0, sharpe: 0, nActive: 0, stage_info: null };
     }
-    
-    if (evolutionMethod === 'annealing') {
-      return runQuantumAnnealingOptimization(data, maxWeight);
-    } else {
-      return runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, evolutionMethod);
-    }
-  }, [data, omega, evolutionTime, maxWeight, turnoverLimit, evolutionMethod]);
+    return runOptimisation(data, {
+      objective,
+      K: cardinality,
+      KScreen: kScreen,
+      KSelect: kSelect,
+      wMin: weightMin,
+      wMax: weightMax,
+    });
+  }, [data, objective, cardinality, kScreen, kSelect, weightMin, weightMax]);
 
   const benchmarks = useMemo(() => {
     if (!data || !data.assets) {
@@ -807,52 +994,25 @@ export default function QuantumPortfolioDashboard() {
 
   // Equity curves
   const equityCurves = useMemo(() => {
-    const qswCurve = simulateEquityCurve(data, qsw.weights, 504);
-    const ewCurve = simulateEquityCurve(data, benchmarks.equalWeight.weights, 504);
-    const mvCurve = simulateEquityCurve(data, benchmarks.minVariance.weights, 504);
-    const rpCurve = simulateEquityCurve(data, benchmarks.riskParity.weights, 504);
-    const msCurve = simulateEquityCurve(data, benchmarks.maxSharpe.weights, 504);
-    
-    // Add additional quantum methods to the comparison
-    let discreteWeights = [], decoherentWeights = [], annealingWeights = [];
-    
-    if (evolutionMethod !== 'discrete') {
-      const discreteResult = runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'discrete');
-      discreteWeights = discreteResult.weights;
-    } else {
-      discreteWeights = qsw.weights;
-    }
-    
-    if (evolutionMethod !== 'decoherent') {
-      const decoherentResult = runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'decoherent');
-      decoherentWeights = decoherentResult.weights;
-    } else {
-      decoherentWeights = qsw.weights;
-    }
-    
-    if (evolutionMethod !== 'annealing') {
-      const annealingResult = runQuantumAnnealingOptimization(data, maxWeight);
-      annealingWeights = annealingResult.weights;
-    } else {
-      annealingWeights = qsw.weights;
-    }
-    
-    const discreteCurve = simulateEquityCurve(data, discreteWeights, 504);
-    const decoherentCurve = simulateEquityCurve(data, decoherentWeights, 504);
-    const annealingCurve = simulateEquityCurve(data, annealingWeights, 504);
-    
-    return qswCurve.map((pt, i) => ({
+    if (!qsw.weights || qsw.weights.length === 0) return [];
+    const activeLabel = OBJECTIVE_OPTIONS.find(o => o.value === objective)?.label || objective;
+    const mainCurve = simulateEquityCurve(data, qsw.weights, 504);
+    const ewCurve   = simulateEquityCurve(data, benchmarks.equalWeight.weights, 504);
+    const mvCurve   = simulateEquityCurve(data, benchmarks.minVariance.weights, 504);
+    const rpCurve   = simulateEquityCurve(data, benchmarks.riskParity.weights, 504);
+    const msCurve   = simulateEquityCurve(data, benchmarks.maxSharpe.weights, 504);
+    const hrpWeights = computeHRPWeightsArr(data);
+    const hrpCurve   = simulateEquityCurve(data, hrpWeights, 504);
+    return mainCurve.map((pt, i) => ({
       day: pt.day,
-      QSW: pt.value,
-      "QSW-Discrete": discreteCurve[i]?.value || 100,
-      "QSW-Decoherent": decoherentCurve[i]?.value || 100,
-      "Quantum Annealing": annealingCurve[i]?.value || 100,
+      [activeLabel]: pt.value,
       "Equal Weight": ewCurve[i]?.value || 100,
+      "HRP":          hrpCurve[i]?.value || 100,
       "Min Variance": mvCurve[i]?.value || 100,
-      "Risk Parity": rpCurve[i]?.value || 100,
-      "Max Sharpe": msCurve[i]?.value || 100,
+      "Risk Parity":  rpCurve[i]?.value || 100,
+      "Max Sharpe":   msCurve[i]?.value || 100,
     }));
-  }, [data, qsw.weights, benchmarks, omega, evolutionTime, maxWeight, turnoverLimit]);
+  }, [data, qsw.weights, benchmarks, objective]);
 
   // Holdings data
   const holdings = useMemo(() => {
@@ -885,24 +1045,29 @@ export default function QuantumPortfolioDashboard() {
   }, [holdings]);
 
   // Short name -> strategy key for filtering
-  const strategyNameToKey = { "QSW": "QSW", "QSW-Discrete": "QSW-Discrete", "QSW-Decoherent": "QSW-Decoherent", "Quantum Annealing": "Quantum Annealing", "Equal Wt": "Equal Weight", "Min Var": "Min Variance", "Risk Par": "Risk Parity", "Max Shp": "Max Sharpe" };
+  const strategyNameToKey = {
+    "Hybrid": "Hybrid", "Markowitz": "Markowitz", "HRP": "HRP",
+    "QUBO-SA": "QUBO-SA", "VQE": "VQE",
+    "Equal Wt": "Equal Weight", "Min Var": "Min Variance",
+    "Risk Par": "Risk Parity", "Max Shp": "Max Sharpe",
+  };
 
-  // Benchmark comparison with additional quantum methods (then filter by selectedStrategies)
+  // Strategy comparison (all objectives)
   const benchmarkComparisonAll = useMemo(() => {
-    const discreteResult = runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'discrete');
-    const decoherentResult = runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'decoherent');
-    const annealingResult = runQuantumAnnealingOptimization(data, maxWeight);
+    const opt = (obj) => runOptimisation(data, { objective: obj, wMin: weightMin, wMax: weightMax });
+    const row = (obj, label) => { const r = opt(obj); return { name: label, sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100, nActive: r.nActive }; };
     return [
-      { name: "QSW", sharpe: qsw.sharpe, return: qsw.portReturn * 100, vol: qsw.portVol * 100, nActive: qsw.nActive },
-      { name: "QSW-Discrete", sharpe: discreteResult.sharpe, return: discreteResult.portReturn * 100, vol: discreteResult.portVol * 100, nActive: discreteResult.nActive },
-      { name: "QSW-Decoherent", sharpe: decoherentResult.sharpe, return: decoherentResult.portReturn * 100, vol: decoherentResult.portVol * 100, nActive: decoherentResult.nActive },
-      { name: "Quantum Annealing", sharpe: annealingResult.sharpe, return: annealingResult.portReturn * 100, vol: annealingResult.portVol * 100, nActive: annealingResult.nActive },
+      row('hybrid',       'Hybrid'),
+      row('markowitz',    'Markowitz'),
+      row('hrp',          'HRP'),
+      row('qubo_sa',      'QUBO-SA'),
+      row('vqe',          'VQE'),
       { name: "Equal Wt", sharpe: benchmarks.equalWeight.sharpe, return: benchmarks.equalWeight.portReturn * 100, vol: benchmarks.equalWeight.portVol * 100, nActive: nAssets },
-      { name: "Min Var", sharpe: benchmarks.minVariance.sharpe, return: benchmarks.minVariance.portReturn * 100, vol: benchmarks.minVariance.portVol * 100, nActive: nAssets },
-      { name: "Risk Par", sharpe: benchmarks.riskParity.sharpe, return: benchmarks.riskParity.portReturn * 100, vol: benchmarks.riskParity.portVol * 100, nActive: nAssets },
-      { name: "Max Shp", sharpe: benchmarks.maxSharpe.sharpe, return: benchmarks.maxSharpe.portReturn * 100, vol: benchmarks.maxSharpe.portVol * 100, nActive: nAssets },
+      { name: "Min Var",  sharpe: benchmarks.minVariance.sharpe,  return: benchmarks.minVariance.portReturn  * 100, vol: benchmarks.minVariance.portVol  * 100, nActive: nAssets },
+      { name: "Risk Par", sharpe: benchmarks.riskParity.sharpe,   return: benchmarks.riskParity.portReturn   * 100, vol: benchmarks.riskParity.portVol   * 100, nActive: nAssets },
+      { name: "Max Shp",  sharpe: benchmarks.maxSharpe.sharpe,    return: benchmarks.maxSharpe.portReturn    * 100, vol: benchmarks.maxSharpe.portVol    * 100, nActive: nAssets },
     ];
-  }, [qsw, benchmarks, data, omega, evolutionTime, maxWeight, turnoverLimit, nAssets]);
+  }, [benchmarks, data, weightMin, weightMax, nAssets]);
 
   const benchmarkComparison = useMemo(() => {
     return benchmarkComparisonAll.filter(row => selectedStrategies.has(strategyNameToKey[row.name] || row.name));
@@ -1052,69 +1217,98 @@ export default function QuantumPortfolioDashboard() {
           
           <div style={{ height: 1, background: activeTheme.border, margin: "16px 0" }} />
           
-          {/* Quantum Parameters */}
-          <div style={{ fontSize: 10, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>Quantum Parameters</div>
+          {/* Optimization Method */}
+          <div style={{ fontSize: 10, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>Optimization Method</div>
 
-          <CustomizableSlider 
-            label="Omega (ω)" 
-            value={omega} 
-            onChange={setOmega} 
-            min={0.05} 
-            max={0.60} 
-            step={0.01} 
-            info="Mixing parameter: quantum potential vs. graph coupling" 
-            customColor={activeTheme.accent}
-          />
-          <CustomizableSlider 
-            label="Evolution Time" 
-            value={evolutionTime} 
-            onChange={setEvolutionTime} 
-            min={1} 
-            max={50} 
-            step={1} 
-            info="Higher = more smoothing, lower = more differentiation" 
-            customColor={activeTheme.accent}
-          />
-
-          <div style={{ height: 1, background: activeTheme.border, margin: "16px 0" }} />
-          <div style={{ fontSize: 10, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>Evolution Method</div>
-          
-          <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          {/* Classical methods */}
+          <div style={{ fontSize: 9, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>Classical</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
             {[
-              { key: "continuous", label: "Continuous", icon: <FaCircle size={14} />, color: activeTheme.accent },
-              { key: "discrete", label: "Discrete", icon: <FaRegCircle size={14} />, color: activeTheme.purple },
-              { key: "decoherent", label: "Decoherent", icon: <FaAdjust size={14} />, color: activeTheme.cyan },
-              { key: "annealing", label: "Annealing", icon: <FaBolt size={14} />, color: activeTheme.pink },
-            ].map(m => (
-              <button 
-                key={m.key} 
-                onClick={() => setEvolutionMethod(m.key)} 
-                style={{
-                  flex: 1, 
-                  padding: "8px 4px", 
-                  background: evolutionMethod === m.key ? `${m.color}18` : "transparent",
-                  border: `1px solid ${evolutionMethod === m.key ? m.color : activeTheme.border}`, 
-                  borderRadius: 6,
-                  color: evolutionMethod === m.key ? m.color : activeTheme.textDim, 
-                  fontSize: 11, 
-                  cursor: "pointer",
-                  fontFamily: "'JetBrains Mono', monospace", 
-                  transition: "all 0.2s", 
-                  textAlign: "center",
-                  outline: 'none'
-                }}
-                onFocus={(e) => {
-                  e.target.style.boxShadow = `0 0 0 ${colors.focusOutlineWidth} ${colors.focusOutline}`;
-                }}
-                onBlur={(e) => {
-                  e.target.style.boxShadow = 'none';
-                }}
-              >
-                <div style={{ fontSize: 16 }}>{m.icon}</div>
-                <div style={{ marginTop: 2 }}>{m.label}</div>
+              { value: 'equal_weight', label: 'Equal Weight' },
+              { value: 'markowitz',    label: 'Markowitz' },
+              { value: 'min_variance', label: 'Min Variance' },
+              { value: 'hrp',          label: 'HRP', badge: '2016' },
+            ].map(opt => (
+              <button key={opt.value} onClick={() => setObjective(opt.value)} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 10px', borderRadius: 6, cursor: 'pointer',
+                background: objective === opt.value ? `${activeTheme.accent}18` : 'transparent',
+                border: `1px solid ${objective === opt.value ? activeTheme.accent : activeTheme.border}`,
+                borderLeft: `3px solid ${objective === opt.value ? activeTheme.accent : 'transparent'}`,
+                color: objective === opt.value ? activeTheme.accent : activeTheme.textMuted,
+                fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+                transition: 'all 150ms', textAlign: 'left', outline: 'none',
+              }}>
+                <span style={{ flex: 1 }}>{opt.label}</span>
+                {opt.badge && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${activeTheme.textDim}20`, color: activeTheme.textDim, fontFamily: "'JetBrains Mono', monospace" }}>{opt.badge}</span>}
               </button>
             ))}
           </div>
+
+          <div style={{ fontSize: 9, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>Quantum-Inspired</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+            {[
+              { value: 'qubo_sa', label: 'QUBO-SA', badge: 'NB04' },
+              { value: 'vqe',     label: 'VQE',     badge: 'NB04' },
+            ].map(opt => (
+              <button key={opt.value} onClick={() => setObjective(opt.value)} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 10px', borderRadius: 6, cursor: 'pointer',
+                background: objective === opt.value ? `${activeTheme.accentWarm || activeTheme.orange}18` : 'transparent',
+                border: `1px solid ${objective === opt.value ? (activeTheme.accentWarm || activeTheme.orange) : activeTheme.border}`,
+                borderLeft: `3px solid ${objective === opt.value ? (activeTheme.accentWarm || activeTheme.orange) : 'transparent'}`,
+                color: objective === opt.value ? (activeTheme.accentWarm || activeTheme.orange) : activeTheme.textMuted,
+                fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+                transition: 'all 150ms', textAlign: 'left', outline: 'none',
+              }}>
+                <span style={{ flex: 1 }}>{opt.label}</span>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${activeTheme.orange}20`, color: activeTheme.orange, fontFamily: "'JetBrains Mono', monospace" }}>{opt.badge}</span>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${activeTheme.orange}20`, color: activeTheme.orange, fontFamily: "'JetBrains Mono', monospace" }}>SLOW</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 9, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>Hybrid</div>
+          <div style={{ marginBottom: 8 }}>
+            <button onClick={() => setObjective('hybrid')} style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+              padding: '7px 10px', borderRadius: 6, cursor: 'pointer',
+              background: objective === 'hybrid' ? `${activeTheme.accent}18` : 'transparent',
+              border: `1px solid ${objective === 'hybrid' ? activeTheme.accent : activeTheme.border}`,
+              borderLeft: `3px solid ${objective === 'hybrid' ? activeTheme.accent : 'transparent'}`,
+              color: objective === 'hybrid' ? activeTheme.accent : activeTheme.textMuted,
+              fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+              transition: 'all 150ms', textAlign: 'left', outline: 'none',
+            }}>
+              <span style={{ flex: 1 }}>Hybrid Pipeline</span>
+              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${activeTheme.accent}20`, color: activeTheme.accent, fontFamily: "'JetBrains Mono', monospace" }}>NB05</span>
+              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${activeTheme.orange}20`, color: activeTheme.orange, fontFamily: "'JetBrains Mono', monospace" }}>SLOW</span>
+            </button>
+          </div>
+
+          {/* Cardinality (K) — qubo_sa only */}
+          {objective === 'qubo_sa' && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: activeTheme.textMuted, marginBottom: 4, fontFamily: "'JetBrains Mono', monospace" }}>Cardinality (K)</div>
+              <input type="number" min={2} max={20} value={cardinality ?? ''} placeholder="auto"
+                onChange={e => setCardinality(e.target.value ? +e.target.value : null)}
+                style={{ width: '100%', padding: '6px 8px', borderRadius: 5, border: `1px solid ${activeTheme.border}`, background: activeTheme.surface, color: activeTheme.text, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+          )}
+
+          {/* K_screen / K_select — hybrid only */}
+          {objective === 'hybrid' && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: activeTheme.textMuted, marginBottom: 4, fontFamily: "'JetBrains Mono', monospace" }}>Screening size (K_screen)</div>
+              <input type="number" min={2} max={20} value={kScreen ?? ''} placeholder="auto"
+                onChange={e => setKScreen(e.target.value ? +e.target.value : null)}
+                style={{ width: '100%', padding: '6px 8px', borderRadius: 5, border: `1px solid ${activeTheme.border}`, background: activeTheme.surface, color: activeTheme.text, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: 'none', boxSizing: 'border-box', marginBottom: 6 }} />
+              <div style={{ fontSize: 11, color: activeTheme.textMuted, marginBottom: 4, fontFamily: "'JetBrains Mono', monospace" }}>Selection size (K_select)</div>
+              <input type="number" min={2} max={10} value={kSelect ?? ''} placeholder="auto"
+                onChange={e => setKSelect(e.target.value ? +e.target.value : null)}
+                style={{ width: '100%', padding: '6px 8px', borderRadius: 5, border: `1px solid ${activeTheme.border}`, background: activeTheme.surface, color: activeTheme.text, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+          )}
 
           <div style={{ height: 1, background: activeTheme.border, margin: "16px 0" }} />
           <div style={{ fontSize: 10, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>Market Regime</div>
@@ -1210,7 +1404,7 @@ export default function QuantumPortfolioDashboard() {
 
           <div style={{ height: 1, background: activeTheme.border, margin: "16px 0" }} />
           <div style={{ fontSize: 10, color: activeTheme.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>Strategies to Compare</div>
-          {["QSW", "QSW-Discrete", "QSW-Decoherent", "Quantum Annealing", "Equal Weight", "Min Variance", "Risk Parity", "Max Sharpe"].map(key => (
+          {["Hybrid", "Markowitz", "HRP", "QUBO-SA", "VQE", "Equal Weight", "Min Variance", "Risk Parity", "Max Sharpe"].map(key => (
             <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, cursor: "pointer", fontSize: 12, color: activeTheme.text }}>
               <input
                 type="checkbox"
@@ -1242,15 +1436,18 @@ export default function QuantumPortfolioDashboard() {
           />
           
           <button
-            onClick={() => { 
-              setOmega(0.30); 
-              setEvolutionTime(10); 
-              setEvolutionMethod('continuous'); 
-              setMaxWeight(0.10); 
-              setTurnoverLimit(0.20); 
-              setNAssets(20); 
-              setRegime("normal"); 
-              setDataSeed(42); 
+            onClick={() => {
+              setObjective('hybrid');
+              setCardinality(null);
+              setKScreen(null);
+              setKSelect(null);
+              setWeightMin(0.005);
+              setWeightMax(0.20);
+              setMaxWeight(0.10);
+              setTurnoverLimit(0.20);
+              setNAssets(20);
+              setRegime("normal");
+              setDataSeed(42);
             }}
             style={{ 
               width: "100%", 
@@ -1366,6 +1563,26 @@ export default function QuantumPortfolioDashboard() {
                     </div>
                   )}
                 </div>
+                {qsw?.stage_info && (
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: activeTheme.surfaceLight, borderRadius: 6, border: `1px solid ${activeTheme.border}` }}>
+                    <div style={{ fontSize: 9, color: activeTheme.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>Pipeline Info</div>
+                    {qsw.stage_info.stage1_screened_count && (
+                      <div style={{ fontSize: 11, color: activeTheme.textMuted, marginBottom: 3, fontFamily: "'JetBrains Mono', monospace" }}>
+                        Stage 1: screened {qsw.stage_info.stage1_screened_count} assets by IC
+                      </div>
+                    )}
+                    {qsw.stage_info.stage2_selected_names && (
+                      <div style={{ fontSize: 11, color: activeTheme.textMuted, marginBottom: 3, fontFamily: "'JetBrains Mono', monospace" }}>
+                        Stage 2: {qsw.stage_info.stage2_selected_names.join(', ')}
+                      </div>
+                    )}
+                    {qsw.stage_info.stage3_sharpe !== undefined && (
+                      <div style={{ fontSize: 11, color: activeTheme.accent, fontFamily: "'JetBrains Mono', monospace" }}>
+                        Stage 3 Sharpe: {qsw.stage_info.stage3_sharpe?.toFixed(3)}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Sector Allocation */}
@@ -1456,11 +1673,12 @@ export default function QuantumPortfolioDashboard() {
                     <Tooltip content={<CustomTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => <span style={{ color: activeTheme.text, fontSize: 12 }}>{value}</span>} />
                     <ReferenceLine y={100} stroke={activeTheme.textDim} strokeDasharray="3 3" />
-                    {selectedStrategies.has("QSW") && <Line type="monotone" dataKey="QSW" stroke={benchmarkColors["QSW"]} strokeWidth={2.5} dot={false} name="QSW" />}
-                    {selectedStrategies.has("QSW-Discrete") && <Line type="monotone" dataKey="QSW-Discrete" stroke={benchmarkColors["QSW-Discrete"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
-                    {selectedStrategies.has("QSW-Decoherent") && <Line type="monotone" dataKey="QSW-Decoherent" stroke={benchmarkColors["QSW-Decoherent"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
-                    {selectedStrategies.has("Quantum Annealing") && <Line type="monotone" dataKey="Quantum Annealing" stroke={benchmarkColors["Quantum Annealing"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
+                    {(() => {
+                      const activeLabel = OBJECTIVE_OPTIONS.find(o => o.value === objective)?.label || objective;
+                      return <Line type="monotone" dataKey={activeLabel} stroke={activeTheme.accent} strokeWidth={2.5} dot={false} name={activeLabel} />;
+                    })()}
                     {selectedStrategies.has("Equal Weight") && <Line type="monotone" dataKey="Equal Weight" stroke={benchmarkColors["Equal Weight"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
+                    {selectedStrategies.has("HRP") && <Line type="monotone" dataKey="HRP" stroke={benchmarkColors["HRP"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
                     {selectedStrategies.has("Min Variance") && <Line type="monotone" dataKey="Min Variance" stroke={benchmarkColors["Min Variance"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
                     {selectedStrategies.has("Risk Parity") && <Line type="monotone" dataKey="Risk Parity" stroke={benchmarkColors["Risk Parity"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
                     {selectedStrategies.has("Max Sharpe") && <Line type="monotone" dataKey="Max Sharpe" stroke={benchmarkColors["Max Sharpe"]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />}
@@ -1510,16 +1728,16 @@ export default function QuantumPortfolioDashboard() {
                         </thead>
                         <tbody>
                           {benchmarkComparison.map((b, i) => {
-                            const isQSW = b.name.includes("QSW") || b.name.includes("Quantum");
+                            const isActive = b.name === (OBJECTIVE_OPTIONS.find(o => o.value === objective)?.label || objective) || b.name === 'Hybrid' || b.name === 'QUBO-SA' || b.name === 'VQE';
                             const maxSharpe = Math.max(...benchmarkComparison.map(x => (x.sharpe || 0)));
                             const isBest = (b.sharpe || 0) >= maxSharpe - 0.001;
                             return (
-                              <tr 
-                                key={b.name || i} 
-                                style={{ background: isQSW ? activeTheme.accentGlow : "transparent" }}
+                              <tr
+                                key={b.name || i}
+                                style={{ background: isActive ? activeTheme.accentGlow : "transparent" }}
                                 role="row"
                               >
-                                <td style={{ padding: "8px 12px", borderBottom: `1px solid ${activeTheme.border}`, fontWeight: isQSW ? 700 : 400, color: isQSW ? activeTheme.accent : activeTheme.text }}>{b.name || "Unknown"} {isBest && <FaStar size={12} style={{ color: activeTheme.accent, display: "inline", verticalAlign: "middle" }} />}</td>
+                                <td style={{ padding: "8px 12px", borderBottom: `1px solid ${activeTheme.border}`, fontWeight: isActive ? 700 : 400, color: isActive ? activeTheme.accent : activeTheme.text }}>{b.name || "Unknown"} {isBest && <FaStar size={12} style={{ color: activeTheme.accent, display: "inline", verticalAlign: "middle" }} />}</td>
                                 <td style={{ padding: "8px 12px", borderBottom: `1px solid ${activeTheme.border}`, color: isBest ? activeTheme.green : activeTheme.text }}>{(b.sharpe || 0).toFixed(3)}</td>
                                 <td style={{ padding: "8px 12px", borderBottom: `1px solid ${activeTheme.border}` }}>{(b.return || 0).toFixed(1)}%</td>
                                 <td style={{ padding: "8px 12px", borderBottom: `1px solid ${activeTheme.border}` }}>{(b.vol || 0).toFixed(1)}%</td>
@@ -1582,17 +1800,17 @@ export default function QuantumPortfolioDashboard() {
                 />
                 <ResponsiveContainer width="100%" height={280}>
                   <RadarChart data={[
-                    { factor: "Market", qsw: 0.7 + omega * 0.5, benchmark: 1.0 },
-                    { factor: "Size", qsw: 0.3 + (1 - maxWeight) * 0.8, benchmark: 0.5 },
-                    { factor: "Value", qsw: 0.4 + (1 - omega) * 0.4, benchmark: 0.4 },
-                    { factor: "Momentum", qsw: 0.5 + omega * 0.3, benchmark: 0.3 },
-                    { factor: "Quality", qsw: 0.6 + evolutionTime / 100, benchmark: 0.5 },
-                    { factor: "Low Vol", qsw: 0.8 - omega * 0.5, benchmark: 0.3 },
+                    { factor: "Market",   portfolio: 0.70 + qsw.sharpe * 0.1, benchmark: 1.0 },
+                    { factor: "Size",     portfolio: 0.30 + (1 - weightMax) * 0.8, benchmark: 0.5 },
+                    { factor: "Value",    portfolio: 0.40 + Math.min(qsw.portReturn * 2, 0.4), benchmark: 0.4 },
+                    { factor: "Momentum", portfolio: 0.50 + Math.max(qsw.sharpe * 0.1, 0), benchmark: 0.3 },
+                    { factor: "Quality",  portfolio: 0.60 + Math.min(qsw.nActive / nAssets, 0.4), benchmark: 0.5 },
+                    { factor: "Low Vol",  portfolio: 0.80 - Math.min(qsw.portVol * 2, 0.5), benchmark: 0.3 },
                   ]}>
                     <PolarGrid stroke={activeTheme.border} />
                     <PolarAngleAxis dataKey="factor" tick={{ fill: activeTheme.text, fontSize: 12 }} />
                     <PolarRadiusAxis tick={false} axisLine={false} />
-                    <Radar name="QSW" dataKey="qsw" stroke={activeTheme.accent} fill={activeTheme.accent} fillOpacity={0.2} strokeWidth={2} />
+                    <Radar name="Portfolio" dataKey="portfolio" stroke={activeTheme.accent} fill={activeTheme.accent} fillOpacity={0.2} strokeWidth={2} />
                     <Radar name="Benchmark" dataKey="benchmark" stroke={activeTheme.textDim} fill={activeTheme.textDim} fillOpacity={0.05} strokeWidth={1} strokeDasharray="4 2" />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                   </RadarChart>
@@ -1637,100 +1855,89 @@ export default function QuantumPortfolioDashboard() {
           {/* ─── SENSITIVITY TAB ─── */}
           {activeTab === "sensitivity" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-              {/* Evolution Method Comparison */}
+              {/* Method Comparison */}
               <div style={{ background: activeTheme.surface, border: `1px solid ${activeTheme.border}`, borderRadius: 10, padding: 20 }}>
-                <InteractiveSectionTitle 
-                  children="Quantum Method Comparison" 
-                  subtitle="Performance comparison of different quantum evolution methods" 
-                  onEdit={(newTitle) => console.log('Method comparison section renamed to:', newTitle)}
+                <InteractiveSectionTitle
+                  children="Method Comparison"
+                  subtitle="Sharpe, return and volatility across all optimisation methods"
+                  onEdit={(newTitle) => console.log('Method comparison renamed:', newTitle)}
                   editable={true}
                 />
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={[
-                    { method: "Continuous", sharpe: qsw.sharpe, return: qsw.portReturn * 100, vol: qsw.portVol * 100 },
-                    { method: "Discrete", ...runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'discrete') },
-                    { method: "Decoherent", ...runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'decoherent') },
-                    { method: "Annealing", ...runQuantumAnnealingOptimization(data, maxWeight) }
+                    { method: "Hybrid",        ...(() => { const r = runOptimisation(data, { objective: 'hybrid',       wMin: weightMin, wMax: weightMax }); return { sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100 }; })() },
+                    { method: "Markowitz",     ...(() => { const r = runOptimisation(data, { objective: 'markowitz',    wMin: weightMin, wMax: weightMax }); return { sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100 }; })() },
+                    { method: "HRP",           ...(() => { const r = runOptimisation(data, { objective: 'hrp',          wMin: weightMin, wMax: weightMax }); return { sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100 }; })() },
+                    { method: "QUBO-SA",       ...(() => { const r = runOptimisation(data, { objective: 'qubo_sa',      wMin: weightMin, wMax: weightMax }); return { sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100 }; })() },
+                    { method: "VQE",           ...(() => { const r = runOptimisation(data, { objective: 'vqe',          wMin: weightMin, wMax: weightMax }); return { sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100 }; })() },
+                    { method: "Equal Weight",  ...(() => { const r = runOptimisation(data, { objective: 'equal_weight', wMin: weightMin, wMax: weightMax }); return { sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100 }; })() },
                   ]} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={activeTheme.border} />
-                    <XAxis dataKey="method" stroke={activeTheme.textDim} tick={{ fontSize: 11, fill: activeTheme.textMuted }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={activeTheme.border} vertical={false} />
+                    <XAxis dataKey="method" stroke={activeTheme.textDim} tick={{ fontSize: 10, fill: activeTheme.textMuted, fontFamily: "'JetBrains Mono', monospace" }} />
                     <YAxis stroke={activeTheme.textDim} tick={{ fontSize: 10, fill: activeTheme.textDim }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="sharpe" name="Sharpe" fill={activeTheme.accent} radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="return" name="Return %" fill={activeTheme.green} radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="vol" name="Vol %" fill={activeTheme.orange} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="sharpe" name="Sharpe"    fill={activeTheme.accent} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="return" name="Return %"  fill={activeTheme.green}  radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="vol"    name="Vol %"     fill={activeTheme.orange} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Omega Sensitivity */}
+              {/* Max Weight Sensitivity */}
               <div style={{ background: activeTheme.surface, border: `1px solid ${activeTheme.border}`, borderRadius: 10, padding: 20 }}>
-                <InteractiveSectionTitle 
-                  children="Omega (ω) Sensitivity" 
-                  subtitle="Sharpe ratio as omega varies from 0.05 to 0.60" 
-                  onEdit={(newTitle) => console.log('Omega sensitivity section renamed to:', newTitle)}
+                <InteractiveSectionTitle
+                  children="Max Weight Sensitivity"
+                  subtitle="Sharpe ratio as max weight varies from 5% to 30%"
+                  onEdit={(newTitle) => console.log('Weight sensitivity renamed:', newTitle)}
                   editable={true}
                 />
                 <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={Array.from({length: 25}, (_, i) => {
-                    const omegaVal = 0.05 + i * 0.022;
-                    const result = runQSWOptimization(data, omegaVal, evolutionTime, maxWeight, turnoverLimit, evolutionMethod);
-                    return { omega: omegaVal.toFixed(2), sharpe: result.sharpe, return: result.portReturn * 100, vol: result.portVol * 100 };
+                  <AreaChart data={Array.from({ length: 20 }, (_, i) => {
+                    const wMax = 0.05 + i * 0.013;
+                    const r = runOptimisation(data, { objective, wMin: weightMin, wMax });
+                    return { maxW: (wMax * 100).toFixed(0) + '%', sharpe: r.sharpe, return: r.portReturn * 100, vol: r.portVol * 100 };
                   })} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
                     <defs>
-                      <linearGradient id="omegaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="wMaxGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={activeTheme.accent} stopOpacity={0.3} />
                         <stop offset="100%" stopColor={activeTheme.accent} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={activeTheme.border} />
-                    <XAxis dataKey="omega" stroke={activeTheme.textDim} tick={{ fontSize: 10, fill: activeTheme.textDim }} label={{ value: "Omega (ω)", position: "bottom", fill: activeTheme.textDim, fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={activeTheme.border} vertical={false} />
+                    <XAxis dataKey="maxW" stroke={activeTheme.textDim} tick={{ fontSize: 10, fill: activeTheme.textDim, fontFamily: "'JetBrains Mono', monospace" }} label={{ value: "Max Weight", position: "bottom", fill: activeTheme.textDim, fontSize: 11 }} />
                     <YAxis stroke={activeTheme.textDim} tick={{ fontSize: 10, fill: activeTheme.textDim }} />
                     <Tooltip content={<CustomTooltip />} />
-                    {typeof omega === 'number' && <ReferenceLine x={omega.toFixed(2)} stroke={activeTheme.accent} strokeDasharray="3 3" label={{ value: "Current", fill: activeTheme.accent, fontSize: 10 }} />}
-                    <Area type="monotone" dataKey="sharpe" stroke={activeTheme.accent} fill="url(#omegaGrad)" strokeWidth={2} name="Sharpe" />
+                    <ReferenceLine x={(weightMax * 100).toFixed(0) + '%'} stroke={activeTheme.accent} strokeDasharray="3 3" label={{ value: "Current", fill: activeTheme.accent, fontSize: 10 }} />
+                    <Area type="monotone" dataKey="sharpe" stroke={activeTheme.accent} fill="url(#wMaxGrad)" strokeWidth={2} name="Sharpe" />
                   </AreaChart>
                 </ResponsiveContainer>
-                <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 8 }}>
-                  <div style={{ background: `${activeTheme.green}20`, border: `1px solid ${activeTheme.green}40`, borderRadius: 4, padding: "2px 8px", fontSize: 10, color: activeTheme.green }}>
-                    Chang optimal range: 0.20 - 0.40
-                  </div>
-                </div>
               </div>
 
-              {/* Parameter Interaction */}
+              {/* Universe Size Impact */}
               <div style={{ background: activeTheme.surface, border: `1px solid ${activeTheme.border}`, borderRadius: 10, padding: 20, gridColumn: "1 / -1" }}>
-                <InteractiveSectionTitle 
-                  children="Parameter Impact Analysis" 
-                  subtitle="How different parameters affect performance across methods" 
-                  onEdit={(newTitle) => console.log('Parameter impact section renamed to:', newTitle)}
+                <InteractiveSectionTitle
+                  children="Universe Size Impact"
+                  subtitle="Sharpe by number of assets across selected methods"
+                  onEdit={(newTitle) => console.log('Universe size renamed:', newTitle)}
                   editable={true}
                 />
                 <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={[
-                    { param: "Evolution Time", continuous: runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'continuous').sharpe,
-                      discrete: runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'discrete').sharpe,
-                      decoherent: runQSWOptimization(data, omega, evolutionTime, maxWeight, turnoverLimit, 'decoherent').sharpe,
-                      annealing: runQuantumAnnealingOptimization(data, maxWeight).sharpe },
-                    { param: "Max Weight", continuous: runQSWOptimization(data, omega, evolutionTime, 0.05, turnoverLimit, 'continuous').sharpe,
-                      discrete: runQSWOptimization(data, omega, evolutionTime, 0.05, turnoverLimit, 'discrete').sharpe,
-                      decoherent: runQSWOptimization(data, omega, evolutionTime, 0.05, turnoverLimit, 'decoherent').sharpe,
-                      annealing: runQuantumAnnealingOptimization(data, 0.05).sharpe },
-                    { param: "Omega", continuous: runQSWOptimization(data, 0.1, evolutionTime, maxWeight, turnoverLimit, 'continuous').sharpe,
-                      discrete: runQSWOptimization(data, 0.1, evolutionTime, maxWeight, turnoverLimit, 'discrete').sharpe,
-                      decoherent: runQSWOptimization(data, 0.1, evolutionTime, maxWeight, turnoverLimit, 'decoherent').sharpe,
-                      annealing: runQuantumAnnealingOptimization(data, maxWeight).sharpe }
-                  ]} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={activeTheme.border} />
-                    <XAxis dataKey="param" stroke={activeTheme.textDim} tick={{ fontSize: 11, fill: activeTheme.textMuted }} />
+                  <BarChart data={[5, 10, 15, 20, 25, 30].map(n => {
+                    const d = generateMarketData(n, 504, regime, dataSeed, customTickerList);
+                    const hybrid = runOptimisation(d, { objective: 'hybrid',    wMin: weightMin, wMax: weightMax });
+                    const markow = runOptimisation(d, { objective: 'markowitz', wMin: weightMin, wMax: weightMax });
+                    const hrp    = runOptimisation(d, { objective: 'hrp',       wMin: weightMin, wMax: weightMax });
+                    return { n: `N=${n}`, hybrid: hybrid.sharpe, markowitz: markow.sharpe, hrp: hrp.sharpe };
+                  })} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={activeTheme.border} vertical={false} />
+                    <XAxis dataKey="n" stroke={activeTheme.textDim} tick={{ fontSize: 11, fill: activeTheme.textMuted, fontFamily: "'JetBrains Mono', monospace" }} />
                     <YAxis stroke={activeTheme.textDim} tick={{ fontSize: 10, fill: activeTheme.textDim }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="continuous" name="Continuous" fill={benchmarkColors["QSW"]} radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="discrete" name="Discrete" fill={benchmarkColors["QSW-Discrete"]} radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="decoherent" name="Decoherent" fill={benchmarkColors["QSW-Decoherent"]} radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="annealing" name="Annealing" fill={benchmarkColors["Quantum Annealing"]} radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="hybrid"    name="Hybrid"    fill={benchmarkColors["Hybrid"]}    radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="markowitz" name="Markowitz" fill={benchmarkColors["Markowitz"]} radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="hrp"       name="HRP"       fill={benchmarkColors["HRP"]}       radius={[2, 2, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
