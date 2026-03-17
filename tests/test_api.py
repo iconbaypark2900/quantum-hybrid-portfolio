@@ -85,9 +85,10 @@ def test_config_objectives_returns_200(client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data is not None
-    assert 'objectives' in data
-    assert len(data['objectives']) > 0
-    assert any(obj.get('id') == 'max_sharpe' for obj in data['objectives'])
+    payload = data.get('data', data)
+    assert 'objectives' in payload
+    assert len(payload['objectives']) > 0
+    assert any(obj.get('id') == 'markowitz' for obj in payload['objectives'])
 
 
 def test_config_presets_returns_200(client):
@@ -96,9 +97,10 @@ def test_config_presets_returns_200(client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data is not None
-    assert 'presets' in data
-    assert len(data['presets']) > 0
-    assert any(p.get('id') == 'balanced' for p in data['presets'])
+    payload = data.get('data', data)
+    assert 'presets' in payload
+    assert len(payload['presets']) > 0
+    assert any(p.get('id') == 'default' for p in payload['presets'])
 
 
 def test_config_constraints_returns_200(client):

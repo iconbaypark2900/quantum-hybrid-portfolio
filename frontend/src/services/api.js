@@ -135,10 +135,4 @@ export async function healthCheck() {
   return res.data;
 }
 
-/** Estimate Braket runtime and cost for a given scenario */
-export async function estimateBraketUsage(params) {
-  const res = await api.get('/api/braket/estimate', { params });
-  return res.data;
-}
-
 export default api;

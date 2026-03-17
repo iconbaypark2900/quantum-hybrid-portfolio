@@ -2,34 +2,23 @@
 
 ## Amazon Braket
 
-Braket is **actively integrated** for quantum annealing and QAOA.
+**Note:** The project migrated from QSW/Braket to notebook-based methods. Braket-specific modules (`braket_backend.py`, `braket_estimator.py`) were removed.
 
-### Core Implementation
+### Current Status
 
-| File | Purpose |
-|-----|---------|
-| `core/quantum_inspired/braket_backend.py` | `BraketAnnealingOptimizer`, `run_braket_portfolio_optimization()`, `_run_on_braket()`, QUBO formulation. Uses `AwsDevice`, `Circuit`, `QuantumTask`. Falls back to classical QUBO when Braket is unavailable. |
-| `core/quantum_inspired/qaoa_optimizer.py` | Braket as QAOA backend (`backend='braket'`). `_run_braket_qaoa()`, `_build_braket_qaoa_circuit()`. |
-| `core/braket_estimator.py` | Estimates Braket runtime and cost (tasks, shots, wall-clock time) using official AWS QPU pricing. |
+| Component | Status |
+|-----------|--------|
+| `braket_annealing` objective | Maps to `qubo_sa` (classical simulated annealing) in `services/portfolio_optimizer.py` |
+| Braket hardware | No integration — QUBO+SA runs classically |
+| API | `POST /api/portfolio/optimize` with `objective=braket_annealing` returns QUBO-SA result |
 
 ### API & Services
 
 | File | Usage |
-|-----|-------|
-| `api.py` | `/api/braket/estimate` endpoint; `braket_annealing` objective. |
-| `services/portfolio_optimizer.py` | `_run_braket_annealing()` for `braket_annealing` objective. |
-| `core/quantum_inspired/hybrid_workflow.py` | `method == 'braket'` branch. |
-| `services/benchmark.py` | `benchmark_braket()` method. |
-
-### Dependencies
-
-- `amazon-braket-sdk>=1.60.0`
-- `amazon-braket-schemas>=1.18.0`
-
-### Environment Variables
-
-- `AWS_REGION` (default: us-east-1)
-- `BRAKET_DEVICE_ARN`
+|------|-------|
+| `api.py` | `braket_annealing` maps to `qubo_sa` for backward compatibility |
+| `services/portfolio_optimizer.py` | Legacy objective mapping: `braket_annealing` → `qubo_sa` |
+| `core/optimizers/qubo_sa.py` | QUBO + Simulated Annealing (Orús et al. 2019) — classical |
 
 ---
 
@@ -39,15 +28,17 @@ Braket is **actively integrated** for quantum annealing and QAOA.
 
 | Location | Reference |
 |----------|-----------|
-| `notebooks/04_qubo_vqe_portfolio.ipynb` | Simulated annealing described as a "classical proxy for quantum annealing (D-Wave)". |
-| `notebooks/05_hybrid_pipeline_grand_comparison.ipynb` | "D-Wave hybrid (n>500)" in timeline/legend. |
-| `QUANTUM_INTEGRATION_ROADMAP.md` | "Integrate D-Wave quantum annealing" listed as a future task. |
+| `notebooks/04_qubo_vqe_portfolio.ipynb` | Simulated annealing as "classical proxy for quantum annealing (D-Wave)" |
+| `notebooks/05_hybrid_pipeline_grand_comparison.ipynb` | "D-Wave hybrid (n>500)" in timeline/legend |
+| `QUANTUM_INTEGRATION_ROADMAP.md` | "Integrate D-Wave quantum annealing" as future task |
 
 ---
 
 ## Summary
 
 | Platform | Integration Status |
-|----------|-------------------|
-| **Amazon Braket** | ✅ Implemented — annealing backend with classical QUBO fallback; QAOA gate-based backend. |
-| **D-Wave** | ❌ No integration — simulated annealing used as classical proxy only. |
+|---------|--------------------|
+| **Amazon Braket** | ❌ No integration — `braket_annealing` uses classical QUBO-SA |
+| **D-Wave** | ❌ No integration — simulated annealing used as classical proxy only |
+
+Future Braket/D-Wave integration would require re-adding a hardware backend that calls the respective APIs. The `qubo_sa` optimizer can be extended to dispatch to quantum hardware when configured.

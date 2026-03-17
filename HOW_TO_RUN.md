@@ -16,14 +16,14 @@ source .venv/bin/activate
 
 ## 📋 What You Can Run
 
-### 1️⃣ **Run Unit Tests** (Fastest - ~1 second)
+### 1️⃣ **Run Unit Tests** (Fastest - ~10 seconds)
 ```bash
-python -m pytest tests/test_quantum_walk.py -v
+python -m pytest tests/test_optimizers.py tests/test_api_integration.py -v
 ```
 
-**What it does:** Tests core functionality  
-**Time:** < 1 second  
-**Output:** Shows 7 tests passing ✓
+**What it does:** Tests core optimizers and API  
+**Time:** ~10 seconds  
+**Output:** All tests passing ✓
 
 ---
 
@@ -34,55 +34,29 @@ python examples/basic_qsw_example.py
 
 **What it does:**
 - Downloads real S&P 500 stock data (30 stocks, 3 years)
-- Runs QSW optimization
+- Runs hybrid pipeline optimization
 - Shows portfolio allocation and metrics
-- Asks if you want to run validation (press Enter or Ctrl+C to skip)
 
 **Time:** ~10 seconds (data download + optimization)  
 **Output:** Portfolio with Sharpe ratio, returns, weights
 
-**Press Ctrl+C** when it says "Press Enter to run validation" if you just want quick results.
-
 ---
 
-### 3️⃣ **Run Full Validation** (Slowest - ~30 seconds)
+### 3️⃣ **Run Integration Example**
 ```bash
-python examples/basic_qsw_example.py
-# Then press Enter when prompted
+python examples/quantum_integration_example.py
 ```
 
 **What it does:**
-- Runs basic example (above)
-- Then runs Chang et al. validation suite:
-  - 50 iterations of Sharpe improvement testing
-  - 12 months of turnover analysis
-  - 20 parameter sensitivity tests
-  - Regime adaptation testing
-- Generates performance report
+- Compares Hybrid, QUBO-SA, VQE, HRP, Markowitz, Min Variance
+- Generates sample data and runs all objectives
 
-**Time:** ~30-60 seconds  
-**Output:** 
-- Validation metrics vs. research claims
-- `chang_validation_report.png` (chart)
+**Time:** ~30 seconds  
+**Output:** Side-by-side comparison of optimization methods
 
 ---
 
-### 4️⃣ **Run Phase 1 Verification** (Diagnostic - ~20 seconds)
-```bash
-python tests/phase1.py
-```
-
-**What it does:**
-- Runs 5 diagnostic tests on the fixes
-- Compares QSW vs classical optimization
-- Shows what's working and what needs improvement
-
-**Time:** ~20 seconds  
-**Output:** Test results with ✓/✗ for each fix
-
----
-
-### 5️⃣ **Interactive Jupyter Notebooks**
+### 4️⃣ **Interactive Jupyter Notebooks**
 ```bash
 jupyter lab
 ```
@@ -115,11 +89,10 @@ pip install -e .
 ---
 
 ### Error: "No module named 'core.quantum_inspired.quantum_walk'"
-**Solution:** Files were deleted. Restore from git:
-```bash
-git restore core/quantum_inspired/quantum_walk.py \
-            core/quantum_inspired/evolution_dynamics.py \
-            core/quantum_inspired/stability_enhancer.py
+**Solution:** The project migrated to notebook-based methods (hybrid, qubo_sa, vqe). Use:
+```python
+from services.portfolio_optimizer import run_optimization
+result = run_optimization(returns, covariance, objective='hybrid')
 ```
 
 ---
@@ -180,9 +153,9 @@ Top 10 Holdings:
 ## 🎯 Recommended Running Order
 
 ### First Time:
-1. `python -m pytest tests/test_quantum_walk.py -v` (verify install)
-2. `python examples/basic_qsw_example.py` (see it work, press Ctrl+C when asked)
-3. `python tests/phase1.py` (see diagnostic report)
+1. `python quick_test.py` (verify install)
+2. `python -m pytest tests/test_optimizers.py tests/test_api_integration.py -v` (run core tests)
+3. `python examples/basic_qsw_example.py` (see it work with real data)
 
 ### Daily Development:
 1. Make changes to code
@@ -190,9 +163,8 @@ Top 10 Holdings:
 3. `python examples/basic_qsw_example.py` (test with real data)
 
 ### Before Committing:
-1. `python tests/phase1.py` (full verification)
-2. `python examples/basic_qsw_example.py` (press Enter for validation)
-3. Review generated charts and metrics
+1. `python -m pytest tests/ -v` (full test suite)
+2. `python examples/quantum_integration_example.py` (compare all methods)
 
 ---
 

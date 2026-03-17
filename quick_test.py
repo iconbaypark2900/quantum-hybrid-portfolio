@@ -4,7 +4,7 @@ Quick verification that the project works.
 Run: python quick_test.py
 """
 import numpy as np
-from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
+from services.portfolio_optimizer import run_optimization
 
 print("🚀 Testing Quantum Hybrid Portfolio...")
 print("-" * 50)
@@ -17,11 +17,8 @@ A = np.random.randn(n_assets, n_assets)
 covariance = np.dot(A.T, A) / n_assets
 
 # Run optimizer
-print("Creating optimizer...")
-optimizer = QuantumStochasticWalkOptimizer()
-
-print("Running optimization...")
-result = optimizer.optimize(returns, covariance)
+print("Running hybrid optimization...")
+result = run_optimization(returns, covariance, objective='hybrid')
 
 # Show results
 print("\n✅ SUCCESS! Portfolio optimized.")
@@ -33,6 +30,6 @@ print(f"Active Assets: {np.sum(result.weights > 0.001)}/{n_assets}")
 print("-" * 50)
 print("\n✓ Project is fully operational!")
 print("\nNext steps:")
-print("  • Run tests: python -m pytest tests/test_quantum_walk.py -v")
-print("  • Run example: python examples/basic_qsw_example.py")
+print("  • Run tests: python -m pytest tests/test_optimizers.py tests/test_api_integration.py -v")
+print("  • Run example: python examples/quantum_integration_example.py")
 print("  • See guide: cat HOW_TO_RUN.md")

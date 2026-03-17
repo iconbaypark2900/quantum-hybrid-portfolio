@@ -23,11 +23,14 @@ import logging
 from pythonjsonlogger.json import JsonFormatter as jsonlogger_JsonFormatter
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-# Import quantum hybrid portfolio modules
-from core.quantum_inspired.quantum_walk import QuantumStochasticWalkOptimizer
-from core.quantum_inspired.graph_builder import FinancialGraphBuilder
-from config.qsw_config import QSWConfig
-from services.portfolio_optimizer import run_optimization, get_config_for_preset
+# Import portfolio optimization (unified service routes to methods)
+from core.portfolio_optimizer import (
+    run_optimization,
+    OptimizationResult,
+    OBJECTIVES,
+    compute_efficient_frontier,
+)
+from config.api_config import OBJECTIVES_CONFIG, PRESETS_CONFIG
 from services.constraints import PortfolioConstraints
 
 # Import market data service
@@ -36,9 +39,6 @@ from services.market_data import fetch_market_data, validate_tickers
 # Import backtesting service
 from services.backtest import run_backtest as run_backtesting
 from services.data_provider import load_market_payload
-
-# Import Braket estimator
-from core.braket_estimator import estimate_braket_usage, BRAKET_QPU_PRICING
 
 # ─── Structured JSON Logging ───
 log_handler = logging.StreamHandler()
@@ -432,9 +432,6 @@ def after_request_hook(response):
             "connect-src 'self'"
         )
     return response
-
-# Initialize the optimizer
-global_optimizer = QuantumStochasticWalkOptimizer()
 
 def generate_mock_data(n_assets, regime):
     """Generate mock market data for demonstration."""
@@ -835,7 +832,7 @@ def run_benchmark_comparison(assets_data):
     ms = pos_sharpes / np.sum(pos_sharpes) if np.sum(pos_sharpes) > 0 else ew.copy()
 
     # Hierarchical Risk Parity
-    from services.hrp import hrp_weights
+    from core.optimizers.hrp import hrp_weights
     cov_approx = np.outer(vols, vols) * (np.full((n, n), 0.3))
     np.fill_diagonal(cov_approx, vols ** 2)
     hrp_w = hrp_weights(cov_approx)
@@ -883,207 +880,190 @@ def _safe_serialize_metrics(obj):
 @require_api_key
 @limiter.limit("10 per minute")
 def optimize_portfolio():
-    """Endpoint to run quantum portfolio optimization."""
+    """Portfolio optimisation endpoint — routes by objective to notebook methods."""
     try:
         data = request.json
         if not data:
             return error_response('Request body is required', code='BAD_REQUEST', status=400)
 
-        # Prefer production matrix input (returns + covariance), fallback to ticker provider.
+        # ── Market data: prefer direct matrix, fallback to ticker fetch ─────
         market_payload = load_market_payload(data)
         assets = market_payload.assets
         returns = market_payload.returns
         covariance = market_payload.covariance
         tickers = market_payload.tickers
 
-        # Get optimization parameters
-        regime = data.get('regime', 'normal')
-        omega = data.get('omega', 0.3)
-        evolution_time = data.get('evolutionTime', 10)
-        evolution_method = data.get('evolutionMethod', 'continuous')
-        max_weight = data.get('maxWeight', 0.10)
-        turnover_limit = data.get('turnoverLimit', 0.20)
-        objective = data.get('objective', 'max_sharpe')
-        target_return = data.get('targetReturn', None)
-        strategy_preset = data.get('strategyPreset', 'balanced')
-        constraints = PortfolioConstraints.from_dict(data.get('constraints'))
+        # ── Objective & method params ────────────────────────────────────────
+        objective = data.get('objective', 'hybrid')
+        # Backward compatibility: legacy objective names
+        braket_fallback = objective == 'braket_annealing'
+        objective = {
+            'max_sharpe': 'markowitz',
+            'risk_parity': 'hrp',
+            'braket_annealing': 'qubo_sa',
+        }.get(objective, objective)
+        target_return = data.get('targetReturn') or data.get('target_return')
 
-        # Build config: use preset as base, override with explicit params if provided
-        config = get_config_for_preset(strategy_preset)
-        if omega is not None:
-            config.default_omega = omega
-        if evolution_time is not None:
-            config.evolution_time = evolution_time
-        if evolution_method is not None:
-            config.evolution_method = evolution_method
-        if max_weight is not None:
-            config.max_weight = max_weight
-        if turnover_limit is not None:
-            config.max_turnover = turnover_limit
+        # Cardinality params (QUBO-SA and Hybrid)
+        K = data.get('K')
+        K_screen = data.get('K_screen')
+        K_select = data.get('K_select')
 
-        # Run unified optimization (supports max_sharpe, min_variance, target_return, risk_parity)
+        # QUBO tuning
+        lambda_risk = float(data.get('lambda_risk', 1.0))
+        gamma = float(data.get('gamma', 8.0))
+
+        # VQE tuning
+        n_layers = int(data.get('n_layers', 3))
+        n_restarts = int(data.get('n_restarts', 8))
+
+        # Weight bounds
+        weight_min = float(data.get('weight_min', data.get('minWeight', 0.005)))
+        weight_max = float(data.get('weight_max', data.get('maxWeight', 0.30)))
+
+        # Reproducibility
+        seed = int(data.get('seed', 42))
+
+        # ── Validate objective ───────────────────────────────────────────────
+        if objective not in OBJECTIVES:
+            return error_response(
+                f"Unknown objective '{objective}'. Valid: {list(OBJECTIVES.keys())}",
+                code='BAD_REQUEST', status=400
+            )
+
+        # ── Run optimisation ─────────────────────────────────────────────────
         asset_names = [a['name'] for a in assets]
         sectors_list = [a['sector'] for a in assets]
+
         with OPTIMIZATION_LATENCY.labels(objective=objective).time():
             result = run_optimization(
                 returns=returns,
                 covariance=covariance,
                 objective=objective,
-                target_return=target_return,
-                market_regime=regime,
-                strategy_preset=strategy_preset,
-                config=config,
-                constraints=constraints,
+                target_return=float(target_return) if target_return is not None else None,
                 asset_names=asset_names,
-                sectors=sectors_list,
+                K=int(K) if K is not None else None,
+                K_screen=int(K_screen) if K_screen is not None else None,
+                K_select=int(K_select) if K_select is not None else None,
+                lambda_risk=lambda_risk,
+                gamma=gamma,
+                n_layers=n_layers,
+                n_restarts=n_restarts,
+                weight_min=weight_min,
+                weight_max=weight_max,
+                seed=seed,
             )
 
-        # Calculate risk metrics
-        risk_metrics = compute_var(assets, result.weights)
-
-        # Run benchmarks for comparison
-        benchmarks = run_benchmark_comparison(assets)
-
-        # Calculate improvement over best benchmark
-        benchmark_sharpes = [
-            benchmarks['equal_weight']['sharpe_ratio'],
-            benchmarks['min_variance']['sharpe_ratio'],
-            benchmarks['risk_parity']['sharpe_ratio'],
-            benchmarks['max_sharpe']['sharpe_ratio'],
-            benchmarks['hrp']['sharpe_ratio']
+        # ── Build holdings list ──────────────────────────────────────────────
+        holdings = [
+            {
+                'name': asset_names[i],
+                'sector': sectors_list[i] if i < len(sectors_list) else 'Unknown',
+                'weight': float(result.weights[i]),
+            }
+            for i in range(len(asset_names))
+            if result.weights[i] > 1e-4
         ]
-        best_benchmark_sharpe = max(benchmark_sharpes) if benchmark_sharpes else 0
-        improvement = float(((result.sharpe_ratio / best_benchmark_sharpe) - 1) * 100 if best_benchmark_sharpe != 0 else 0)
 
-        # Prepare holdings data
-        holdings = []
-        for i, asset in enumerate(assets):
-            weight = float(result.weights[i])
-            if weight > 0.005:  # Only include meaningful positions
-                holdings.append({
-                    'name': asset['name'],
-                    'sector': asset['sector'],
-                    'weight': weight,
-                    'annReturn': float(asset['ann_return']),
-                    'annVol': float(asset['ann_vol']),
-                    'sharpe': float(asset['sharpe'])
-                })
+        # ── Sector aggregation ────────────────────────────────────────────────
+        sector_alloc = {}
+        for i, (name, sector) in enumerate(zip(asset_names, sectors_list)):
+            w = float(result.weights[i])
+            if w > 1e-4:
+                sector_alloc[sector] = sector_alloc.get(sector, 0.0) + w
+        sector_data = [{'sector': s, 'weight': round(w, 6)} for s, w in sector_alloc.items()]
 
-        # Sort holdings by weight
-        holdings.sort(key=lambda x: x['weight'], reverse=True)
+        # ── Risk metrics (VaR / CVaR approximation) ───────────────────────────
+        port_vol = result.volatility
+        var_95 = -1.645 * port_vol / (252 ** 0.5)
+        cvar_95 = -2.063 * port_vol / (252 ** 0.5)
 
-        # Calculate sector allocation
-        sector_allocation = {}
-        for holding in holdings:
-            sector = holding['sector']
-            if sector not in sector_allocation:
-                sector_allocation[sector] = 0
-            sector_allocation[sector] += holding['weight']
+        # ── Benchmark comparison (light classical methods for reference) ────────
+        try:
+            from core.optimizers.equal_weight import equal_weight
+            from core.optimizers.markowitz import min_variance, markowitz_max_sharpe
+            from core.optimizers.hrp import hrp_weights
 
-        sector_data = [{'name': k, 'value': round(float(v) * 100, 2)} for k, v in sector_allocation.items()]
-        sector_data.sort(key=lambda x: x['value'], reverse=True)
+            def _metrics(w):
+                r = float(w @ returns)
+                v = float(np.sqrt(w @ covariance @ w))
+                sr = r / v if v > 1e-10 else 0.0
+                return {'weights': w.tolist(), 'sharpe': round(sr, 4),
+                        'expected_return': round(r, 6), 'volatility': round(v, 6)}
 
-        # Prepare response with explicit conversion of numpy types
-        response = {
+            benchmarks = {
+                'equal_weight': _metrics(equal_weight(returns, covariance)),
+                'min_variance': _metrics(min_variance(returns, covariance)),
+                'markowitz': _metrics(markowitz_max_sharpe(returns, covariance,
+                                    weight_bounds=(weight_min, weight_max))),
+                'hrp': _metrics(hrp_weights(returns, covariance)),
+            }
+        except Exception:
+            benchmarks = {}
+
+        # ── Assemble response (backward-compatible shape) ────────────────────
+        response_payload = {
+            'backend_type': 'classical_qubo' if braket_fallback else None,
             'qsw_result': {
-                'weights': [float(w) for w in result.weights],
-                'sharpe_ratio': float(result.sharpe_ratio),
-                'expected_return': float(result.expected_return),
-                'volatility': float(result.volatility),
-                'n_active': int(np.sum(result.weights > 0.005)),
-                'turnover': float(result.turnover)
+                'weights': result.weights.tolist(),
+                'sharpe_ratio': round(result.sharpe_ratio, 4),
+                'expected_return': round(result.expected_return, 6),
+                'volatility': round(result.volatility, 6),
+                'n_active': result.n_active,
+                'objective': result.objective,
             },
+            'weights': result.weights.tolist(),
+            'sharpe_ratio': round(result.sharpe_ratio, 4),
+            'expected_return': round(result.expected_return, 6),
+            'volatility': round(result.volatility, 6),
+            'n_active': result.n_active,
+            'objective': result.objective,
             'holdings': holdings,
             'sector_allocation': sector_data,
-            'risk_metrics': {
-                'var_95': float(risk_metrics['var_95']),
-                'cvar': float(risk_metrics['cvar'])
-            },
-            'benchmarks': {
-                'equal_weight': {
-                    'name': benchmarks['equal_weight']['name'],
-                    'weights': [float(w) for w in benchmarks['equal_weight']['weights']],
-                    'expected_return': float(benchmarks['equal_weight']['expected_return']),
-                    'volatility': float(benchmarks['equal_weight']['volatility']),
-                    'sharpe_ratio': float(benchmarks['equal_weight']['sharpe_ratio']),
-                    'n_active': int(benchmarks['equal_weight']['n_active'])
-                },
-                'min_variance': {
-                    'name': benchmarks['min_variance']['name'],
-                    'weights': [float(w) for w in benchmarks['min_variance']['weights']],
-                    'expected_return': float(benchmarks['min_variance']['expected_return']),
-                    'volatility': float(benchmarks['min_variance']['volatility']),
-                    'sharpe_ratio': float(benchmarks['min_variance']['sharpe_ratio']),
-                    'n_active': int(benchmarks['min_variance']['n_active'])
-                },
-                'risk_parity': {
-                    'name': benchmarks['risk_parity']['name'],
-                    'weights': [float(w) for w in benchmarks['risk_parity']['weights']],
-                    'expected_return': float(benchmarks['risk_parity']['expected_return']),
-                    'volatility': float(benchmarks['risk_parity']['volatility']),
-                    'sharpe_ratio': float(benchmarks['risk_parity']['sharpe_ratio']),
-                    'n_active': int(benchmarks['risk_parity']['n_active'])
-                },
-                'max_sharpe': {
-                    'name': benchmarks['max_sharpe']['name'],
-                    'weights': [float(w) for w in benchmarks['max_sharpe']['weights']],
-                    'expected_return': float(benchmarks['max_sharpe']['expected_return']),
-                    'volatility': float(benchmarks['max_sharpe']['volatility']),
-                    'sharpe_ratio': float(benchmarks['max_sharpe']['sharpe_ratio']),
-                    'n_active': int(benchmarks['max_sharpe']['n_active'])
-                },
-                'hrp': {
-                    'name': benchmarks['hrp']['name'],
-                    'weights': [float(w) for w in benchmarks['hrp']['weights']],
-                    'expected_return': float(benchmarks['hrp']['expected_return']),
-                    'volatility': float(benchmarks['hrp']['volatility']),
-                    'sharpe_ratio': float(benchmarks['hrp']['sharpe_ratio']),
-                    'n_active': int(benchmarks['hrp']['n_active'])
+            'risk_metrics': {'var_95': round(var_95, 6), 'cvar': round(cvar_95, 6)},
+            'benchmarks': benchmarks,
+            'stage_info': result.stage_info,
+            'assets': [
+                {
+                    'name': asset_names[i],
+                    'sector': sectors_list[i] if i < len(sectors_list) else 'Unknown',
+                    'return': round(float(returns[i]), 6),
+                    'volatility': round(float(covariance[i][i] ** 0.5), 6),
+                    'sharpe': round(
+                        float(returns[i]) / max(float(covariance[i][i] ** 0.5), 1e-10), 4
+                    ),
                 }
+                for i in range(len(asset_names))
+            ],
+            'metadata': {
+                'tickers': tickers,
+                'n_assets': len(asset_names),
+                'objective': objective,
+                'weight_min': weight_min,
+                'weight_max': weight_max,
             },
-            'improvement_over_best': improvement,
-            'assets': [{'name': a['name'], 'sector': a['sector'], 'ann_return': float(a['ann_return']), 'ann_vol': float(a['ann_vol']), 'sharpe': float(a['sharpe'])} for a in assets],
-            'objective': objective,
-            'target_return': target_return,
-            'strategy_preset': strategy_preset,
-            'evolution_method': config.evolution_method,
-            'evolution_time': config.evolution_time,
         }
 
-        # Add backend_type when present (e.g. braket_annealing)
-        if getattr(result, 'backend_type', None):
-            response['backend_type'] = result.backend_type
-
-        # Add graph_metrics and evolution_metrics when available
-        if getattr(result, 'graph_metrics', None) and result.graph_metrics:
-            response['graph_metrics'] = _safe_serialize_metrics(result.graph_metrics)
-        if getattr(result, 'evolution_metrics', None) and result.evolution_metrics:
-            response['evolution_metrics'] = _safe_serialize_metrics(result.evolution_metrics)
-
-        # Include correlation matrix if available
+        # Include correlation matrix if tickers provided
         if tickers:
-            # Calculate correlation from covariance
-            vols = np.sqrt(np.diag(covariance))
+            vols = np.sqrt(np.maximum(np.diag(covariance), 1e-10))
             correlation = covariance / np.outer(vols, vols)
-            response['correlation_matrix'] = [[float(c) for c in row] for row in correlation.tolist()]
+            response_payload['correlation_matrix'] = [[float(c) for c in row] for row in correlation.tolist()]
 
         log_business_audit(
-            action="optimize_run",
-            payload=data or {},
-            result={
-                "sharpe_ratio": response["qsw_result"]["sharpe_ratio"],
-                "n_active": response["qsw_result"]["n_active"],
-                "source": market_payload.source,
-            },
+            action='portfolio_optimize',
+            payload={'objective': objective, 'n_assets': len(asset_names), 'tickers': tickers},
+            result={'sharpe': result.sharpe_ratio, 'n_active': result.n_active},
             status=200,
         )
 
-        return success_response(response)
+        return success_response(_safe_serialize_metrics(response_payload))
 
     except ValueError as e:
         return error_response(str(e), code='BAD_REQUEST', status=400)
     except Exception as e:
-        return error_response(str(e), code='INTERNAL_ERROR', status=500)
+        logger.error(f"optimize_portfolio error: {str(e)}", exc_info=True)
+        return error_response(f'Internal server error: {str(e)}', code='INTERNAL_ERROR', status=500)
 
 
 def _post_webhook(url: str, body: dict):
@@ -1363,18 +1343,11 @@ def admin_list_api_keys():
     )
 
 @app.route('/api/config/objectives', methods=['GET'])
-@require_api_key
-def get_objectives():
+@limiter.exempt
+def get_config_objectives():
     """Return available optimization objectives."""
     return success_response({
-        'objectives': [
-            {'id': 'max_sharpe', 'name': 'Max Sharpe Ratio', 'description': 'Quantum-inspired max risk-adjusted return'},
-            {'id': 'min_variance', 'name': 'Min Variance', 'description': 'Minimum volatility portfolio'},
-            {'id': 'target_return', 'name': 'Target Return', 'description': 'Minimize variance at target return'},
-            {'id': 'risk_parity', 'name': 'Risk Parity', 'description': 'Equal risk contribution per asset'},
-            {'id': 'hrp', 'name': 'Hierarchical Risk Parity', 'description': 'López de Prado HRP; robust out-of-sample, no matrix inversion'},
-            {'id': 'braket_annealing', 'name': 'AWS Braket Annealing', 'description': 'QUBO portfolio selection via AWS Braket or classical fallback'},
-        ]
+        'objectives': [{'id': k, **v} for k, v in OBJECTIVES_CONFIG.items()]
     })
 
 
@@ -1418,69 +1391,12 @@ def get_constraints_schema():
 
 
 @app.route('/api/config/presets', methods=['GET'])
-@require_api_key
-def get_presets():
+@limiter.exempt
+def get_config_presets():
     """Return available strategy presets."""
     return success_response({
-        'presets': [
-            {'id': 'growth', 'name': 'Growth', 'description': 'Higher risk/return, more turnover'},
-            {'id': 'income', 'name': 'Income', 'description': 'Lower risk, stability focused'},
-            {'id': 'balanced', 'name': 'Balanced', 'description': 'Default middle ground'},
-            {'id': 'aggressive', 'name': 'Aggressive', 'description': 'Maximum responsiveness'},
-            {'id': 'defensive', 'name': 'Defensive', 'description': 'Minimum variance, low turnover'},
-        ]
+        'presets': [{'id': k, **v} for k, v in PRESETS_CONFIG.items()]
     })
-
-
-@app.route('/api/braket/estimate', methods=['GET', 'POST'])
-@require_api_key
-@limiter.limit("30 per minute")
-def braket_estimate():
-    """
-    Estimate Braket runtime and cost for a given scenario.
-    Supports GET (query params) or POST (JSON body).
-    Uses official Amazon Braket gate-based QPU pricing as reference.
-    """
-    if request.method == 'POST' and request.is_json:
-        params = request.get_json()
-    else:
-        params = request.args
-
-    scenario = params.get('scenario', 'single_optimize')
-    n_assets = int(params.get('n_assets', 10))
-    start_date = params.get('start_date')
-    end_date = params.get('end_date')
-    rebalance_frequency = params.get('rebalance_frequency', 'monthly')
-    batch_size = int(params.get('batch_size', 1))
-    shots_per_task = int(params.get('shots_per_task', 1000))
-    minutes_per_task = float(params.get('minutes_per_task', 3.0))
-    device = params.get('device', 'rigetti_ankaa')
-
-    # Optional: objectives list for batch (which use braket_annealing)
-    objectives = params.get('objectives')
-    if objectives is not None and not isinstance(objectives, list):
-        objectives = None
-
-    if device not in BRAKET_QPU_PRICING:
-        device = 'rigetti_ankaa'
-
-    try:
-        result = estimate_braket_usage(
-            scenario=scenario,
-            n_assets=n_assets,
-            start_date=start_date,
-            end_date=end_date,
-            rebalance_frequency=rebalance_frequency,
-            batch_size=batch_size,
-            objectives=objectives,
-            shots_per_task=shots_per_task,
-            minutes_per_task=minutes_per_task,
-            device=device,
-        )
-    except ValueError as e:
-        return error_response(str(e), code='VALIDATION_ERROR', status=400)
-
-    return success_response(result)
 
 
 # ─── Ticker catalog & search ───
@@ -1616,7 +1532,7 @@ def get_efficient_frontier():
             covariance = np.array(market_data['covariance'])
 
         # Calculate efficient frontier using the portfolio optimizer function
-        from services.portfolio_optimizer import compute_efficient_frontier
+        from core.portfolio_optimizer import compute_efficient_frontier
         frontier_points = compute_efficient_frontier(returns, covariance, n_points)
         
         # Calculate min and max possible returns for the range
