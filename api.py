@@ -32,6 +32,11 @@ from core.portfolio_optimizer import (
 )
 from config.api_config import OBJECTIVES_CONFIG, PRESETS_CONFIG
 from services.constraints import PortfolioConstraints
+from services.ibm_quantum import (
+    set_token as ibm_set_token,
+    get_status as ibm_get_status,
+    clear_token as ibm_clear_token,
+)
 
 # Import market data service
 from services.market_data import fetch_market_data, validate_tickers
@@ -1397,6 +1402,44 @@ def get_config_presets():
     return success_response({
         'presets': [{'id': k, **v} for k, v in PRESETS_CONFIG.items()]
     })
+
+
+@app.route('/api/config/ibm-quantum', methods=['POST'])
+@require_api_key
+def set_ibm_quantum_token():
+    """
+    Store an IBM Quantum API token and verify connectivity.
+
+    Body: {"token": "<IBM Quantum API token>"}
+
+    On success returns {"ok": true, "backends": ["ibm_kyiv", ...]}
+    On failure returns {"ok": false, "error": "..."} with HTTP 400.
+    """
+    body = request.get_json(silent=True) or {}
+    token = body.get('token', '')
+    if not token:
+        return error_response('token field is required', 400)
+
+    result = ibm_set_token(token)
+    if not result.get('ok'):
+        return error_response(result.get('error', 'IBM Quantum connection failed'), 400)
+
+    return success_response(result)
+
+
+@app.route('/api/config/ibm-quantum', methods=['DELETE'])
+@require_api_key
+def clear_ibm_quantum_token():
+    """Remove the stored IBM Quantum token."""
+    ibm_clear_token()
+    return success_response({'cleared': True})
+
+
+@app.route('/api/config/ibm-quantum/status', methods=['GET'])
+@limiter.exempt
+def get_ibm_quantum_status():
+    """Return IBM Quantum connection status (no auth required)."""
+    return success_response(ibm_get_status())
 
 
 # ─── Ticker catalog & search ───

@@ -825,6 +825,9 @@ export default function QuantumPortfolioDashboard() {
   const [cardinality, setCardinality] = useState(null);
   const [kScreen, setKScreen] = useState(null);
   const [kSelect, setKSelect] = useState(null);
+  const [ibmToken, setIbmToken] = useState('');
+  const [ibmStatus, setIbmStatus] = useState(null); // { configured, backends } | null
+  const [ibmSaving, setIbmSaving] = useState(false);
   const [weightMin, setWeightMin] = useState(0.005);
   const [weightMax, setWeightMax] = useState(0.20);
   const [maxWeight, setMaxWeight] = useState(0.10);
@@ -874,6 +877,38 @@ export default function QuantumPortfolioDashboard() {
       turnoverLimit,
     };
     setCustomPresets([...customPresets, newPreset]);
+  };
+
+  // IBM Quantum token management
+  const saveIbmToken = async () => {
+    if (!ibmToken.trim()) return;
+    setIbmSaving(true);
+    try {
+      const res = await fetch('/api/config/ibm-quantum', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: ibmToken }),
+      });
+      const data = await res.json();
+      if (data.data && data.data.ok) {
+        setIbmStatus({ configured: true, backends: data.data.backends || [] });
+        setIbmToken('');
+      } else {
+        const msg = (data.data && data.data.error) || data.error || 'Connection failed';
+        setIbmStatus({ configured: false, error: msg });
+      }
+    } catch {
+      setIbmStatus({ configured: false, error: 'Network error' });
+    }
+    setIbmSaving(false);
+  };
+
+  const clearIbmToken = async () => {
+    try {
+      await fetch('/api/config/ibm-quantum', { method: 'DELETE' });
+    } catch { /* ignore */ }
+    setIbmStatus(null);
+    setIbmToken('');
   };
 
   // Full theme palettes (all keys so text/buttons stay visible)
@@ -1307,6 +1342,69 @@ export default function QuantumPortfolioDashboard() {
               <input type="number" min={2} max={10} value={kSelect ?? ''} placeholder="auto"
                 onChange={e => setKSelect(e.target.value ? +e.target.value : null)}
                 style={{ width: '100%', padding: '6px 8px', borderRadius: 5, border: `1px solid ${activeTheme.border}`, background: activeTheme.surface, color: activeTheme.text, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+          )}
+
+          {/* IBM Quantum settings — VQE only */}
+          {objective === 'vqe' && (
+            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 6, border: `1px solid ${ibmStatus?.configured ? activeTheme.green : activeTheme.border}`, background: `${activeTheme.surface}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: activeTheme.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: "'JetBrains Mono', monospace" }}>
+                  IBM Quantum
+                </span>
+                {ibmStatus?.configured
+                  ? <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: `${activeTheme.green}20`, color: activeTheme.green, fontFamily: "'JetBrains Mono', monospace" }}>CONNECTED</span>
+                  : <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: `${activeTheme.textDim}20`, color: activeTheme.textMuted, fontFamily: "'JetBrains Mono', monospace" }}>SIMULATOR</span>
+                }
+              </div>
+
+              {ibmStatus?.configured ? (
+                <>
+                  <div style={{ fontSize: 11, color: activeTheme.textMuted, marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>
+                    {ibmStatus.backends?.length ?? 0} backend{ibmStatus.backends?.length !== 1 ? 's' : ''} available
+                  </div>
+                  {ibmStatus.backends?.length > 0 && (
+                    <div style={{ fontSize: 10, color: activeTheme.textDim, marginBottom: 8, fontFamily: "'JetBrains Mono', monospace", wordBreak: 'break-all' }}>
+                      {ibmStatus.backends.slice(0, 3).join(', ')}{ibmStatus.backends.length > 3 ? ` +${ibmStatus.backends.length - 3}` : ''}
+                    </div>
+                  )}
+                  <button
+                    onClick={clearIbmToken}
+                    style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: `1px solid ${activeTheme.border}`, background: 'transparent', color: activeTheme.textMuted, cursor: 'pointer', fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    Disconnect
+                  </button>
+                </>
+              ) : (
+                <>
+                  {ibmStatus?.error && (
+                    <div style={{ fontSize: 10, color: activeTheme.red, marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>
+                      {ibmStatus.error}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: activeTheme.textMuted, marginBottom: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                    API Token
+                  </div>
+                  <input
+                    type="password"
+                    value={ibmToken}
+                    onChange={e => setIbmToken(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && saveIbmToken()}
+                    placeholder="Paste IBM Quantum token…"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 5, border: `1px solid ${activeTheme.border}`, background: activeTheme.bg, color: activeTheme.text, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: 'none', boxSizing: 'border-box', marginBottom: 6 }}
+                  />
+                  <button
+                    onClick={saveIbmToken}
+                    disabled={ibmSaving || !ibmToken.trim()}
+                    style={{ width: '100%', padding: '6px 0', borderRadius: 5, border: `1px solid ${activeTheme.accent}`, background: ibmSaving || !ibmToken.trim() ? 'transparent' : `${activeTheme.accent}18`, color: ibmSaving || !ibmToken.trim() ? activeTheme.textDim : activeTheme.accent, fontSize: 11, cursor: ibmSaving || !ibmToken.trim() ? 'not-allowed' : 'pointer', fontFamily: "'JetBrains Mono', monospace", transition: 'all 150ms' }}
+                  >
+                    {ibmSaving ? 'Connecting…' : 'Connect'}
+                  </button>
+                  <div style={{ fontSize: 10, color: activeTheme.textDim, marginTop: 6, lineHeight: 1.4 }}>
+                    Without a token, VQE runs as a classical simulation.
+                  </div>
+                </>
+              )}
             </div>
           )}
 
