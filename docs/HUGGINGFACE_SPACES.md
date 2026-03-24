@@ -1,5 +1,7 @@
 # Deploying to Hugging Face Spaces
 
+For **audience, disclaimer, and what to show in a public demo**, see **[PUBLIC_DEMO.md](PUBLIC_DEMO.md)**.
+
 This guide explains how to host the Quantum Portfolio Lab on [Hugging Face Spaces](https://huggingface.co/spaces).
 
 ## Prerequisites
