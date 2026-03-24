@@ -2,6 +2,8 @@
 
 > Comprehensive guide to every file in the quantum-hybrid-portfolio project
 
+**Layout note:** Most markdown files that used to sit in the repo root now live under **`docs/`** (`dashboard/`, `guides/`, `frontend/`, `project/`, `planning/`, `misc/`). See **`docs/DOCUMENTATION_INDEX.md`** for paths. The **Root Files** section below still describes key root entries (`README.md`, `api.py`, etc.) and may mention old locations.
+
 ---
 
 ## 📑 Table of Contents

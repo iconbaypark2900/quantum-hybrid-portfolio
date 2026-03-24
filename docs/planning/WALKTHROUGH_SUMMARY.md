@@ -264,10 +264,10 @@ Minor issues:
 
 This walkthrough created 3 documentation files:
 
-1. **DASHBOARD_WALKTHROUGH_REPORT.md** - Detailed analysis
-2. **DASHBOARD_TEST_SUMMARY.md** - Comprehensive test results
-3. **DASHBOARD_VISUAL_GUIDE.md** - Visual representation
-4. **WALKTHROUGH_SUMMARY.md** - This quick reference
+1. **docs/dashboard/DASHBOARD_WALKTHROUGH_REPORT.md** — Detailed analysis
+2. **docs/dashboard/DASHBOARD_TEST_SUMMARY.md** — Comprehensive test results
+3. **docs/dashboard/DASHBOARD_VISUAL_GUIDE.md** — Visual representation
+4. **docs/planning/WALKTHROUGH_SUMMARY.md** — This quick reference
 
 ---
 

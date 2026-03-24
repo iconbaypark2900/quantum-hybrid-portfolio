@@ -41,6 +41,31 @@ cd frontend
 npm install
 ```
 
+## How it works
+
+Optimization goes through **`run_optimization`** in `core.portfolio_optimizer` (also exposed from `services.portfolio_optimizer`). It can route to:
+
+1. **Hybrid pipeline** — Screening, quantum-inspired selection, optimization
+2. **QUBO + simulated annealing** — Discrete selection
+3. **VQE-style** weights — Quantum-inspired variational approach
+4. **Classical** — Markowitz, min variance, HRP, equal weight
+
+## Python usage example
+
+```python
+from services.portfolio_optimizer import run_optimization
+import numpy as np
+
+returns = np.array([0.12, 0.10, 0.15, 0.08, 0.11])
+covariance = np.eye(5) * 0.04
+
+result = run_optimization(returns, covariance, objective="hybrid")
+
+print(f"Sharpe Ratio: {result.sharpe_ratio:.3f}")
+print(f"Expected Return: {result.expected_return*100:.2f}%")
+print(f"Volatility: {result.volatility*100:.2f}%")
+```
+
 ## Running the System
 
 ### Backend API only
@@ -85,10 +110,11 @@ The dashboard opens at **http://localhost:3000** and proxies API requests to por
 
 ## Next Steps
 
-1. **Use the dashboard** — See [DASHBOARD_GUIDE.md](DASHBOARD_GUIDE.md)
-2. **Run an example** — `python examples/basic_qsw_example.py`
-3. **Call the API** — See [API_REFERENCE.md](API_REFERENCE.md)
-4. **Explore notebooks** — `notebooks/01_qsw_exploration.ipynb`
+1. **Public demo** — [PUBLIC_DEMO.md](PUBLIC_DEMO.md) (hosting, disclaimer, audience)
+2. **Use the dashboard** — See [DASHBOARD_GUIDE.md](DASHBOARD_GUIDE.md)
+3. **Run an example** — `python examples/basic_qsw_example.py`
+4. **Call the API** — See [API_REFERENCE.md](API_REFERENCE.md)
+5. **Explore notebooks** — `notebooks/01_qsw_exploration.ipynb`
 
 ## Troubleshooting
 
@@ -110,4 +136,4 @@ The dashboard opens at **http://localhost:3000** and proxies API requests to por
 
 ---
 
-*Last updated: 2026-02*
+*Last updated: March 2026*

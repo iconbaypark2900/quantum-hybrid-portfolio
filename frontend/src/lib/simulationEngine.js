@@ -72,6 +72,84 @@ export function generateMarketData(nAssets, nDays, regime, seedVal, customTicker
   return { assets, corr, regime };
 }
 
+/** Box–Muller using current seededRandom stream */
+function randn() {
+  const u1 = Math.max(seededRandom(), 1e-12);
+  const u2 = seededRandom();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+/** Lower-triangular Cholesky factor L with A ≈ L Lᵀ (small n) */
+function choleskyLower(A) {
+  const n = A.length;
+  const L = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      let sum = A[i][j];
+      for (let k = 0; k < j; k++) sum -= L[i][k] * L[j][k];
+      if (i === j) {
+        L[i][j] = Math.sqrt(Math.max(sum, 1e-18));
+      } else {
+        L[i][j] = sum / (L[j][j] || 1e-18);
+      }
+    }
+  }
+  return L;
+}
+
+/**
+ * Map backend /api/market-data payload into lab `data` shape (assets, corr, regime).
+ * Synthesizes daily return paths consistent with annualized mean + Ledoit–Wolf covariance.
+ */
+export function labDataFromMarketApi(response, nDays = 504, seedVal = 42) {
+  const symbols = response.assets || [];
+  const sectors = response.sectors || symbols.map(() => "Unknown");
+  const annR = response.returns || [];
+  const cov = response.covariance || [];
+  const n = symbols.length;
+  if (!n || !cov.length || cov.length !== n) {
+    throw new Error("Market data response missing assets or covariance");
+  }
+  const annVol = [];
+  for (let i = 0; i < n; i++) {
+    annVol[i] = Math.sqrt(Math.max(0, cov[i][i]));
+  }
+  const corr = [];
+  for (let i = 0; i < n; i++) {
+    corr[i] = [];
+    for (let j = 0; j < n; j++) {
+      const den = annVol[i] * annVol[j];
+      corr[i][j] = den > 1e-18 ? cov[i][j] / den : (i === j ? 1 : 0);
+    }
+  }
+  const dailyCov = cov.map((row) => row.map((c) => c / 252));
+  const L = choleskyLower(dailyCov);
+  resetSeed(seedVal);
+  const returnsByAsset = Array.from({ length: n }, () => []);
+  for (let d = 0; d < nDays; d++) {
+    const z = Array.from({ length: n }, () => randn());
+    for (let i = 0; i < n; i++) {
+      let shock = 0;
+      for (let j = 0; j < n; j++) shock += L[i][j] * z[j];
+      const muDaily = (annR[i] || 0) / 252;
+      returnsByAsset[i].push(muDaily + shock);
+    }
+  }
+  const assets = symbols.map((sym, i) => {
+    const annReturn = annR[i] || 0;
+    const annV = annVol[i] || 1e-8;
+    return {
+      name: sym,
+      sector: sectors[i] || "Unknown",
+      returns: returnsByAsset[i],
+      annReturn,
+      annVol: annV,
+      sharpe: annReturn / annV,
+    };
+  });
+  return { assets, corr, regime: "normal", source: "live" };
+}
+
 // ─── HELPER METRICS ───
 export function calculatePortfolioScore(weights, data, objective) {
   const n = data.assets.length;
@@ -488,6 +566,76 @@ export function runBenchmarks(data) {
     maxSharpe: { name: "Max Sharpe", ...calc(ms) },
     hrp: { name: "HRP", ...calc(hrpW) },
   };
+}
+
+// ─── UNIFIED OPTIMISATION DISPATCHER ───
+export function runOptimisation(data, opts = {}) {
+  const { objective = "hybrid", K, KScreen, KSelect, wMax = 0.20 } = opts;
+  const n = data.assets.length;
+  const maxWeight = wMax;
+
+  switch (objective) {
+    case "equal_weight": {
+      const w = new Array(n).fill(1 / n);
+      return _metrics(w, data, null);
+    }
+    case "markowitz":
+    case "min_variance": {
+      const r = runEnhancedQSWOptimization(data, 0.3, 10, maxWeight, 0.2, "continuous", objective === "markowitz" ? "balanced" : "conservative");
+      return _metrics(r.weights, data, null);
+    }
+    case "hrp": {
+      const w = computeHRPWeights(data);
+      return _metrics(w, data, null);
+    }
+    case "qubo_sa": {
+      const k = K || Math.min(Math.ceil(n * 0.4), 8);
+      const selected = data.assets.map((a, i) => ({ i, score: a.sharpe })).sort((a, b) => b.score - a.score).slice(0, k).map(x => x.i);
+      const w = new Array(n).fill(0);
+      selected.forEach(i => { w[i] = 1 / k; });
+      return _metrics(w, data, { stage2_selected_idx: selected, stage2_qubo_obj: 0, stage1_screened_count: n, stage3_sharpe: 0 });
+    }
+    case "vqe": {
+      const r = runEnhancedQSWOptimization(data, 0.25, 8, maxWeight, 0.2, "continuous", "balanced");
+      return _metrics(r.weights, data, null);
+    }
+    case "hybrid":
+    default: {
+      const kScr = KScreen || Math.min(Math.ceil(n * 0.6), 15);
+      const kSel = KSelect || Math.min(Math.ceil(kScr * 0.5), 5);
+      const screened = data.assets.map((a, i) => ({ i, score: a.sharpe + (1 - a.annVol) * 0.5 })).sort((a, b) => b.score - a.score).slice(0, kScr);
+      const selected = screened.slice(0, kSel);
+      const w = new Array(n).fill(0);
+      selected.forEach(s => { w[s.i] = 1 / kSel; });
+      const selectedNames = selected.map(s => data.assets[s.i].name);
+      const r = _metrics(w, data, {
+        stage1_screened_count: kScr,
+        stage2_selected_idx: selected.map(s => s.i),
+        stage2_selected_names: selectedNames,
+        stage2_qubo_obj: 0,
+        stage3_sharpe: 0,
+      });
+      if (r.stage_info) r.stage_info.stage3_sharpe = r.sharpe;
+      return r;
+    }
+  }
+}
+
+function _metrics(weights, data, stageInfo) {
+  const n = data.assets.length;
+  let portReturn = 0, portVar = 0;
+  for (let i = 0; i < n; i++) {
+    portReturn += weights[i] * data.assets[i].annReturn;
+    for (let j = 0; j < n; j++) {
+      portVar += weights[i] * weights[j] * data.corr[i][j] * data.assets[i].annVol * data.assets[j].annVol;
+    }
+  }
+  const portVol = Math.sqrt(Math.max(0, portVar));
+  return { weights, portReturn, portVol, sharpe: portReturn / (portVol || 1), nActive: weights.filter(w => w > 0.005).length, stage_info: stageInfo };
+}
+
+export function computeHRPWeightsArr(data) {
+  return computeHRPWeights(data);
 }
 
 // ─── EQUITY CURVE ───
