@@ -9,7 +9,7 @@ This document describes the enhanced implementation of the Quantum Hybrid Portfo
 The enhanced system consists of two main components:
 
 1. **Advanced Quantum Optimization Algorithms**
-2. **React Dashboard** (see [DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md))
+2. **React Dashboard** (see [DASHBOARD_GUIDE.md](../DASHBOARD_GUIDE.md))
 
 ## 1. Advanced Quantum Optimization Algorithms
 

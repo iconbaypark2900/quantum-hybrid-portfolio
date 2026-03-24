@@ -60,16 +60,22 @@ npm start
 
 Dashboard opens at **http://localhost:3000**
 
+### Public demo
+
+To **host** a browser-only demo or understand disclaimers and limits, see **[docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md)**. Deploying to Hugging Face Spaces: **[docs/HUGGINGFACE_SPACES.md](docs/HUGGINGFACE_SPACES.md)**.
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | Installation and setup guide |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture overview |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Complete API documentation |
-| [docs/DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md) | Dashboard usage guide |
-| [DASHBOARD_README.md](DASHBOARD_README.md) | Dashboard features and customization |
-| [examples/](examples/) | Code examples and notebooks |
+| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | Install, run API, run dashboard, troubleshooting |
+| [docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md) | Public demo: audience, disclaimer, hosting |
+| [docs/DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md) | Dashboard user guide (canonical) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | API reference |
+| [docs/HUGGINGFACE_SPACES.md](docs/HUGGINGFACE_SPACES.md) | Hugging Face Spaces deployment |
+| [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md) | Full documentation index |
+| [examples/](examples/) | Code examples |
 
 ## Optimization Methods
 
@@ -141,7 +147,8 @@ quantum-hybrid-portfolio/
 ├── frontend/                   # React dashboard
 ├── examples/                   # Code examples
 ├── tests/                      # Test suite
-└── docs/                       # Documentation
+├── data/                       # Sample data (e.g. CSV), SQLite when used locally
+└── docs/                       # Documentation (see docs/README.md; DOCUMENTATION_INDEX.md)
 ```
 
 ## Configuration
