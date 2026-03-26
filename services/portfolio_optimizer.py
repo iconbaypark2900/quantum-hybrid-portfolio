@@ -5,7 +5,7 @@ Re-exports run_optimization, OptimizationResult, OBJECTIVES, compute_efficient_f
 Maps legacy objective names for backtest and benchmark compatibility:
   max_sharpe -> markowitz
   risk_parity -> hrp
-  braket_annealing -> qubo_sa
+  braket_annealing -> uses Braket backend (or qubo_sa fallback)
 """
 from types import SimpleNamespace
 from typing import Dict, List, Optional
@@ -18,6 +18,13 @@ from core.portfolio_optimizer import (
     compute_efficient_frontier as _core_compute_efficient_frontier,
 )
 
+# Import Braket backend for quantum annealing
+try:
+    from services.braket_backend import BraketAnnealingOptimizer, BraketConfig
+    BRAKET_AVAILABLE = True
+except ImportError:
+    BRAKET_AVAILABLE = False
+
 
 # Re-export OBJECTIVES
 OBJECTIVES = _CORE_OBJECTIVES
@@ -26,7 +33,7 @@ OBJECTIVES = _CORE_OBJECTIVES
 _OBJECTIVE_MAP = {
     "max_sharpe": "markowitz",
     "risk_parity": "hrp",
-    "braket_annealing": "qubo_sa",
+    # braket_annealing handled separately below
     "hierarchical_risk_parity": "hrp",
 }
 
@@ -110,8 +117,20 @@ def run_optimization(
     Legacy params (market_regime, strategy_preset, initial_weights, config, constraints)
     are accepted for compatibility but ignored. Use core.portfolio_optimizer directly
     for full control.
+    
+    Special handling for 'braket_annealing': uses Braket backend when available,
+    falls back to classical qubo_sa.
     """
     requested = objective
+    
+    # Handle braket_annealing specially
+    if objective == "braket_annealing":
+        if BRAKET_AVAILABLE:
+            return _run_braket_optimization(returns, covariance, **kwargs)
+        else:
+            # Fall back to qubo_sa
+            objective = "qubo_sa"
+    
     objective = _OBJECTIVE_MAP.get(objective, objective)
     core_result = _core_run_optimization(
         returns=np.asarray(returns),
@@ -131,6 +150,38 @@ def run_optimization(
         seed=int(kwargs.get("seed", 42)),
     )
     return _ResultAdapter(core_result, requested)
+
+
+def _run_braket_optimization(
+    returns: np.ndarray,
+    covariance: np.ndarray,
+    **kwargs
+):
+    """
+    Run optimization using Braket quantum annealing backend.
+    
+    Returns a SimpleNamespace with the same interface as OptimizationResult.
+    """
+    optimizer = BraketAnnealingOptimizer()
+    result = optimizer.optimize(
+        returns=returns,
+        covariance=covariance,
+        K=kwargs.get("K"),
+        lambda_risk=float(kwargs.get("lambda_risk", 1.0)),
+        gamma=float(kwargs.get("gamma", 8.0)),
+    )
+    
+    # Wrap in SimpleNamespace for compatibility
+    return SimpleNamespace(
+        weights=result['weights'],
+        sharpe_ratio=result['sharpe_ratio'],
+        expected_return=result['expected_return'],
+        volatility=result['volatility'],
+        n_active=result['n_active'],
+        objective='braket_annealing',
+        stage_info={'backend': result.get('backend', 'unknown')},
+        asset_names=None,
+    )
 
 
 # Re-export for callers

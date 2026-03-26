@@ -2,6 +2,8 @@
 Backend API for Quantum Hybrid Portfolio Dashboard
 Provides REST API endpoints for the React frontend
 """
+from __future__ import annotations
+
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -26,32 +28,45 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 # Import portfolio optimization (unified service routes to methods)
 from core.portfolio_optimizer import (
     run_optimization,
-    OptimizationResult,
     OBJECTIVES,
     compute_efficient_frontier,
+    _portfolio_metrics,
 )
+from methods.vqe import MAX_IBM_QUBITS, vqe_weights_ibm_strict
 from config.api_config import OBJECTIVES_CONFIG, PRESETS_CONFIG
 from services.constraints import PortfolioConstraints
-from services.ibm_quantum import (
-    set_token as ibm_set_token,
-    get_status as ibm_get_status,
-    clear_token as ibm_clear_token,
+from services import ibm_quantum as ibm_quantum_service
+from services import lab_run_service
+from services.auth import (
+    init_jwt,
+    create_access_token,
+    create_refresh_token,
+    verify_token,
+    revoke_token,
+    get_current_user,
+    hash_api_key,
+    generate_api_key,
+    JWT_AVAILABLE,
 )
 
-# Import market data service
-from services.market_data import fetch_market_data, validate_tickers
+# Import market data service (multi-provider: yfinance, Alpaca, Polygon with fallback)
+from services.data_provider_v2 import MarketDataProvider, fetch_market_data
+from services.market_data import validate_tickers
 
 # Import backtesting service
 from services.backtest import run_backtest as run_backtesting
 from services.data_provider import load_market_payload
 
-# ─── Structured JSON Logging ───
+# ─── Logging (JSON for prod/aggregation, console for dev readability) ───
+LOG_FORMAT = os.getenv('LOG_FORMAT', 'json')
 log_handler = logging.StreamHandler()
-formatter = jsonlogger_JsonFormatter(
-    '%(asctime)s %(name)s %(levelname)s %(message)s',
-    rename_fields={'asctime': 'timestamp', 'levelname': 'level', 'name': 'logger'},
-)
-log_handler.setFormatter(formatter)
+if LOG_FORMAT == 'console':
+    log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)-8s %(name)s %(message)s'))
+else:
+    log_handler.setFormatter(jsonlogger_JsonFormatter(
+        '%(asctime)s %(name)s %(levelname)s %(message)s',
+        rename_fields={'asctime': 'timestamp', 'levelname': 'level', 'name': 'logger'},
+    ))
 
 logging.root.handlers = []
 logging.root.addHandler(log_handler)
@@ -152,6 +167,18 @@ def _ensure_runtime_tables() -> None:
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_log(request_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_tenant_id ON audit_log(tenant_id)")
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tenant_integration_secrets (
+                tenant_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                secret_enc TEXT NOT NULL,
+                metadata_json TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (tenant_id, provider)
+            )
+            """
+        )
         conn.commit()
     finally:
         conn.close()
@@ -162,6 +189,17 @@ def _db_conn():
 
 
 _ensure_runtime_tables()
+
+ibm_quantum_service.set_db_conn_factory(_db_conn)
+lab_run_service.set_db_conn_factory(_db_conn)
+lab_run_service.ensure_table()
+
+# Initialize JWT authentication
+if JWT_AVAILABLE:
+    init_jwt(app)
+    logger.info("JWT authentication enabled")
+else:
+    logger.warning("JWT authentication disabled - install flask-jwt-extended to enable")
 
 
 def log_business_audit(action: str, payload: dict, result: dict, status: int = 200):
@@ -304,6 +342,27 @@ def _create_api_key(tenant_id: str, key_name: str = "") -> str:
     finally:
         conn.close()
     return plain
+
+
+def integration_effective_tenant_id():
+    """
+    Tenant id for integration credentials (IBM, Braket metadata).
+    - Static API_KEY + same header value: X-Tenant-Id selects enterprise.
+    - Database API key: tenant from key (ignores X-Tenant-Id).
+    - Anonymous: default.
+    """
+    header_tid = (request.headers.get("X-Tenant-Id") or "").strip()
+    client_key = request.headers.get("X-API-Key", "")
+    if API_KEY and client_key == API_KEY:
+        return header_tid or "default"
+    tenant = _lookup_tenant_by_key(client_key) if client_key else None
+    if tenant:
+        return str(tenant["tenant_id"])
+    gid = getattr(g, "tenant_id", "anonymous")
+    if gid not in ("anonymous", None, ""):
+        return str(gid)
+    return "default"
+
 
 def require_api_key(f):
     """
@@ -939,6 +998,21 @@ def optimize_portfolio():
         # ── Run optimisation ─────────────────────────────────────────────────
         asset_names = [a['name'] for a in assets]
         sectors_list = [a['sector'] for a in assets]
+        t0 = time.time()
+        if LOG_FORMAT == 'console':
+            tickers_preview = tickers[:5] if tickers and len(tickers) > 5 else tickers
+            logger.info(
+                "optimization_start objective=%s n_assets=%d weight_min=%s weight_max=%s tickers=%s",
+                objective, len(asset_names), weight_min, weight_max, tickers_preview,
+            )
+        else:
+            logger.info("optimization_start", extra={
+                "objective": objective,
+                "n_assets": len(asset_names),
+                "weight_min": weight_min,
+                "weight_max": weight_max,
+                "tickers": tickers[:5] if tickers and len(tickers) > 5 else tickers,
+            })
 
         with OPTIMIZATION_LATENCY.labels(objective=objective).time():
             result = run_optimization(
@@ -959,6 +1033,8 @@ def optimize_portfolio():
                 seed=seed,
             )
 
+        duration_ms = round((time.time() - t0) * 1000, 2)
+
         # ── Build holdings list ──────────────────────────────────────────────
         holdings = [
             {
@@ -969,7 +1045,7 @@ def optimize_portfolio():
             for i in range(len(asset_names))
             if result.weights[i] > 1e-4
         ]
-
+        sorted_holdings = sorted(holdings, key=lambda x: -x['weight'])
         # ── Sector aggregation ────────────────────────────────────────────────
         sector_alloc = {}
         for i, (name, sector) in enumerate(zip(asset_names, sectors_list)):
@@ -977,6 +1053,35 @@ def optimize_portfolio():
             if w > 1e-4:
                 sector_alloc[sector] = sector_alloc.get(sector, 0.0) + w
         sector_data = [{'sector': s, 'weight': round(w, 6)} for s, w in sector_alloc.items()]
+
+        # ── Log results (format-aware) ────────────────────────────────────────
+        if LOG_FORMAT == 'console':
+            logger.info(
+                "optimization_completed objective=%s sharpe=%.4f return=%.4f vol=%.4f n_active=%d duration=%.0fms",
+                objective, result.sharpe_ratio, result.expected_return, result.volatility,
+                result.n_active, duration_ms,
+            )
+            holdings_cap = sorted_holdings[:50]
+            logger.info("Holdings (%d):", len(holdings_cap))
+            for h in holdings_cap:
+                logger.info("  %s: %.1f%% (%s)", h['name'], h['weight'] * 100, h['sector'])
+            sector_str = ", ".join("%s %.0f%%" % (s, w * 100) for s, w in sorted(sector_alloc.items(), key=lambda x: -x[1]))
+            logger.info("Sectors: %s", sector_str)
+        else:
+            logger.info("optimization_completed", extra={
+                "objective": objective,
+                "sharpe_ratio": round(result.sharpe_ratio, 4),
+                "n_active": result.n_active,
+                "expected_return": round(result.expected_return, 6),
+                "volatility": round(result.volatility, 6),
+                "duration_ms": duration_ms,
+            })
+            full_holdings = [(h['name'], round(h['weight'] * 100, 1), h['sector']) for h in sorted_holdings[:50]]
+            logger.info("optimization_holdings", extra={
+                "n_holdings": len(holdings),
+                "holdings": full_holdings,
+                "sector_allocation": [{"sector": s, "weight_pct": round(w * 100, 1)} for s, w in sector_alloc.items()],
+            })
 
         # ── Risk metrics (VaR / CVaR approximation) ───────────────────────────
         port_vol = result.volatility
@@ -1289,6 +1394,218 @@ def get_job_status(job_id):
     return success_response(job)
 
 
+# ─── Lab Runs (durable experiment registry) ─────────────────────────────────
+
+def _build_optimize_spec(data: dict) -> dict:
+    """Extract and normalise the optimization spec from a run request body."""
+    objective = data.get("objective", "hybrid")
+    objective = {
+        "max_sharpe": "markowitz",
+        "risk_parity": "hrp",
+        "braket_annealing": "qubo_sa",
+    }.get(objective, objective)
+    bn = data.get("backend_name")
+    if isinstance(bn, str):
+        bn = bn.strip() or None
+    return {
+        "objective": objective,
+        "weight_min": float(data.get("weight_min", data.get("minWeight", 0.005))),
+        "weight_max": float(data.get("weight_max", data.get("maxWeight", 0.30))),
+        "seed": int(data.get("seed", 42)),
+        "K": data.get("K"),
+        "K_screen": data.get("K_screen"),
+        "K_select": data.get("K_select"),
+        "lambda_risk": float(data.get("lambda_risk", 1.0)),
+        "gamma": float(data.get("gamma", 8.0)),
+        "n_layers": int(data.get("n_layers", 3)),
+        "n_restarts": int(data.get("n_restarts", 8)),
+        "data_mode": data.get("data_mode", "synthetic"),
+        "regime": data.get("regime"),
+        "tickers": data.get("tickers") or data.get("asset_names"),
+        "n_assets": len(data.get("returns", [])) if data.get("returns") else None,
+        "backend_name": bn,
+        "ibm_backend_mode": str(data.get("ibm_backend_mode") or "auto").lower(),
+    }
+
+
+def _lab_run_holdings_and_payload(
+    weights: np.ndarray,
+    metrics: dict,
+    assets: list,
+    *,
+    stage_info: dict | None = None,
+    quantum_metadata: dict | None = None,
+    objective: str | None = None,
+) -> dict:
+    sectors = [a.get("sector", "Unknown") for a in assets]
+    asset_names = [a["name"] for a in assets]
+    holdings = [
+        {
+            "name": asset_names[i],
+            "sector": sectors[i] if i < len(sectors) else "Unknown",
+            "weight": float(weights[i]),
+        }
+        for i in range(len(weights))
+        if weights[i] > 0.005
+    ]
+    out = {
+        "weights": [float(w) for w in weights],
+        "sharpe_ratio": float(metrics["sharpe"]),
+        "expected_return": float(metrics["return"]),
+        "volatility": float(metrics["volatility"]),
+        "n_active": int(metrics["n_active"]),
+        "holdings": holdings,
+        "stage_info": stage_info,
+    }
+    if objective is not None:
+        out["objective"] = objective
+    if quantum_metadata is not None:
+        out["quantum_metadata"] = quantum_metadata
+    return out
+
+
+def _run_optimize_for_run(run_id: str, tenant_id: str, data: dict, execution_kind: str = "async_optimize") -> None:
+    """Background worker: execute optimization and persist result on the run row."""
+    lab_run_service.update_status(run_id, "running")
+    try:
+        market_payload = load_market_payload(data)
+        spec = _build_optimize_spec(data)
+        assets = market_payload.assets
+
+        if execution_kind == "ibm_runtime":
+            w, qmeta = vqe_weights_ibm_strict(
+                market_payload.returns,
+                market_payload.covariance,
+                n_layers=spec["n_layers"],
+                n_restarts=spec["n_restarts"],
+                weight_min=spec["weight_min"],
+                weight_max=spec["weight_max"],
+                seed=spec["seed"],
+                backend_name=spec.get("backend_name"),
+                backend_mode=spec.get("ibm_backend_mode") or "auto",
+            )
+            qmeta = dict(qmeta)
+            qmeta["execution_kind"] = "ibm_runtime"
+            metrics = _portfolio_metrics(w, market_payload.returns, market_payload.covariance)
+            result_payload = _lab_run_holdings_and_payload(
+                w,
+                metrics,
+                assets,
+                stage_info=None,
+                quantum_metadata=qmeta,
+                objective="vqe",
+            )
+        else:
+            result = run_optimization(
+                returns=market_payload.returns,
+                covariance=market_payload.covariance,
+                objective=spec["objective"],
+                target_return=float(data["target_return"]) if data.get("target_return") else None,
+                asset_names=[a["name"] for a in market_payload.assets],
+                K=int(spec["K"]) if spec.get("K") is not None else None,
+                K_screen=int(spec["K_screen"]) if spec.get("K_screen") is not None else None,
+                K_select=int(spec["K_select"]) if spec.get("K_select") is not None else None,
+                lambda_risk=spec["lambda_risk"],
+                gamma=spec["gamma"],
+                n_layers=spec["n_layers"],
+                n_restarts=spec["n_restarts"],
+                weight_min=spec["weight_min"],
+                weight_max=spec["weight_max"],
+                seed=spec["seed"],
+            )
+            metrics = {
+                "sharpe": result.sharpe_ratio,
+                "return": result.expected_return,
+                "volatility": result.volatility,
+                "n_active": result.n_active,
+            }
+            result_payload = _lab_run_holdings_and_payload(
+                result.weights,
+                metrics,
+                assets,
+                stage_info=result.stage_info,
+                quantum_metadata=None,
+                objective=None,
+            )
+            result_payload["objective"] = spec["objective"]
+
+        lab_run_service.update_status(run_id, "completed", result=result_payload)
+        log_async_audit(tenant_id, "run_completed", {"run_id": run_id}, {"status": "completed"}, 200)
+    except Exception as exc:
+        logger.error("run_failed run_id=%s: %s", run_id, exc, exc_info=True)
+        lab_run_service.update_status(run_id, "failed", error=str(exc))
+        log_async_audit(tenant_id, "run_failed", {"run_id": run_id}, {"error": str(exc)}, 500)
+
+
+@app.route('/api/runs', methods=['POST'])
+@require_api_key
+@limiter.limit("10 per minute")
+def create_run():
+    """Create a durable lab run — enqueues optimization in background."""
+    data = request.get_json(silent=True) or {}
+    payload = data.get("payload", data)
+    if not isinstance(payload, dict):
+        return error_response("payload must be an object", code='BAD_REQUEST', status=400)
+    execution_kind = str(data.get("execution_kind", "async_optimize"))
+    spec = _build_optimize_spec(payload)
+    if spec["objective"] not in OBJECTIVES:
+        return error_response(
+            f"Unknown objective '{spec['objective']}'. Valid: {list(OBJECTIVES.keys())}",
+            code='BAD_REQUEST', status=400,
+        )
+    ibm_mode = spec.get("ibm_backend_mode") or "auto"
+    if ibm_mode not in ("auto", "simulator", "hardware"):
+        return error_response(
+            f"Invalid ibm_backend_mode {ibm_mode!r}; use auto, simulator, or hardware",
+            code='BAD_REQUEST', status=400,
+        )
+
+    if execution_kind == "ibm_runtime":
+        if spec["objective"] != "vqe":
+            return error_response(
+                "execution_kind ibm_runtime requires objective vqe",
+                code='BAD_REQUEST', status=400,
+            )
+        if not ibm_quantum_service.is_configured():
+            return error_response(
+                "execution_kind ibm_runtime requires IBM Quantum to be configured "
+                "(POST /api/config/ibm-quantum with a valid token)",
+                code='BAD_REQUEST', status=400,
+            )
+        na = spec.get("n_assets")
+        if na is not None and na > MAX_IBM_QUBITS:
+            return error_response(
+                f"Universe size {na} exceeds MAX_IBM_QUBITS ({MAX_IBM_QUBITS}) for IBM Runtime VQE",
+                code='BAD_REQUEST', status=400,
+            )
+    tenant_id = getattr(g, "tenant_id", "anonymous")
+    run = lab_run_service.create_run(tenant_id, spec, execution_kind)
+    _executor.submit(_run_optimize_for_run, run["id"], tenant_id, payload, execution_kind)
+    log_business_audit("run_created", {"run_id": run["id"], "spec": spec}, {"status": "queued"}, 202)
+    return success_response({"run_id": run["id"], "status": "queued"}, status=202)
+
+
+@app.route('/api/runs/<run_id>', methods=['GET'])
+@require_api_key
+def get_run(run_id):
+    """Fetch a lab run by id (tenant-scoped)."""
+    tenant_id = getattr(g, "tenant_id", "anonymous")
+    run = lab_run_service.get_run(run_id, tenant_id)
+    if not run:
+        return error_response("run not found", code='NOT_FOUND', status=404)
+    return success_response(run)
+
+
+@app.route('/api/runs', methods=['GET'])
+@require_api_key
+def list_runs():
+    """List recent lab runs for the current tenant."""
+    tenant_id = getattr(g, "tenant_id", "anonymous")
+    limit = request.args.get("limit", 20, type=int)
+    runs = lab_run_service.list_runs(tenant_id, limit=limit)
+    return success_response({"runs": runs, "count": len(runs)})
+
+
 def _admin_authorized() -> bool:
     admin_key = os.getenv("ADMIN_API_KEY", "")
     if not admin_key:
@@ -1411,6 +1728,7 @@ def set_ibm_quantum_token():
     Store an IBM Quantum API token and verify connectivity.
 
     Body: {"token": "<IBM Quantum API token>"}
+    Tenant: integration_effective_tenant_id() (X-Tenant-Id when using static API_KEY).
 
     On success returns {"ok": true, "backends": ["ibm_kyiv", ...]}
     On failure returns {"ok": false, "error": "..."} with HTTP 400.
@@ -1420,29 +1738,307 @@ def set_ibm_quantum_token():
     if not token:
         return error_response('token field is required', 400)
 
-    result = ibm_set_token(token)
+    tid = integration_effective_tenant_id()
+    result = ibm_quantum_service.set_token(tid, token)
     if not result.get('ok'):
         return error_response(result.get('error', 'IBM Quantum connection failed'), 400)
 
-    return success_response(result)
+    try:
+        log_business_audit(
+            "ibm_quantum_connect",
+            {"tenant_id": tid},
+            {"ok": True, "n_backends": len(result.get("backends") or [])},
+            200,
+        )
+    except Exception:
+        pass
+    return success_response({**result, "tenant_id": tid})
 
 
 @app.route('/api/config/ibm-quantum', methods=['DELETE'])
 @require_api_key
 def clear_ibm_quantum_token():
-    """Remove the stored IBM Quantum token."""
-    ibm_clear_token()
-    return success_response({'cleared': True})
+    """Remove the stored IBM Quantum token for the effective tenant."""
+    tid = integration_effective_tenant_id()
+    ibm_quantum_service.clear_token(tid)
+    try:
+        log_business_audit("ibm_quantum_disconnect", {"tenant_id": tid}, {"cleared": True}, 200)
+    except Exception:
+        pass
+    return success_response({'cleared': True, 'tenant_id': tid})
 
 
 @app.route('/api/config/ibm-quantum/status', methods=['GET'])
 @limiter.exempt
 def get_ibm_quantum_status():
-    """Return IBM Quantum connection status (no auth required)."""
-    return success_response(ibm_get_status())
+    """Return IBM Quantum connection status for the effective tenant."""
+    tid = integration_effective_tenant_id()
+    return success_response(ibm_quantum_service.get_status(tid))
 
 
-# ─── Ticker catalog & search ───
+@app.route('/api/config/ibm-quantum/workloads', methods=['GET'])
+@require_api_key
+def get_ibm_quantum_workloads():
+    """
+    List recent IBM Quantum Runtime jobs for the effective tenant (requires API key).
+
+    Query: limit (default 20, max 100).
+    """
+    raw_limit = request.args.get('limit', default=20, type=int)
+    if raw_limit is None:
+        raw_limit = 20
+    tid = integration_effective_tenant_id()
+    result = ibm_quantum_service.list_runtime_workloads(tid, limit=raw_limit)
+    if not result.get('ok'):
+        err = result.get('error') or 'Unable to list IBM Quantum workloads'
+        err_l = err.lower()
+        if 'not installed' in err_l:
+            http_status = 503
+        elif not result.get('configured'):
+            http_status = 400
+        else:
+            http_status = 502
+        return error_response(
+            err,
+            code='IBM_WORKLOADS_UNAVAILABLE',
+            status=http_status,
+        )
+    try:
+        log_business_audit(
+            'ibm_quantum_workloads_list',
+            {'tenant_id': tid},
+            {'count': len(result.get('workloads') or [])},
+            200,
+        )
+    except Exception:
+        pass
+    return success_response(result)
+
+
+@app.route('/api/config/tenants', methods=['GET'])
+@limiter.exempt
+def list_integration_tenants():
+    """List tenant ids available for integration switching (admin static key) or current tenant."""
+    client_key = request.headers.get("X-API-Key", "")
+    if API_KEY and client_key == API_KEY:
+        from services.tenant_integrations import list_tenant_ids
+
+        tenants = list_tenant_ids(_db_conn)
+        return success_response(
+            {"tenants": [{"id": t, "label": t} for t in tenants]}
+        )
+    tenant = _lookup_tenant_by_key(client_key) if client_key else None
+    if tenant:
+        t = str(tenant["tenant_id"])
+        return success_response({"tenants": [{"id": t, "label": t}]})
+    return success_response({"tenants": [{"id": "default", "label": "Default"}]})
+
+
+@app.route('/api/config/integrations', methods=['GET'])
+@limiter.exempt
+def get_integrations_catalog():
+    """IBM + Braket (and env) status for the effective tenant."""
+    from services.tenant_integrations import load_braket_metadata
+
+    tid = integration_effective_tenant_id()
+    ibm = ibm_quantum_service.get_status(tid)
+    braket_env = os.getenv("BRAKET_ENABLED", "false").lower() == "true"
+    br_meta = load_braket_metadata(_db_conn, tid) or {}
+    return success_response(
+        {
+            "tenant_id": tid,
+            "providers": [
+                {
+                    "id": "ibm",
+                    "label": "IBM Quantum",
+                    "configured": ibm.get("configured"),
+                    "backends": ibm.get("backends") or [],
+                    "error": ibm.get("error"),
+                    "tenant_id": ibm.get("tenant_id", tid),
+                },
+                {
+                    "id": "braket",
+                    "label": "AWS Braket",
+                    "configured": braket_env,
+                    "env_enabled": braket_env,
+                    "tenant_preferences": br_meta,
+                    "note": "Annealing path uses BRAKET_* env; optional per-tenant JSON in DB.",
+                },
+            ],
+        }
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JWT Authentication Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("20 per minute")
+def login():
+    """
+    Authenticate user and return JWT tokens.
+    
+    For MVP: accepts any valid API key or demo credentials.
+    In production: integrate with proper auth provider.
+    """
+    data = request.json
+    if not data:
+        return error_response('Request body required', code='BAD_REQUEST', status=400)
+    
+    username = data.get('username', '')
+    password = data.get('password', '')
+    api_key = data.get('api_key', '')
+    
+    # Demo mode: accept any non-empty credentials
+    if os.getenv('DEMO_MODE', 'true').lower() == 'true':
+        if username or api_key:
+            tenant_id = data.get('tenant_id', 'default')
+            access = create_access_token(user_id=username or 'demo_user', tenant_id=tenant_id)
+            refresh = create_refresh_token(user_id=username or 'demo_user', tenant_id=tenant_id)
+            
+            return success_response({
+                'access_token': access,
+                'refresh_token': refresh,
+                'token_type': 'Bearer',
+                'expires_in': 3600,  # 1 hour
+            })
+    
+    # Production mode: validate API key
+    if api_key:
+        tenant_info = _lookup_tenant_by_key(api_key)
+        if tenant_info:
+            access = create_access_token(
+                user_id=tenant_info['tenant_id'],
+                tenant_id=tenant_info['tenant_id']
+            )
+            refresh = create_refresh_token(
+                user_id=tenant_info['tenant_id'],
+                tenant_id=tenant_info['tenant_id']
+            )
+            
+            return success_response({
+                'access_token': access,
+                'refresh_token': refresh,
+                'token_type': 'Bearer',
+                'expires_in': 3600,
+            })
+    
+    return error_response('Invalid credentials', code='UNAUTHORIZED', status=401)
+
+
+@app.route('/api/auth/refresh', methods=['POST'])
+@limiter.limit("20 per minute")
+def refresh():
+    """Refresh access token using refresh token."""
+    data = request.json
+    if not data:
+        return error_response('Request body required', code='BAD_REQUEST', status=400)
+    
+    refresh_token = data.get('refresh_token')
+    if not refresh_token:
+        return error_response('Refresh token required', code='BAD_REQUEST', status=400)
+    
+    # Verify refresh token
+    payload = verify_token(refresh_token)
+    if not payload or payload.get('type') != 'refresh':
+        return error_response('Invalid or expired refresh token', code='UNAUTHORIZED', status=401)
+    
+    user_id = payload.get('sub')
+    tenant_id = payload.get('tenant_id', 'default')
+    
+    # Create new access token
+    access = create_access_token(user_id=user_id, tenant_id=tenant_id)
+    
+    return success_response({
+        'access_token': access,
+        'token_type': 'Bearer',
+        'expires_in': 3600,
+    })
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """Logout and revoke current token."""
+    auth_header = request.headers.get('Authorization', '')
+    
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return error_response('Authorization header required', code='BAD_REQUEST', status=400)
+    
+    token = auth_header.split(' ')[1]
+    
+    if revoke_token(token):
+        return success_response({'message': 'Successfully logged out'})
+    else:
+        return error_response('Failed to revoke token', code='INTERNAL_ERROR', status=500)
+
+
+@app.route('/api/auth/me', methods=['GET'])
+def get_current_user_info():
+    """Get current authenticated user information."""
+    # Try JWT first
+    if JWT_AVAILABLE:
+        try:
+            user = get_current_user()
+            if user:
+                return success_response(user)
+        except Exception:
+            pass
+    
+    # Fallback to API key auth
+    api_key = request.headers.get('X-API-Key', '')
+    if api_key:
+        tenant_info = _lookup_tenant_by_key(api_key)
+        if tenant_info:
+            return success_response({
+                'user_id': tenant_info['tenant_id'],
+                'tenant_id': tenant_info['tenant_id'],
+                'auth_method': 'api_key',
+            })
+    
+    return error_response('Not authenticated', code='UNAUTHORIZED', status=401)
+
+
+@app.route('/api/auth/api-keys', methods=['POST'])
+@require_api_key
+def create_api_key_endpoint():
+    """Create a new API key for tenant."""
+    data = request.json or {}
+    tenant_id = data.get('tenant_id', getattr(g, 'tenant_id', 'default'))
+    key_name = data.get('key_name', '')
+    
+    # Generate new API key
+    plain_key = generate_api_key(tenant_id, key_name)
+    key_hash = hash_api_key(plain_key)
+    
+    # Store in database
+    try:
+        conn = _db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO api_keys (key_hash, tenant_id, key_name, is_active, created_at)
+            VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+            """,
+            (key_hash, tenant_id, key_name or "")
+        )
+        conn.commit()
+        conn.close()
+        
+        return success_response({
+            'api_key': plain_key,
+            'key_name': key_name,
+            'tenant_id': tenant_id,
+            'message': 'Store this key securely - it cannot be retrieved again',
+        })
+    except Exception as e:
+        logger.error(f"Failed to create API key: {e}")
+        return error_response(f'Failed to create API key: {str(e)}', code='INTERNAL_ERROR', status=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ticker catalog & search
+# ─────────────────────────────────────────────────────────────────────────────
 _TICKER_CATALOG = [
     {"symbol":"SPY","name":"SPDR S&P 500 ETF","sector":"Broad Market","type":"etf"},
     {"symbol":"QQQ","name":"Invesco Nasdaq 100 ETF","sector":"Broad Market","type":"etf"},
@@ -1554,18 +2150,17 @@ def get_efficient_frontier():
         else:
             if not tickers:
                 return error_response('Tickers parameter is required (or provide returns/covariance)', code='BAD_REQUEST', status=400)
-            if not start_date or not end_date:
-                return error_response('Both start_date and end_date are required', code='BAD_REQUEST', status=400)
-            # Validate dates
-            try:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            except ValueError:
-                return error_response('Invalid date format. Use YYYY-MM-DD.', code='BAD_REQUEST', status=400)
-            if start_dt >= end_dt:
-                return error_response('Start date must be before end date', code='BAD_REQUEST', status=400)
+            # Validate dates if provided
+            if start_date and end_date:
+                try:
+                    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                except ValueError:
+                    return error_response('Invalid date format. Use YYYY-MM-DD.', code='BAD_REQUEST', status=400)
+                if start_dt >= end_dt:
+                    return error_response('Start date must be before end date', code='BAD_REQUEST', status=400)
 
-            # Fetch market data
+            # Fetch market data (dates default to 1y if not provided)
             market_data = fetch_market_data(
                 tickers=tickers,
                 start_date=start_date,
@@ -1598,8 +2193,14 @@ def get_efficient_frontier():
 @limiter.exempt
 def health_check():
     """Enhanced health check -- reports status of API and optional dependencies."""
+    import importlib
+    
     checks = {'api': 'ok'}
     overall = 'healthy'
+    details = {
+        'version': '1.0.0',
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+    }
 
     # Check Redis if configured
     redis_host = os.getenv('REDIS_HOST')
@@ -1609,25 +2210,80 @@ def health_check():
             r = redis.Redis(host=redis_host, port=int(os.getenv('REDIS_PORT', 6379)), socket_timeout=2)
             r.ping()
             checks['redis'] = 'ok'
-        except Exception:
+            details['redis_host'] = redis_host
+        except Exception as e:
             checks['redis'] = 'unavailable'
             overall = 'degraded'
+            details['redis_error'] = str(e)
 
     # Check DB if configured
     db_url = os.getenv('DATABASE_URL')
-    if db_url and 'postgresql' in db_url:
+    if db_url:
         try:
-            import psycopg2
-            conn = psycopg2.connect(db_url, connect_timeout=2)
-            conn.close()
-            checks['database'] = 'ok'
-        except Exception:
+            if 'postgresql' in db_url:
+                import psycopg2
+                conn = psycopg2.connect(db_url, connect_timeout=2)
+                conn.close()
+                checks['database'] = 'ok'
+            elif 'sqlite' in db_url:
+                # SQLite - just check file exists or can be created
+                db_path = db_url.replace('sqlite:///', '')
+                if db_path:
+                    checks['database'] = 'ok' if os.path.exists(os.path.dirname(db_path)) or db_path == ':memory:' else 'unavailable'
+                else:
+                    checks['database'] = 'ok'
+        except Exception as e:
             checks['database'] = 'unavailable'
             overall = 'degraded'
+            details['database_error'] = str(e)
+
+    # Check Braket availability
+    try:
+        import braket
+        checks['braket_sdk'] = 'installed'
+        details['braket_enabled'] = os.getenv('BRAKET_ENABLED', 'false').lower() == 'true'
+    except ImportError:
+        checks['braket_sdk'] = 'not_installed'
+        details['braket_enabled'] = False
+
+    # Check critical dependencies
+    critical_deps = ['numpy', 'pandas', 'scipy', 'flask', 'sklearn']
+    missing_deps = []
+    for dep in critical_deps:
+        try:
+            importlib.import_module(dep)
+        except ImportError:
+            missing_deps.append(dep)
+            overall = 'degraded'
+    
+    if missing_deps:
+        checks['dependencies'] = 'missing'
+        details['missing_dependencies'] = missing_deps
+    else:
+        checks['dependencies'] = 'ok'
+
+    # Check market data providers
+    try:
+        mdp = MarketDataProvider()
+        available = mdp.get_available_providers()
+        checks['market_data'] = 'available'
+        details['data_provider'] = mdp.primary_provider
+        details['available_providers'] = available
+    except Exception:
+        checks['market_data'] = 'degraded'
+        details['data_provider_note'] = 'Provider initialization failed'
+
+    # System info
+    import psutil
+    details['system'] = {
+        'cpu_percent': psutil.cpu_percent(interval=0.1),
+        'memory_percent': psutil.virtual_memory().percent,
+    }
 
     return success_response({
         'status': overall,
         'checks': checks,
+        'details': details,
         'cache_entries': len(_market_data_cache),
         'message': 'Quantum Portfolio Backend is running',
     })
@@ -1652,6 +2308,75 @@ def openapi_spec():
         content = f.read()
     from flask import Response
     return Response(content, mimetype="application/yaml")
+
+
+# ─── Export & Audit Endpoints ───
+
+@app.route('/api/export/audit-log', methods=['GET'])
+@require_api_key
+@limiter.limit("5 per minute")
+def export_audit_log():
+    """Export audit_log rows as JSON array. Query params: limit (default 100), offset (default 0)."""
+    try:
+        limit = min(int(request.args.get('limit', 100)), 1000)
+        offset = int(request.args.get('offset', 0))
+        db_path = os.path.join(os.path.dirname(__file__), "data", "api.sqlite3")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        conn.close()
+        return success_response([dict(r) for r in rows])
+    except Exception as exc:
+        return error_response(str(exc), code='EXPORT_ERROR', status=500)
+
+
+@app.route('/api/export/audit-log/csv', methods=['GET'])
+@require_api_key
+@limiter.limit("5 per minute")
+def export_audit_log_csv():
+    """Export audit_log as CSV download."""
+    import csv
+    import io
+    try:
+        limit = min(int(request.args.get('limit', 500)), 5000)
+        db_path = os.path.join(os.path.dirname(__file__), "data", "api.sqlite3")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        conn.close()
+
+        output = io.StringIO()
+        if rows:
+            writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+            writer.writeheader()
+            for r in rows:
+                writer.writerow(dict(r))
+        from flask import Response
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=audit_log.csv'},
+        )
+    except Exception as exc:
+        return error_response(str(exc), code='EXPORT_ERROR', status=500)
+
+
+@app.route('/api/export/config', methods=['GET'])
+@limiter.exempt
+def export_config_manifest():
+    """Export current objectives and presets as a YAML-style JSON manifest."""
+    return success_response({
+        "objectives": OBJECTIVES_CONFIG,
+        "presets": PRESETS_CONFIG,
+        "version": "1.0",
+        "engine": "quantum_ledger",
+    })
 
 
 if __name__ == '__main__':

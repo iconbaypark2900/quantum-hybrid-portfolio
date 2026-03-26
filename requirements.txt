@@ -15,9 +15,14 @@ seaborn==0.13.2
 flask==3.1.2
 flask-cors==6.0.2
 flask-limiter==4.1.1
+flask-jwt-extended>=4.6.0
 
 # Data/API
 yfinance==0.2.66
+
+# Alternative data providers (optional)
+# alpaca-py>=0.10.0  # Alpaca Markets (free tier)
+# polygon-api-client>=1.12.0  # Polygon.io (paid)
 
 # Testing
 pytest==8.4.2
@@ -26,18 +31,20 @@ pytest-cov==7.0.0
 # Monitoring and logging
 python-json-logger==3.3.0
 prometheus-client==0.23.1
+psutil>=5.9.0
 
 # Utilities
 tqdm==4.67.1
 pyyaml==6.0.3
 python-dotenv==1.1.1
+cryptography>=42.0.0
 
 # AWS Braket (optional: for quantum annealing backend)
 amazon-braket-sdk>=1.60.0
 amazon-braket-schemas>=1.18.0
 boto3>=1.28.0
 
-# IBM Quantum (optional: for VQE on real hardware)
-# pip install qiskit qiskit-ibm-runtime
-# qiskit>=1.0.0
-# qiskit-ibm-runtime>=0.20.0
+# IBM Quantum (optional: VQE hardware + GET /api/config/ibm-quantum/workloads)
+# Reproducible install: pip install -r requirements-ibm-quantum.txt
+# qiskit==2.3.1
+# qiskit-ibm-runtime==0.46.1

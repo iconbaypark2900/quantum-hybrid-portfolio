@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+
+For quantum, simulation, and portfolio optimization code:
+- Separate simulation, noisy simulation, mitigation, hardware execution, and reporting.
+- Persist run metadata including backend, shots, seed, transpilation details, and timing.
+- Make objective functions and constraints explicit.
+- Never hide cost assumptions, risk assumptions, or mitigation assumptions.
+- Store comparison outputs in machine-readable form (CSV/JSON) for later analysis.

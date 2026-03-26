@@ -1,0 +1,291 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+
+import { getLabRun, type LabRun } from "@/lib/api";
+import LedgerPageHeader from "@/components/LedgerPageHeader";
+
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLLS = 120;
+
+function StatusBadge({ status }: { status: LabRun["status"] }) {
+  const palette: Record<string, string> = {
+    queued: "bg-yellow-600/20 text-yellow-400 border-yellow-600/40",
+    running: "bg-blue-600/20 text-blue-400 border-blue-600/40",
+    completed: "bg-emerald-600/20 text-emerald-400 border-emerald-600/40",
+    failed: "bg-red-600/20 text-red-400 border-red-600/40",
+  };
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 rounded text-xs font-mono border ${palette[status] ?? ""}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function SpecTable({ spec }: { spec: LabRun["spec"] }) {
+  if (!spec) return null;
+  const rows: [string, string][] = [
+    ["Objective", spec.objective],
+    ["Weight bounds", `${spec.weight_min} … ${spec.weight_max}`],
+    ["Seed", String(spec.seed)],
+  ];
+  if (spec.data_mode) rows.push(["Data mode", spec.data_mode]);
+  if (spec.regime) rows.push(["Regime", spec.regime]);
+  if (spec.n_assets != null) rows.push(["Universe size", String(spec.n_assets)]);
+  if (spec.tickers?.length)
+    rows.push(["Tickers", spec.tickers.join(", ")]);
+  if (spec.K != null) rows.push(["K (cardinality)", String(spec.K)]);
+  if (spec.K_screen != null) rows.push(["K_screen", String(spec.K_screen)]);
+  if (spec.K_select != null) rows.push(["K_select", String(spec.K_select)]);
+  if (spec.ibm_backend_mode) rows.push(["IBM backend mode", String(spec.ibm_backend_mode)]);
+  if (spec.backend_name) rows.push(["IBM backend (requested)", String(spec.backend_name)]);
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+      {rows.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="text-ql-muted font-semibold">{k}</dt>
+          <dd className="font-mono text-ql-on-surface">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ResultSummary({ result }: { result: Record<string, unknown> }) {
+  const sharpe = result.sharpe_ratio as number | undefined;
+  const ret = result.expected_return as number | undefined;
+  const vol = result.volatility as number | undefined;
+  const nActive = result.n_active as number | undefined;
+  const holdings = result.holdings as
+    | Array<{ name: string; weight: number; sector?: string }>
+    | undefined;
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {sharpe != null && (
+          <Metric label="Sharpe" value={sharpe.toFixed(3)} />
+        )}
+        {ret != null && (
+          <Metric label="Return" value={`${(ret * 100).toFixed(2)}%`} />
+        )}
+        {vol != null && (
+          <Metric label="Volatility" value={`${(vol * 100).toFixed(2)}%`} />
+        )}
+        {nActive != null && (
+          <Metric label="Active" value={String(nActive)} />
+        )}
+      </div>
+      {typeof result.quantum_metadata === "object" &&
+        result.quantum_metadata !== null ? (
+        <details className="text-sm">
+          <summary className="cursor-pointer font-semibold text-ql-muted">
+            IBM Runtime metadata
+          </summary>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
+            {Object.entries(result.quantum_metadata as Record<string, unknown>).map(
+              ([k, v]) => (
+                <div key={k} className="contents">
+                  <dt className="text-ql-muted">{k}</dt>
+                  <dd className="break-all">
+                    {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                  </dd>
+                </div>
+              )
+            )}
+          </dl>
+        </details>
+      ) : null}
+      {holdings && holdings.length > 0 && (
+        <details className="text-sm">
+          <summary className="cursor-pointer font-semibold text-ql-muted">
+            Holdings ({holdings.length})
+          </summary>
+          <ul className="mt-2 space-y-0.5 font-mono text-xs">
+            {holdings.map((h) => (
+              <li key={h.name} className="flex justify-between">
+                <span>
+                  {h.name}{" "}
+                  {h.sector ? (
+                    <span className="text-ql-muted">({h.sector})</span>
+                  ) : null}
+                </span>
+                <span>{(h.weight * 100).toFixed(2)}%</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-ql-border bg-ql-surface-light p-3">
+      <div className="text-[10px] uppercase tracking-wider text-ql-muted mb-1">
+        {label}
+      </div>
+      <div className="text-lg font-mono font-bold text-ql-on-surface">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+export default function RunReportPage() {
+  const { id } = useParams<{ id: string }>();
+  const [run, setRun] = useState<LabRun | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const pollCount = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchRun = useCallback(async () => {
+    try {
+      const data = await getLabRun(id);
+      setRun(data);
+      setError(null);
+      return data.status;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return "error";
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      const status = await fetchRun();
+      if (cancelled) return;
+      pollCount.current += 1;
+      if (
+        status !== "completed" &&
+        status !== "failed" &&
+        status !== "error" &&
+        pollCount.current < MAX_POLLS
+      ) {
+        timerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
+      }
+    }
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [fetchRun]);
+
+  const downloadJson = useCallback(() => {
+    if (!run) return;
+    const blob = new Blob([JSON.stringify(run, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `run_${run.id.slice(0, 8)}_${run.status}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [run]);
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      <LedgerPageHeader
+        title="Lab Run Report"
+        subtitle={id ? `Run ${id.slice(0, 8)}…` : "Loading…"}
+      />
+
+      {loading && !run && (
+        <p className="text-ql-muted text-sm animate-pulse">
+          Loading run…
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-red-600/40 bg-red-600/10 p-4 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
+      {run && (
+        <>
+          <section className="rounded-lg border border-ql-border bg-ql-surface p-5 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <StatusBadge status={run.status} />
+                <span className="text-xs font-mono text-ql-muted">
+                  {run.execution_kind}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-xs font-mono text-ql-muted">
+                <span>Created {new Date(run.created_at).toLocaleString()}</span>
+                {run.finished_at && (
+                  <span>
+                    Finished {new Date(run.finished_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs uppercase tracking-wider text-ql-muted font-semibold mb-2">
+                Experiment spec
+              </h3>
+              <SpecTable spec={run.spec} />
+            </div>
+          </section>
+
+          {run.status === "queued" || run.status === "running" ? (
+            <div className="flex items-center gap-3 text-sm text-ql-muted animate-pulse">
+              <div className="w-3 h-3 rounded-full bg-blue-500 animate-ping" />
+              Optimization is {run.status}…
+            </div>
+          ) : null}
+
+          {run.error && (
+            <div className="rounded-lg border border-red-600/40 bg-red-600/10 p-4 text-sm text-red-400 font-mono">
+              {run.error}
+            </div>
+          )}
+
+          {run.result && (
+            <section className="rounded-lg border border-ql-border bg-ql-surface p-5 space-y-3">
+              <h3 className="text-xs uppercase tracking-wider text-ql-muted font-semibold">
+                Result
+              </h3>
+              <ResultSummary result={run.result} />
+            </section>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={downloadJson}
+              disabled={!run.result && run.status !== "failed"}
+              className="rounded px-4 py-2 text-sm font-mono bg-ql-accent text-ql-bg disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              Download JSON
+            </button>
+            <Link
+              href="/reports"
+              className="rounded px-4 py-2 text-sm font-mono border border-ql-border text-ql-muted hover:text-ql-on-surface transition-colors"
+            >
+              Back to Reports
+            </Link>
+            <Link
+              href="/portfolio"
+              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold primary-gradient text-[#001D33] shadow-md shadow-ql-primary/15 hover:opacity-95 transition-opacity no-underline"
+            >
+              <span className="material-symbols-outlined text-base">science</span>
+              PL
+            </Link>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

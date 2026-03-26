@@ -24,6 +24,7 @@ The quantum stage handles the *combinatorial* question (which assets?).
 Classical stages handle screening efficiency and weight precision.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -31,6 +32,8 @@ import numpy as np
 from scipy.optimize import minimize
 
 from .qubo_sa import _build_qubo_matrix, _run_sa
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -95,6 +98,7 @@ def hybrid_pipeline_weights(
     vols = np.sqrt(np.maximum(np.diag(Sigma), 1e-10))
     ic = mu / vols  # Information Coefficient (Sharpe proxy per asset)
     screened_idx = np.argsort(ic)[-K_screen:]  # top K_screen by IC
+    logger.info("hybrid_stage1: screened n=%d -> K_screen=%d", n, K_screen)
 
     mu_s = mu[screened_idx]
     Sigma_s = Sigma[np.ix_(screened_idx, screened_idx)]
@@ -112,6 +116,7 @@ def hybrid_pipeline_weights(
     # Map selected indices back to full universe
     selected_in_screen = np.where(best_x == 1)[0]
     selected_global = screened_idx[selected_in_screen]
+    logger.info("hybrid_stage2: QUBO-SA selected K_select=%d, obj=%.4f", K_select, float(best_obj))
 
     # ── Stage 3: Markowitz Max-Sharpe within selected assets ────────────────
     n_sel = len(selected_global)
@@ -143,6 +148,8 @@ def hybrid_pipeline_weights(
             sr = -neg_sharpe(w)
             if sr > best_sr:
                 best_sr, best_w_sel = sr, w.copy()
+
+    logger.info("hybrid_stage3: Markowitz Sharpe=%.4f for %d assets", float(best_sr), n_sel)
 
     # Embed selected weights into full weight vector
     w_full = np.zeros(n)

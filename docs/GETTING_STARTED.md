@@ -98,6 +98,31 @@ npm start
 
 The dashboard opens at **http://localhost:3000** and proxies API requests to port 5000 (configured in `frontend/package.json`).
 
+### Next.js app (`web/`) — migration track
+
+**Terminal 1 — API** (same as above):
+
+```bash
+source .venv/bin/activate
+python api.py
+```
+
+**Terminal 2 — Next.js:**
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open **http://localhost:3000**. Set `NEXT_PUBLIC_API_URL=http://127.0.0.1:5000` in `web/.env.local` if the app is not using a dev proxy to Flask.
+
+- Proof / smoke page: **http://localhost:3000/health-check** (API health JSON + optional market-data and optimize buttons).
+- Production build: `cd web && npm run build && npm run lint`
+- Unit tests (API error helper): `cd web && npm test`
+
+Alternatively, from the repo root: `./scripts/dev.sh` (starts Flask then Next; see script header for options).
+
 ### Environment variables
 
 | Variable | Default | Description |
@@ -106,7 +131,9 @@ The dashboard opens at **http://localhost:3000** and proxies API requests to por
 | `LOG_LEVEL` | INFO | Logging level |
 | `CACHE_TTL` | 3600 | Market data cache TTL (seconds) |
 | `API_KEY` | (none) | Optional API key for `X-API-Key` header |
-| `REACT_APP_API_URL` | (empty) | Override API base URL (e.g. `http://localhost:5000`) |
+| `REACT_APP_API_URL` | (empty) | CRA: override API base URL (e.g. `http://localhost:5000`) |
+| `NEXT_PUBLIC_API_URL` | (empty) | Next (`web/`): API base URL for the browser client |
+| `NEXT_PUBLIC_API_KEY` | (empty) | Next: optional `X-API-Key` (see `.env.example`) |
 
 ## Next Steps
 
