@@ -153,4 +153,10 @@ export async function getIbmQuantumStatus() {
   return res.data;
 }
 
+/** Get IBM Quantum workloads/jobs */
+export async function getIbmQuantumWorkloads() {
+  const res = await api.get('/api/quantum/ibm/workloads');
+  return res.data;
+}
+
 export default api;
