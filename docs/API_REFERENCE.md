@@ -17,6 +17,79 @@ X-API-Key: <your-api-key>
 
 Set `API_KEY` environment variable on the server for static key validation.
 
+When `API_KEY_REQUIRED=true`, clients must send `X-API-Key` on protected routes. `GET /api/health` and `GET /metrics` remain usable for probes without a key (see route decorators in `api.py`).
+
+---
+
+## Response envelope
+
+Most JSON routes wrap payloads in a **standard envelope** (`success_response` / `error_response` in `api.py`):
+
+**Success (2xx)**
+
+```json
+{
+  "data": {},
+  "meta": {
+    "request_id": "<uuid>",
+    "duration_ms": 12.34
+  }
+}
+```
+
+The **Next.js** client (`web/src/lib/api.ts`) and **CRA** client (`frontend/src/services/api.js`) unwrap `data` in a response interceptor, so application code typically sees the inner payload only.
+
+**Error (4xx / 5xx)**
+
+```json
+{
+  "error": { "code": "ERROR_CODE", "message": "Human-readable message" },
+  "meta": { "request_id": "<uuid>" }
+}
+```
+
+**Exceptions:** `GET /metrics` returns Prometheus text (no JSON envelope). Machine-readable contract: `GET /api/docs/openapi`.
+
+---
+
+## Web client contract (migration Phase 1)
+
+**Must-not-break** for the Next.js app (`web/`) and CRA dashboard (`frontend/`): changing method, path, auth requirement, or the **shape of the unwrapped `data` payload** for these routes requires coordination (version bump, dual support, or client updates). Automated checks: `scripts/test_api_integration.py`, `tests/test_api_integration.py`.
+
+| Endpoint | Method | Auth | Notes |
+|----------|--------|------|--------|
+| `/api/health` | GET | No key required | Rate limit exempt. |
+| `/api/config/objectives` | GET | If `API_KEY_REQUIRED` | Optimization objective list. |
+| `/api/config/presets` | GET | If required | Preset configurations. |
+| `/api/config/constraints` | GET | If required | Constraint schema. |
+| `/api/config/ibm-quantum` | POST | If required | Body: `{ "token": "..." }`. |
+| `/api/config/ibm-quantum` | DELETE | If required | Clears stored token. |
+| `/api/config/ibm-quantum/status` | GET | If required | Connection status. |
+| `/api/config/ibm-quantum/workloads` | GET | Yes | Query `limit` (default 20, max 100). Lists IBM Runtime jobs for the tenant token. |
+| `/api/market-data` | POST | If required | Historical returns / covariance inputs. |
+| `/api/portfolio/optimize` | POST | If required | Single optimization run. |
+| `/api/portfolio/optimize/batch` | POST | If required | Batch optimize. |
+| `/api/portfolio/backtest` | POST | If required | Backtest. |
+| `/api/portfolio/backtest/batch` | POST | If required | Batch backtest. |
+| `/api/portfolio/efficient-frontier` | POST | If required | Efficient frontier points. |
+| `/api/runs` | POST | If required | Create a durable lab run (async optimization). Returns `run_id`. |
+| `/api/runs` | GET | If required | List recent lab runs for the tenant. Query `limit` (default 20). |
+| `/api/runs/<id>` | GET | If required | Fetch run status, spec, and result (tenant-scoped). |
+
+---
+
+## Environment variables (Flask server vs Next.js)
+
+| Variable | Where | Purpose |
+|----------|--------|---------|
+| `PORT` | Flask (server) | API listen port (default 5000). |
+| `API_KEY`, `API_KEY_REQUIRED` | Flask (server) | Static API key validation. |
+| `DATABASE_URL`, `REDIS_*`, etc. | Flask (server) | Backend only; never expose to the browser bundle. |
+| `NEXT_PUBLIC_API_URL` | Next.js (build-time / browser) | Base URL for the Flask API (e.g. `http://127.0.0.1:5000`). Empty string = same origin (use when a dev proxy forwards `/api` to Flask). |
+| `NEXT_PUBLIC_API_KEY` | Next.js (browser) | Optional; sent as `X-API-Key` if set. Treat as sensitive if the app is public; prefer same-origin proxy and server-side secrets for production. |
+
+Copy `.env.example` to `.env` for Flask. For the Next app, use `web/.env.local` (see Next.js docs); only `NEXT_PUBLIC_*` variables are embedded in client bundles.
+
 ---
 
 ## Endpoints
@@ -25,15 +98,17 @@ Set `API_KEY` environment variable on the server for static key validation.
 
 #### `GET /api/health`
 
-Returns API health and version.
+Returns API health and dependency checks. Uses the **standard envelope**; below is the shape of **`data`** after unwrapping (see [Response envelope](#response-envelope)).
 
-**Response:**
+**`data` payload (illustrative):**
 
 ```json
 {
-  "status": "ok",
-  "version": "1.0.0",
-  "timestamp": "2026-02-15T12:00:00Z"
+  "status": "healthy",
+  "checks": { "api": "ok", "market_data": "available" },
+  "details": { "version": "1.0.0", "timestamp": "2026-02-15T12:00:00Z" },
+  "cache_entries": 0,
+  "message": "Quantum Portfolio Backend is running"
 }
 ```
 
@@ -300,6 +375,71 @@ Submit async backtest. Returns `job_id`.
 #### `GET /api/jobs/<job_id>`
 
 Poll job status. Returns `status` (pending/running/completed/failed) and result when completed.
+
+---
+
+### Lab Runs (durable experiment registry)
+
+Lab runs persist experiment specs and results to SQLite so users can leave the Portfolio Lab and return later to view a report.
+
+#### `POST /api/runs`
+
+Create a durable lab run. Enqueues async optimization and returns immediately.
+
+**Request:**
+
+```json
+{
+  "payload": {
+    "returns": [...],
+    "covariance": [[...]],
+    "asset_names": ["AAPL", "MSFT"],
+    "objective": "hybrid",
+    "weight_min": 0.005,
+    "weight_max": 0.30,
+    "seed": 42,
+    "data_mode": "synthetic",
+    "regime": "normal"
+  }
+}
+```
+
+**Response (202):**
+
+```json
+{ "run_id": "<uuid>", "status": "queued" }
+```
+
+#### `GET /api/runs`
+
+List recent lab runs for the authenticated tenant.
+
+| Query param | Default | Notes |
+|-------------|---------|-------|
+| `limit` | 20 | Max 100. |
+
+**Response:** `{ "runs": [...], "count": N }`
+
+#### `GET /api/runs/<id>`
+
+Fetch a single run. Returns spec, status, result (when completed), and error (when failed). 403 if the run belongs to a different tenant.
+
+**Response:**
+
+```json
+{
+  "id": "<uuid>",
+  "tenant_id": "default",
+  "status": "completed",
+  "execution_kind": "async_optimize",
+  "spec": { "objective": "hybrid", "weight_min": 0.005, "..." : "..." },
+  "result": { "sharpe_ratio": 1.23, "weights": [...], "holdings": [...] },
+  "error": null,
+  "created_at": "2026-03-24T...",
+  "started_at": "...",
+  "finished_at": "..."
+}
+```
 
 ---
 

@@ -1,0 +1,15 @@
+---
+alwaysApply: true
+---
+
+For ML, RAG, and experiment code:
+- Separate ingestion, preprocessing, indexing, retrieval, ranking, generation, and evaluation.
+- Every model/retrieval change must state:
+  - input data
+  - feature/embedding logic
+  - algorithm used
+  - evaluation method
+  - failure cases
+- Keep configs externalized.
+- Track seeds, dataset slices, metrics, and output artifacts.
+- Prefer offline evaluation before UI integration.

@@ -74,7 +74,6 @@ chang_validation_report.png
 *.log
 data/*.csv
 data/*.parquet
-data/*.sqlite3
 results/
 checkpoints/
 data/api.sqlite3

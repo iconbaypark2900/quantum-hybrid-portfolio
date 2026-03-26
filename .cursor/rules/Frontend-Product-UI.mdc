@@ -1,0 +1,11 @@
+---
+alwaysApply: true
+---
+
+For frontend React/Next.js work:
+- Keep components focused and small.
+- Separate page composition, domain hooks, and presentational components.
+- Make client/server boundaries explicit.
+- Prefer strongly typed props and API responses.
+- Avoid burying business logic inside UI components.
+- For dashboards, optimize for operator clarity over visual novelty.
