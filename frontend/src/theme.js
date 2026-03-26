@@ -69,4 +69,29 @@ export const benchmarkColors = {
   "HRP": "#14B8A6",
 };
 
-export const DashboardThemeContext = createContext(null);
+export const DashboardThemeContext = createContext(darkTheme);
+
+export function useTheme() {
+  const ctx = require("react").useContext(DashboardThemeContext);
+  return ctx || darkTheme;
+}
+
+export const CHART_COLORS = [
+  "#3B82F6", "#10B981", "#F59E0B", "#EF4444",
+  "#8B5CF6", "#06B6D4", "#EC4899", "#F97316",
+];
+
+export const STRATEGY_COLORS = {
+  markowitz: "#3B82F6",
+  min_variance: "#10B981",
+  hrp: "#F59E0B",
+  equal_weight: "#8B9DC3",
+  qubo_sa: "#8B5CF6",
+  vqe: "#06B6D4",
+  hybrid: "#EC4899",
+};
+
+export const FONT = {
+  sans: "'Inter', 'Space Grotesk', system-ui, sans-serif",
+  mono: "'JetBrains Mono', 'Fira Mono', monospace",
+};
