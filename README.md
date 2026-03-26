@@ -1,3 +1,12 @@
+---
+title: Quantum Portfolio Lab
+emoji: 📊
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+---
+
 # Quantum Hybrid Portfolio
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
