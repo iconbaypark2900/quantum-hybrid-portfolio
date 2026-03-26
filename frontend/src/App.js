@@ -1,23 +1,6 @@
 import React from "react";
-import EnhancedQuantumPortfolioDashboard from "./CustomizableQuantumDashboard";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import AppShell from "./AppShell";
 
-export default function QuantumPortfolioDashboard() {
-  return (
-    <ErrorBoundary>
-      <EnhancedQuantumPortfolioDashboard />
-      <ToastContainer
-        position="bottom-right"
-        autoClose={4000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        pauseOnFocusLoss={false}
-        draggable
-        theme="dark"
-      />
-    </ErrorBoundary>
-  );
+export default function App() {
+  return <AppShell />;
 }
