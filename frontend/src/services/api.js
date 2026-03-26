@@ -135,4 +135,22 @@ export async function healthCheck() {
   return res.data;
 }
 
+/** Set IBM Quantum token */
+export async function setIbmQuantumToken(token) {
+  const res = await api.post('/api/quantum/ibm/token', { token });
+  return res.data;
+}
+
+/** Clear IBM Quantum token */
+export async function clearIbmQuantumToken() {
+  const res = await api.delete('/api/quantum/ibm/token');
+  return res.data;
+}
+
+/** Get IBM Quantum connection status */
+export async function getIbmQuantumStatus() {
+  const res = await api.get('/api/quantum/ibm/status');
+  return res.data;
+}
+
 export default api;
