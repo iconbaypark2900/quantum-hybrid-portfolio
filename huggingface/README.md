@@ -7,6 +7,8 @@ sdk: docker
 app_port: 7860
 ---
 
+**Disclaimer:** This Space is for **research and demonstration only** — not investment advice. See the repo [docs/PUBLIC_DEMO.md](https://github.com/Quantum-Global-Group/quantum-hybrid-portfolio/blob/main/docs/PUBLIC_DEMO.md) for details.
+
 # Quantum Portfolio Lab
 
 Quantum-inspired portfolio optimization using Quantum Stochastic Walk (QSW) algorithms. Optimize portfolios with Max Sharpe, Min Variance, Risk Parity, HRP, and more.

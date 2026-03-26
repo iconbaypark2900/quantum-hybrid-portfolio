@@ -30,6 +30,14 @@ This is the master index for all Quantum Hybrid Portfolio documentation.
 | [project/SYSTEM_SUMMARY.md](project/SYSTEM_SUMMARY.md) | System summary |
 | [project/TECHNICAL_DOCUMENTATION.md](project/TECHNICAL_DOCUMENTATION.md) | Technical documentation |
 
+## Migration & refactoring plans
+
+| Document | Description |
+|----------|-------------|
+| [plans/README.md](plans/README.md) | Hub: Next.js + API + pipeline migration |
+| [plans/MIGRATION_PHASES_AND_CHECKPOINTS.md](plans/MIGRATION_PHASES_AND_CHECKPOINTS.md) | Phases 0–7, checkpoints, verification tests |
+| [plans/WORKSTREAM_BREAKDOWN.md](plans/WORKSTREAM_BREAKDOWN.md) | Parallel workstreams (web, API, pipeline) |
+
 ## API documentation
 
 | Document | Description |
@@ -63,6 +71,7 @@ This is the master index for all Quantum Hybrid Portfolio documentation.
 
 | Document | Description |
 |----------|-------------|
+| [next-phase/README.md](next-phase/README.md) | **Next phase (hub)** — tracks A–C checklists, verification; links to [plans/](plans/README.md) (Track D) |
 | [planning/ENHANCEMENT_PLAN.md](planning/ENHANCEMENT_PLAN.md) | Enhancement plan |
 | [planning/ENHANCEMENT_SUMMARY.md](planning/ENHANCEMENT_SUMMARY.md) | Enhancement summary |
 | [planning/ENHANCED_FEATURES_README.md](planning/ENHANCED_FEATURES_README.md) | Enhanced features |

@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+For backend Python code:
+- Keep FastAPI routes thin.
+- Put business logic in services.
+- Put persistence logic in repositories/data access layers.
+- Use Pydantic models for request/response boundaries.
+- Use background jobs/queues for long-running tasks.
+- Make side effects explicit.
+- Prefer composable pure functions for data transformations.
+- Add tests for core business logic, not just routes.

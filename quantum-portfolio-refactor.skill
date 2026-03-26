@@ -1,218 +1,161 @@
-# Migration: QSW → Notebook Methods
-
-## Files to DELETE entirely
-
+---
+name: quantum-portfolio-refactor
+description: >
+  Complete refactor of the Quantum Hybrid Portfolio codebase. Use this skill
+  whenever the user asks to refactor, fix, wire up, or improve any part of the
+  quantum-hybrid-portfolio project — including replacing data providers,
+  replacing the optimizer engine, updating the API, fixing the frontend, or
+  getting the full stack running end-to-end. Always use this skill when the
+  user mentions AKShare, the notebook optimizers, the Flask API, the React
+  dashboard, or any component of this codebase by name. Also use this skill
+  for any frontend UI work: improving visual design, updating the objective
+  dropdown, adding K_screen/K_select inputs, fixing ESLint warnings, improving
+  responsiveness, or making the dashboard look more professional.
+---
+ 
+# Quantum Portfolio Refactor — Claude Code Skill
+ 
+## What This Project Is
+ 
+A portfolio optimisation platform. The backend is Flask (`api.py`). The frontend
+is React (`frontend/`). The optimisers live in `core/optimizers/`. Market data
+comes from AKShare (replacing the old yfinance). The backtest engine is in
+`services/backtest.py`.
+ 
+Read `references/architecture.md` before making any code changes.
+Read `references/ui-design.md` **before** any frontend UI change.
+ 
+---
+ 
+## Current State (what has already been done)
+ 
+1. **Optimisers replaced** — `core/optimizers/` contains six methods extracted
+   from the research notebooks:
+   - `equal_weight.py`, `markowitz.py`, `hrp.py`, `qubo_sa.py`, `vqe.py`,
+     `hybrid_pipeline.py`, `__init__.py`
+   - `services/portfolio_optimizer.py` routes by `objective` param.
+ 
+2. **QSW deleted** — `core/quantum_inspired/` is gone. `config/qsw_config.py`
+   is gone. Do not recreate them.
+ 
+3. **API config updated** — `config/api_config.py` holds `OBJECTIVES_CONFIG`
+   and `PRESETS_CONFIG` for `/api/config/*` endpoints.
+ 
+4. **`api_patch.py`** — Contains the replacement `optimize_portfolio()` handler
+   ready to paste into `api.py`. Not yet applied to `api.py`.
+ 
+5. **`MIGRATION.md`** — Full list of files to delete and exactly what to change
+   in `api.py`. Read this first.
+ 
+6. **yfinance is still present** — `services/market_data.py` still uses
+   yfinance. The task is to replace it with AKShare.
+ 
+---
+ 
+## Your Job
+ 
+For **backend/data/API work**: follow `references/task-list.md` in order.
+After each task, run tests and confirm they pass before moving on.
+ 
+For **frontend UI work**: read `references/ui-design.md` first, then
+`references/frontend-guide.md`. The UI guide takes precedence on all
+visual and component decisions.
+ 
+Read `references/akshare-guide.md` before touching any data layer code.
+Read `references/api-guide.md` before touching `api.py`.
+ 
+---
+ 
+## Hard Rules
+ 
+- **Never recreate QSW code.** The words `quantum_walk`, `QuantumStochasticWalk`,
+  `graph_builder`, `evolution_dynamics`, `braket`, `QSWConfig` must not appear
+  in any new file.
+- **Never use yfinance.** Every call to `yf.download`, `yf.Ticker`, or
+  `import yfinance` must be removed and replaced with AKShare equivalents.
+- **Never use QSW parameters in the frontend.** `omega`, `evolution_time`,
+  `evolution_method` must not appear in any new or updated UI code.
+- **Keep the API response shape.** The frontend depends on `qsw_result`,
+  `holdings`, `benchmarks`, `sector_allocation`, `risk_metrics`, `stage_info`.
+  Do not rename or remove these keys.
+- **Keep `frontend/src/services/api.js` endpoint URLs unchanged** unless the
+  backend route itself changes.
+- **Run tests after every file change.** Use `pytest tests/ -x -q` for backend,
+  `npm run build` for frontend.
+- **One file at a time.** Make a change, verify, commit, move on.
+- **Do not touch `notebooks/`.** They are reference only.
+ 
+---
+ 
+## Key File Locations
+ 
 ```
-core/quantum_inspired/quantum_walk.py
-core/quantum_inspired/enhanced_quantum_walk.py
-core/quantum_inspired/graph_builder.py
-core/quantum_inspired/evolution_dynamics.py
-core/quantum_inspired/stability_enhancer.py
-core/quantum_inspired/performance_optimizer.py
-core/quantum_inspired/advanced_quantum_optimizer.py
-core/quantum_inspired/braket_backend.py
-core/quantum_inspired/qaoa_optimizer.py
-core/quantum_inspired/vqe_risk.py
-core/quantum_inspired/hybrid_workflow.py
-core/quantum_inspired/quantum_linear_algebra.py
-core/quantum_inspired/quantum_ml.py
-core/braket_estimator.py
-config/qsw_config.py
-production_api.py          (replaced by api.py)
-enhanced_api.py            (replaced by api.py)
-fixed_enhanced_api.py      (replaced by api.py)
-quantum_portfolio_dashboard.jsx   (contains telemetry injections — dangerous)
-services/hrp.py            (now in core/optimizers/hrp.py)
-validation/chang_validation.py
-test_enhanced_system.py
+api.py                                  Flask app — primary entry point
+api_patch.py                            Replacement optimize_portfolio() — paste into api.py
+MIGRATION.md                            What to delete, what to change in api.py
+config/api_config.py                    Objectives and presets config
+core/optimizers/                        Six optimiser modules (already written)
+services/portfolio_optimizer.py         Optimizer router (already written)
+services/market_data.py                 REPLACE with AKShare (see akshare-guide.md)
+services/backtest.py                    UPDATE imports only (yf → akshare fetch)
+services/data_provider.py               UPDATE: remove yfinance fallback path label
+tests/test_optimizers.py                29 passing tests — must stay green
+tests/test_api_integration_updated.py   Updated integration tests
+ 
+frontend/src/App.js                     React entry — ErrorBoundary, ToastContainer
+frontend/src/CustomizableQuantumDashboard.js   Main dashboard (state, tabs, layout)
+frontend/src/theme.js                   Design tokens — colors, DashboardThemeContext
+frontend/src/lib/simulationEngine.js    Synthetic data + JS optimiser approximations
+frontend/src/services/api.js            Axios client — DO NOT change endpoint URLs
+frontend/src/components/dashboard/     All dashboard sub-components
+frontend/package.json                   proxy: http://localhost:5000
 ```
-
-## Files to ADD (already created)
-
+ 
+---
+ 
+## Test Commands
+ 
+```bash
+# Backend — all optimizer unit tests (must stay 29/29)
+pytest tests/test_optimizers.py -v
+ 
+# Backend — API integration tests
+pytest tests/test_api_integration_updated.py -v
+ 
+# Backend — all tests
+pytest tests/ -x -q
+ 
+# Backend — quick smoke test
+python -c "from api import app; print('API imports OK')"
+ 
+# Frontend — build check (must produce 0 errors)
+cd frontend && npm run build
+ 
+# Frontend — dev server (requires backend on :5000)
+cd frontend && npm start
 ```
-core/optimizers/__init__.py
-core/optimizers/equal_weight.py
-core/optimizers/markowitz.py
-core/optimizers/hrp.py
-core/optimizers/qubo_sa.py
-core/optimizers/vqe.py
-core/optimizers/hybrid_pipeline.py
-services/portfolio_optimizer.py    (full rewrite)
-config/api_config.py
-```
-
-## Changes needed in api.py
-
-### 1. Remove QSW imports
-Delete any imports of:
-- QuantumStochasticWalkOptimizer
-- QSWConfig
-- QSWResult
-- graph_builder, evolution_dynamics, stability_enhancer
-- braket_backend, BraketAnnealingOptimizer
-
-### 2. Update the optimize import
-```python
-# OLD
-from services.portfolio_optimizer import run_optimization, OptimizationResult
-# NEW — same import, new implementation underneath
-from services.portfolio_optimizer import run_optimization, OptimizationResult, OBJECTIVES_CONFIG
-```
-
-### 3. Replace /api/config/objectives handler
-```python
-@app.route('/api/config/objectives', methods=['GET'])
-def get_objectives():
-    from config.api_config import OBJECTIVES_CONFIG
-    return success_response(OBJECTIVES_CONFIG)
-```
-
-### 4. Replace /api/config/presets handler
-```python
-@app.route('/api/config/presets', methods=['GET'])
-def get_presets():
-    from config.api_config import PRESETS_CONFIG
-    return success_response(PRESETS_CONFIG)
-```
-
-### 5. Update the optimize endpoint payload parsing
-The optimize endpoint currently reads QSW-specific params (omega, evolution_time,
-evolution_method). Replace with new params:
-
-```python
-@app.route('/api/portfolio/optimize', methods=['POST'])
-@require_api_key
-@limiter.limit("20 per minute")
-def optimize_portfolio():
-    data = request.json or {}
-
-    # --- Market data (unchanged) ---
-    tickers    = data.get('tickers')
-    start_date = data.get('start_date')
-    end_date   = data.get('end_date')
-    returns    = data.get('returns')
-    covariance = data.get('covariance')
-
-    # --- Method selection ---
-    objective  = data.get('objective', 'hybrid')
-
-    # --- Per-method params ---
-    target_return = data.get('target_return')
-    K             = data.get('K')
-    K_screen      = data.get('K_screen')
-    K_select      = data.get('K_select')
-    lambda_risk   = float(data.get('lambda_risk', 1.0))
-    gamma         = float(data.get('gamma', 8.0))
-    n_layers      = int(data.get('n_layers', 3))
-    n_restarts    = int(data.get('n_restarts', 8))
-    weight_min    = float(data.get('weight_min', 0.005))
-    weight_max    = float(data.get('weight_max', 0.30))
-    seed          = int(data.get('seed', 42))
-
-    # ... fetch market data if tickers provided (unchanged logic) ...
-
-    result = run_optimization(
-        returns=np.array(returns),
-        covariance=np.array(covariance),
-        objective=objective,
-        target_return=target_return,
-        asset_names=assets,
-        K=K,
-        K_screen=K_screen,
-        K_select=K_select,
-        lambda_risk=lambda_risk,
-        gamma=gamma,
-        n_layers=n_layers,
-        n_restarts=n_restarts,
-        weight_min=weight_min,
-        weight_max=weight_max,
-        seed=seed,
-    )
-
-    # Build response (same shape as before)
-    holdings = [
-        {"name": name, "weight": float(w)}
-        for name, w in zip(assets, result.weights)
-        if w > 1e-4
-    ]
-
-    response = {
-        "weights": result.weights.tolist(),
-        "holdings": holdings,
-        "sharpe_ratio": result.sharpe_ratio,
-        "expected_return": result.expected_return,
-        "volatility": result.volatility,
-        "n_active": result.n_active,
-        "objective": result.objective,
-        "stage_info": result.stage_info,
-    }
-    return success_response(response)
-```
-
-### 6. Update /api/portfolio/efficient-frontier
-```python
-from services.portfolio_optimizer import compute_efficient_frontier
-
-# In the endpoint:
-frontier = compute_efficient_frontier(
-    returns=np.array(returns),
-    covariance=np.array(covariance),
-    n_points=data.get('n_points', 30),
-)
-return success_response({"frontier": frontier})
-```
-
-## Frontend changes needed
-
-### services/api.js — no changes required
-The API contract (endpoints, request shape) is backward-compatible.
-`objective` now accepts the new values; old QSW params (omega, evolution_time)
-can be ignored server-side.
-
-### EnhancedQuantumDashboard.js
-1. Update the objective dropdown to show new values:
-   - equal_weight, markowitz, min_variance, hrp, qubo_sa, vqe, hybrid, target_return
-2. Remove: omega slider, evolution_time slider, evolution_method dropdown
-3. Add (optional): K_screen / K_select inputs for hybrid, shown only when objective=hybrid
-4. Add: lambda_risk and gamma inputs for qubo_sa/hybrid (advanced section)
-
-### simulationEngine.js
-The simulation mode uses the JS QSW approximation. For MVP, leave simulation
-mode as-is — it's acceptable for demos. When in LIVE mode the real backend
-methods are used. A future task would be to write JS approximations of the
-notebook methods for offline simulation.
-
-## Tests to update
-
-Delete:
-- tests/test_quantum_walk.py
-- tests/test_graph_builder.py
-- tests/test_braket_backend.py
-
-Keep and update:
-- tests/test_services.py  →  update imports, use new objective strings
-- tests/test_api_integration.py  →  update payload shapes
-
-New tests to add:
-- tests/test_optimizers.py  →  unit tests for each method in core/optimizers/
-```python
-def test_equal_weight():
-    mu = np.array([0.1, 0.2, 0.15])
-    S  = np.eye(3) * 0.04
-    w  = equal_weight(mu, S)
-    assert np.allclose(w, 1/3)
-
-def test_markowitz_weights_sum_to_one():
-    ...
-
-def test_hrp_weights_sum_to_one():
-    ...
-
-def test_qubo_sa_cardinality():
-    # With K=3, exactly 3 assets should have non-zero weight
-    ...
-
-def test_hybrid_pipeline_stages():
-    # Check stage_info contains expected keys
-    ...
-```
+ 
+---
+ 
+## Frontend Common Tasks (quick reference)
+ 
+Full detail in `references/ui-design.md` and `references/frontend-guide.md`.
+ 
+### Update objective dropdown
+See `references/frontend-guide.md` § "Objective dropdown options".
+Fetch live from `/api/config/objectives` on mount. Fall back to the hardcoded
+`OBJECTIVE_OPTIONS` list if fetch fails.
+ 
+### Add K_screen / K_select inputs for hybrid
+Show only when `objective === 'hybrid'` or `objective === 'qubo_sa'`.
+Both are integer inputs, range 2–20. Default: `null` (auto). Pass as
+`K_screen` / `K_select` in the optimize payload.
+ 
+### Fix ESLint warnings in CustomizableQuantumDashboard.js
+Run `cd frontend && npx eslint src/CustomizableQuantumDashboard.js`.
+Common issues: unused state variables (`omega`, `evolutionTime`), missing
+`useCallback` deps, stray `console.log` calls.
+ 
+### Make a section more responsive
+Use CSS Grid with `grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))`.
+Avoid hardcoded pixel widths. See `references/ui-design.md` § "Responsive grid".

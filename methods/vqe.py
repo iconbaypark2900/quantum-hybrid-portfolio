@@ -23,15 +23,71 @@ Reference: Best practices for quantum error mitigation with VQE.
            Orús, Mugel & Lizaso (2019). arXiv:1811.03975.
 """
 
+from __future__ import annotations
+
 import logging
+import os
+import time
 import numpy as np
 from scipy.optimize import minimize
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # Maximum qubit count forwarded to IBM hardware (safety cap for free-tier).
 MAX_IBM_QUBITS = 20
+# Caps on IBM hardware usage (control credit consumption).
+MAX_IBM_RESTARTS = int(os.getenv('IBM_VQE_MAX_RESTARTS', 2))
+MAX_IBM_ITER = int(os.getenv('IBM_VQE_MAX_ITER', 25))
+SHOTS_PER_EVAL = 2048
+
+
+def _pick_ibm_backend(service, n: int, backend_name: Optional[str], backend_mode: str):
+    """
+    Select an IBM backend. backend_mode: auto | simulator | hardware.
+    Does not fall back across hardware/simulator when mode is simulator or hardware.
+    """
+    bm = (backend_mode or "auto").lower()
+    if bm not in ("auto", "simulator", "hardware"):
+        raise ValueError(f"Invalid backend_mode: {backend_mode!r}")
+
+    if backend_name:
+        backend = service.backend(backend_name)
+        nq = backend.configuration().n_qubits
+        if nq < n:
+            raise RuntimeError(
+                f"Backend {backend_name} has {nq} qubits; need ≥{n}"
+            )
+        return backend
+
+    try:
+        pool = list(service.backends(operational=True, min_num_qubits=n))
+    except Exception:
+        pool = [b for b in service.backends() if b.configuration().n_qubits >= n]
+
+    if bm == "simulator":
+        candidates = [b for b in pool if b.configuration().simulator]
+        if not candidates:
+            raise RuntimeError(f"No operational IBM simulator with ≥{n} qubits")
+        return min(candidates, key=lambda b: b.status().pending_jobs)
+
+    if bm == "hardware":
+        candidates = [b for b in pool if not b.configuration().simulator]
+        if not candidates:
+            raise RuntimeError(f"No operational IBM hardware backend with ≥{n} qubits")
+        return min(candidates, key=lambda b: b.status().pending_jobs)
+
+    # auto: prefer hardware, then any simulator (explicit legacy behaviour)
+    candidates = [b for b in pool if not b.configuration().simulator]
+    if not candidates:
+        try:
+            pool2 = list(service.backends(min_num_qubits=n))
+        except Exception:
+            pool2 = [b for b in service.backends() if b.configuration().n_qubits >= n]
+        candidates = [b for b in pool2 if b.configuration().simulator]
+    if not candidates:
+        raise RuntimeError(f"No IBM backend with ≥{n} qubits found")
+    return min(candidates, key=lambda b: b.status().pending_jobs)
 
 
 def _pauli_two_design_ansatz(theta: np.ndarray, n: int, n_layers: int) -> np.ndarray:
@@ -76,7 +132,8 @@ def _vqe_weights_ibm(
     weight_max: float,
     seed: int,
     backend_name: Optional[str],
-) -> np.ndarray:
+    backend_mode: str = "auto",
+) -> Tuple[np.ndarray, Dict[str, object]]:
     """
     VQE on IBM Quantum hardware via qiskit-ibm-runtime.
 
@@ -94,28 +151,17 @@ def _vqe_weights_ibm(
     n = len(mu)
     if n > MAX_IBM_QUBITS:
         raise RuntimeError(
-            f"n_assets={n} exceeds MAX_IBM_QUBITS={MAX_IBM_QUBITS}; "
-            "falling back to classical simulation"
+            f"n_assets={n} exceeds MAX_IBM_QUBITS={MAX_IBM_QUBITS}"
         )
+
+    t0 = time.perf_counter()
 
     from qiskit.circuit.library import EfficientSU2
     from qiskit_ibm_runtime import SamplerV2 as Sampler
     from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
     service = ibm_quantum.get_service()
-    if backend_name:
-        backend = service.backend(backend_name)
-    else:
-        candidates = [
-            b for b in service.backends(operational=True, min_num_qubits=n)
-            if not b.configuration().simulator
-        ]
-        if not candidates:
-            # Fall back to simulator if no real backend has enough qubits
-            candidates = [b for b in service.backends(min_num_qubits=n)]
-        if not candidates:
-            raise RuntimeError(f"No IBM backend with ≥{n} qubits found")
-        backend = min(candidates, key=lambda b: b.status().pending_jobs)
+    backend = _pick_ibm_backend(service, n, backend_name, backend_mode)
 
     logger.info("IBM VQE: using backend %s for n=%d assets", backend.name, n)
 
@@ -126,11 +172,12 @@ def _vqe_weights_ibm(
     isa_circuit = pm.run(ansatz)
     sampler = Sampler(mode=backend)
 
-    n_params = ansatz.num_parameters - n  # EfficientSU2 adds measure params
+    n_params = len(isa_circuit.parameters)
 
     def _shots_to_weights(params: np.ndarray) -> np.ndarray:
-        bound = isa_circuit.assign_parameters(params)
-        result = sampler.run([bound], shots=2048).result()
+        param_dict = dict(zip(isa_circuit.parameters, params))
+        bound = isa_circuit.assign_parameters(param_dict)
+        result = sampler.run([bound], shots=SHOTS_PER_EVAL).result()
         counts = result[0].data.meas.get_counts()
         probs = np.zeros(n)
         total = sum(counts.values())
@@ -152,17 +199,71 @@ def _vqe_weights_ibm(
     best_sharpe = -np.inf
     best_w = np.ones(n) / n
 
-    for _ in range(n_restarts):
+    ibm_restarts = min(n_restarts, MAX_IBM_RESTARTS)
+    ibm_maxiter = min(150, MAX_IBM_ITER)
+    if ibm_restarts < n_restarts or ibm_maxiter < 150:
+        logger.info("IBM VQE: capping to %d restarts x %d iter (max %d jobs)", ibm_restarts, ibm_maxiter, ibm_restarts * ibm_maxiter)
+
+    for _ in range(ibm_restarts):
         theta0 = rng.uniform(-np.pi, np.pi, n_params)
         res = minimize(cost, theta0, method="COBYLA",
-                       options={"maxiter": 150, "rhobeg": 0.5})
+                       options={"maxiter": ibm_maxiter, "rhobeg": 0.5})
         w = _shots_to_weights(res.x)
         sr = (w @ mu) / max(np.sqrt(w @ Sigma @ w), 1e-10)
         if sr > best_sharpe:
             best_sharpe, best_w = sr, w.copy()
 
+    elapsed = time.perf_counter() - t0
     logger.info("IBM VQE done: Sharpe=%.4f on %s", best_sharpe, backend.name)
-    return best_w
+
+    cfg = backend.configuration()
+    meta: Dict[str, object] = {
+        "backend": backend.name,
+        "simulator": bool(cfg.simulator),
+        "n_qubits": int(cfg.n_qubits),
+        "shots_per_eval": SHOTS_PER_EVAL,
+        "optimization_level": 1,
+        "n_assets": n,
+        "n_layers": n_layers,
+        "ibm_restarts_effective": ibm_restarts,
+        "ibm_maxiter_effective": ibm_maxiter,
+        "elapsed_seconds": round(elapsed, 4),
+        "backend_mode": (backend_mode or "auto").lower(),
+        "seed": seed,
+    }
+    if backend_name:
+        meta["backend_requested"] = backend_name
+    return best_w, meta
+
+
+def vqe_weights_ibm_strict(
+    mu: np.ndarray,
+    Sigma: np.ndarray,
+    n_layers: int = 3,
+    n_restarts: int = 8,
+    weight_min: float = 0.001,
+    weight_max: float = 0.30,
+    seed: int = 0,
+    backend_name: Optional[str] = None,
+    backend_mode: str = "auto",
+) -> Tuple[np.ndarray, Dict[str, object]]:
+    """
+    IBM Runtime VQE only — no classical fallback. Raises on misconfiguration,
+    oversized universes, or backend selection errors.
+    """
+    mu = np.asarray(mu, dtype=float)
+    Sigma = np.asarray(Sigma, dtype=float)
+    return _vqe_weights_ibm(
+        mu,
+        Sigma,
+        n_layers,
+        n_restarts,
+        weight_min,
+        weight_max,
+        seed,
+        backend_name,
+        backend_mode,
+    )
 
 
 def vqe_weights(
@@ -204,15 +305,18 @@ def vqe_weights(
     try:
         from services import ibm_quantum
         if ibm_quantum.is_configured():
-            return _vqe_weights_ibm(
+            w, _meta = _vqe_weights_ibm(
                 np.asarray(mu, dtype=float),
                 np.asarray(Sigma, dtype=float),
                 n_layers, n_restarts, weight_min, weight_max, seed, backend_name,
+                "auto",
             )
+            return w
     except Exception as exc:
         logger.warning("IBM VQE path failed, using classical simulation: %s", exc)
 
     # ── Classical simulation path ─────────────────────────────────────────────
+    logger.info("VQE: running classical PauliTwoDesign simulation")
     mu = np.asarray(mu, dtype=float)
     Sigma = np.asarray(Sigma, dtype=float)
     n = len(mu)

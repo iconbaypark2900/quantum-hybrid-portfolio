@@ -18,8 +18,12 @@ Reference: Orús, Mugel & Lizaso (2019). Quantum computing for finance:
            Nature Reviews Physics 1, 586–600.
 """
 
+import logging
 from typing import Optional
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def _build_qubo_matrix(
@@ -134,6 +138,7 @@ def qubo_sa_weights(
         if obj < best_obj:
             best_obj, best_x = obj, x.copy()
 
+    logger.info("qubo_sa: K=%d, n_assets=%d, restarts=%d, best_obj=%.4f", K, n, n_restarts, float(best_obj))
     w = np.zeros(n)
     selected = np.where(best_x == 1)[0]
     if len(selected) > 0:

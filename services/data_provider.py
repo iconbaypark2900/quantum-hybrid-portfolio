@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import os
 
-from services.market_data import fetch_market_data
+from services.data_provider_v2 import fetch_market_data
 
 
 @dataclass

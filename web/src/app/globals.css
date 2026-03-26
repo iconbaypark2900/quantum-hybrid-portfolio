@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme tokens (CSS custom properties) ── */
+:root,
+.light {
+  /* Outer “negative space” — whiter than surfaces so the warm UI reads as inset */
+  --ql-canvas: #ffffff;
+  --ql-surface: #f4f2ee;
+  --ql-surface-low: #ebe8e3;
+  --ql-surface-container: #e3e0da;
+  --ql-surface-high: #dbd7d0;
+  --ql-surface-highest: #cfccc4;
+  --ql-surface-lowest: #faf8f5;
+  --ql-primary: #0066cc;
+  --ql-primary-container: #0088e0;
+  --ql-tertiary: #059669;
+  --ql-tertiary-container: #00b45b;
+  --ql-on-surface: #1a1c20;
+  --ql-on-surface-variant: #44474e;
+  --ql-outline: #74777e;
+  --ql-outline-variant: #c4c6d0;
+  --ql-error: #ba1a1a;
+  --ql-error-container: #ffdad6;
+  --ql-secondary: #3b6da8;
+  --ql-on-primary: #ffffff;
+  --ql-on-primary-fixed: #001d33;
+}
+
+/* Warm charcoal ramp — mirrors light mode’s stone steps (soft, not pure black / cold blue-gray). */
+.dark {
+  --ql-surface: #171514;
+  --ql-surface-low: #1f1d1a;
+  --ql-surface-container: #262320;
+  --ql-surface-high: #2f2c28;
+  --ql-surface-highest: #383530;
+  --ql-surface-lowest: #0f0e0c;
+  --ql-primary: #9cc8fc;
+  --ql-primary-container: #1fa3ff;
+  --ql-tertiary: #34d399;
+  --ql-tertiary-container: #00b45b;
+  --ql-on-surface: #ebe8e4;
+  --ql-on-surface-variant: #a8a39c;
+  --ql-outline: #7f7a73;
+  --ql-outline-variant: #4a4743;
+  --ql-error: #ffb4ab;
+  --ql-error-container: #93000a;
+  --ql-secondary: #a8c5f0;
+  --ql-on-primary: #0c2030;
+  --ql-on-primary-fixed: #001d33;
+}
+
+/* ── Material Symbols ── */
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+html {
+  color-scheme: dark;
+}
+html.light {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--ql-surface);
+  color: var(--ql-on-surface);
+  @apply font-body antialiased;
+}
+
+html.light body {
+  background-color: var(--ql-canvas);
+}
+
+main {
+  background-color: var(--ql-surface);
+  color: var(--ql-on-surface);
+}
+
+/* App shell only (see AppLayout); nested <main> in Portfolio Lab stays full-bleed inside this. */
+main.app-shell-main {
+  background-color: var(--ql-surface);
+}
+
+aside a,
+aside nav a,
+header a {
+  text-decoration: none;
+}
+
+main a:not([class*="text-"]) {
+  color: inherit;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+.dark ::-webkit-scrollbar-track,
+.dark::-webkit-scrollbar-track { background: #1a1816; }
+.dark ::-webkit-scrollbar-thumb,
+.dark::-webkit-scrollbar-thumb { background: #5c5756; border-radius: 10px; }
+.light ::-webkit-scrollbar-track,
+.light::-webkit-scrollbar-track { background: #ebe8e4; }
+.light ::-webkit-scrollbar-thumb,
+.light::-webkit-scrollbar-thumb { background: #b8b5af; border-radius: 10px; }
+
+/* ── Utility classes ── */
+.glass-card {
+  backdrop-filter: blur(24px);
+}
+.dark .glass-card { background: rgba(38, 35, 32, 0.62); }
+.light .glass-card { background: rgba(250, 248, 245, 0.78); }
+
+.primary-gradient {
+  background: linear-gradient(135deg, #98cbff 0%, #00a3ff 100%);
+}
+
+/* Light mode: white canvas + inset shell (negative space around warm surfaces) */
+html.light .app-shell-main {
+  margin: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--ql-outline-variant) 32%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  min-height: calc(100vh - 24px);
+}
+
+@media (min-width: 768px) {
+  html.light .app-shell-main[data-sidebar="expanded"] {
+    margin-left: calc(16rem + 12px);
+    margin-right: 16px;
+    margin-top: 12px;
+    margin-bottom: 16px;
+  }
+  html.light .app-shell-main[data-sidebar="collapsed"] {
+    margin-left: calc(4rem + 12px);
+    margin-right: 16px;
+    margin-top: 12px;
+    margin-bottom: 16px;
+  }
+}
+
+html.light .app-shell-mobile-header,
+html.light .app-shell-mobile-nav {
+  background-color: var(--ql-canvas);
+}

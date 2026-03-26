@@ -17,6 +17,7 @@ import {
 } from "./lib/simulationEngine";
 import {
   optimizePortfolio, setIbmQuantumToken, clearIbmQuantumToken, getIbmQuantumStatus,
+  getIbmQuantumWorkloads,
   fetchMarketData,
 } from "./services/api";
 import TickerSearch from "./components/dashboard/TickerSearch";
@@ -46,6 +47,11 @@ const TICKER_UNIVERSE_PRESETS = [
 
 const fmtAxis2 = (v) => (v == null || Number.isNaN(Number(v)) ? "" : Number(v).toFixed(2));
 
+function strategyChartLabel(name, maxLen = 26) {
+  if (!name || name.length <= maxLen) return name;
+  return `${name.slice(0, maxLen - 1)}…`;
+}
+
 /** KPI / chart number policy: Sharpe 3dp, percentages 2dp */
 function formatTooltipNumber(name, value) {
   if (typeof value !== "number") return value;
@@ -67,6 +73,132 @@ const TABS = [
   { key: "risk",        label: "Risk",        icon: <FaShieldAlt size={13} /> },
   { key: "sensitivity", label: "Sensitivity", icon: <FaSlidersH size={13} /> },
 ];
+
+const TAB_LENS = {
+  portfolio:
+    "Holdings, KPIs, and universe facts — same Σ as Performance, Risk, and Sensitivity.",
+  performance:
+    "Cumulative equity paths and benchmarks on this Σ and constraints.",
+  risk:
+    "σ_p, return distribution, VaR/CVaR, stress, and MRC on the optimized weights.",
+  sensitivity:
+    "How Sharpe moves when you change objective × max weight (heatmap and ladders).",
+};
+
+function hypothesisGroupLabel(group) {
+  if (group === "classical") return "Classical";
+  if (group === "quantum") return "Quantum-Inspired";
+  if (group === "hybrid") return "Hybrid";
+  return "Method";
+}
+
+function HypothesisPlaygroundStrip({
+  t,
+  marketMode,
+  isLiveLoaded,
+  startDate,
+  endDate,
+  regimeKey,
+  dataSeed,
+  activeLabel,
+  objectiveGroup,
+  weightMin,
+  weightMax,
+  turnoverLimit,
+  nAssets,
+  activeTab,
+}) {
+  const lens = TAB_LENS[activeTab] ?? TAB_LENS.portfolio;
+  const regimeName = REGIMES.find((r) => r.key === regimeKey)?.label ?? regimeKey;
+  let dataLine;
+  if (marketMode === "live" && isLiveLoaded) {
+    dataLine =
+      startDate && endDate
+        ? `Σ from loaded returns · ${startDate} → ${endDate} · ${nAssets} assets`
+        : `Σ from loaded returns · ${nAssets} assets`;
+  } else if (marketMode === "live") {
+    dataLine = "Live mode — apply universe in the sidebar to load Σ into the lab";
+  } else {
+    dataLine = `Σ synthetic · regime ${regimeName} · seed ${dataSeed}`;
+  }
+  const methodLine = `${hypothesisGroupLabel(objectiveGroup)} · ${activeLabel}`;
+  const constraintsLine = `w_min ${(weightMin * 100).toFixed(1)}% · w_max ${(weightMax * 100).toFixed(0)}% · max turnover ${(turnoverLimit * 100).toFixed(0)}% · N ${nAssets}`;
+
+  return (
+    <section
+      aria-label="Current experiment"
+      style={{
+        marginBottom: 16,
+        padding: "14px 16px",
+        borderRadius: 10,
+        border: `1px solid ${t.border}`,
+        background: t.surface,
+      }}
+    >
+      <h2
+        id="qpl-playground"
+        style={{
+          margin: "0 0 8px",
+          fontSize: 14,
+          fontWeight: 700,
+          fontFamily: FONT.sans,
+          letterSpacing: "-0.02em",
+          color: t.text,
+        }}
+      >
+        Hypothesis playground
+      </h2>
+      <p
+        style={{
+          margin: "0 0 12px",
+          fontSize: 11,
+          color: t.textMuted,
+          lineHeight: 1.5,
+          fontFamily: FONT.sans,
+        }}
+      >
+        One lab contract: identical Σ, seed family, and constraints across every tab — test classical, hybrid, and quantum-inspired objectives against the same market snapshot.
+      </p>
+      <div
+        style={{
+          display: "grid",
+          gap: 6,
+          fontSize: 10,
+          fontFamily: FONT.mono,
+          color: t.textDim,
+          lineHeight: 1.45,
+        }}
+      >
+        <div>
+          <span style={{ color: t.textMuted }}>Data · </span>
+          {dataLine}
+        </div>
+        <div>
+          <span style={{ color: t.textMuted }}>Method · </span>
+          {methodLine}
+        </div>
+        <div>
+          <span style={{ color: t.textMuted }}>Constraints · </span>
+          {constraintsLine}
+        </div>
+      </div>
+      <p
+        style={{
+          margin: "12px 0 0",
+          paddingTop: 10,
+          borderTop: `1px solid ${t.border}`,
+          fontSize: 11,
+          color: t.text,
+          lineHeight: 1.45,
+          fontFamily: FONT.sans,
+        }}
+      >
+        <span style={{ color: t.textMuted }}>This tab · </span>
+        {lens}
+      </p>
+    </section>
+  );
+}
 
 
 function ChartTooltip({ active, payload, label }) {
@@ -220,6 +352,9 @@ export default function QuantumPortfolioDashboard() {
   const [ibmToken, setIbmToken] = useState("");
   const [ibmStatus, setIbmStatus] = useState({ configured: false, backends: [] });
   const [ibmLoading, setIbmLoading] = useState(false);
+  const [ibmWorkloads, setIbmWorkloads] = useState([]);
+  const [ibmWorkloadsLoading, setIbmWorkloadsLoading] = useState(false);
+  const [ibmWorkloadsError, setIbmWorkloadsError] = useState(null);
 
   // Backend optimization state
   const [apiResult, setApiResult] = useState(null);
@@ -244,11 +379,44 @@ export default function QuantumPortfolioDashboard() {
     getIbmQuantumStatus().then(setIbmStatus).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!ibmStatus.configured) {
+      setIbmWorkloads([]);
+      setIbmWorkloadsError(null);
+      setIbmWorkloadsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setIbmWorkloadsLoading(true);
+      setIbmWorkloadsError(null);
+      try {
+        const data = await getIbmQuantumWorkloads(20);
+        if (!cancelled) setIbmWorkloads(data.workloads || []);
+      } catch (e) {
+        if (!cancelled) {
+          setIbmWorkloads([]);
+          setIbmWorkloadsError(e.message || "Failed to load IBM workloads");
+        }
+      } finally {
+        if (!cancelled) setIbmWorkloadsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ibmStatus.configured]);
+
   // Clear API result when optimization-relevant params change
   useEffect(() => {
     setApiResult(null);
     setOptimizeError(null);
   }, [nAssets, regime, objective, cardinality, kScreen, kSelect, weightMin, weightMax, dataSeed, selectedTickers, dataSourceMode]);
+
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab && TABS.some((x) => x.key === tab)) {
+      setActiveTab(tab);
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedTickers.length > 0 && nAssets > selectedTickers.length) {
@@ -276,12 +444,29 @@ export default function QuantumPortfolioDashboard() {
     try {
       await clearIbmQuantumToken();
       setIbmStatus({ configured: false, backends: [] });
+      setIbmWorkloads([]);
+      setIbmWorkloadsError(null);
     } catch {
       // ignore
     } finally {
       setIbmLoading(false);
     }
   }, []);
+
+  const handleIbmWorkloadsRefresh = useCallback(async () => {
+    if (!ibmStatus.configured) return;
+    setIbmWorkloadsLoading(true);
+    setIbmWorkloadsError(null);
+    try {
+      const data = await getIbmQuantumWorkloads(20);
+      setIbmWorkloads(data.workloads || []);
+    } catch (e) {
+      setIbmWorkloads([]);
+      setIbmWorkloadsError(e.message || "Failed to load IBM workloads");
+    } finally {
+      setIbmWorkloadsLoading(false);
+    }
+  }, [ibmStatus.configured]);
 
   const universeN = selectedTickers.length > 0 ? Math.min(nAssets, selectedTickers.length) : nAssets;
   const customTickerList = selectedTickers.length > 0 ? selectedTickers : null;
@@ -409,6 +594,7 @@ export default function QuantumPortfolioDashboard() {
   }, [data, result]);
 
   const activeLabel = OBJECTIVES.find(o => o.value === objective)?.label || objective;
+  const activeObjectiveGroup = OBJECTIVES.find((o) => o.value === objective)?.group;
 
   const equityCurves = useMemo(() => {
     if (!result.weights?.length) return [];
@@ -420,17 +606,41 @@ export default function QuantumPortfolioDashboard() {
     return main.map((pt, i) => ({ day: pt.day, [activeLabel]: pt.value, "Equal Weight": ew[i]?.value || 100, "HRP": hrp[i]?.value || 100, "Min Variance": mv[i]?.value || 100 }));
   }, [data, result.weights, benchmarks, activeLabel]);
 
-  const strategyComparison = useMemo(() => {
+  const strategyRows = useMemo(() => {
+    if (!data?.assets?.length) return [];
     const run = (obj) => runOptimisation(data, { objective: obj, wMin: weightMin, wMax: weightMax });
-    return [
-      { name: "Hybrid",       ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("hybrid")) },
-      { name: "Markowitz",    ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("markowitz")) },
-      { name: "HRP",          ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("hrp")) },
-      { name: "QUBO-SA",      ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("qubo_sa")) },
-      { name: "VQE",          ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("vqe")) },
-      { name: "Equal Weight", ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("equal_weight")) },
+    const lab = [
+      { key: "lab-hybrid", kind: "lab", name: "Hybrid", chartLabel: strategyChartLabel("Hybrid"), profile: "Current lab Σ", ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("hybrid")) },
+      { key: "lab-markowitz", kind: "lab", name: "Markowitz", chartLabel: strategyChartLabel("Markowitz"), profile: "Current lab Σ", ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("markowitz")) },
+      { key: "lab-hrp", kind: "lab", name: "HRP", chartLabel: strategyChartLabel("HRP"), profile: "Current lab Σ", ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("hrp")) },
+      { key: "lab-qubo", kind: "lab", name: "QUBO-SA", chartLabel: strategyChartLabel("QUBO-SA"), profile: "Current lab Σ", ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("qubo_sa")) },
+      { key: "lab-vqe", kind: "lab", name: "VQE", chartLabel: strategyChartLabel("VQE"), profile: "Current lab Σ", ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("vqe")) },
+      { key: "lab-ew", kind: "lab", name: "Equal Weight", chartLabel: strategyChartLabel("Equal Weight"), profile: "Current lab Σ", ...((r) => ({ sharpe: r.sharpe, ret: r.portReturn * 100, vol: r.portVol * 100, n: r.nActive }))(run("equal_weight")) },
     ];
-  }, [data, weightMin, weightMax]);
+    const list = selectedTickers.length ? selectedTickers : null;
+    const presets = [];
+    for (const p of PRESETS) {
+      if (p.objective === "qubo_sa" || p.objective === "vqe") continue;
+      try {
+        const d = generateMarketData(p.nAssets, 504, p.regime, dataSeed, list);
+        const r = runOptimisation(d, { objective: p.objective, wMin: weightMin, wMax: p.maxWeight });
+        presets.push({
+          key: `preset-${p.name}`,
+          kind: "preset",
+          name: p.name,
+          chartLabel: strategyChartLabel(p.name),
+          profile: `${p.nAssets} assets · ${p.regime}`,
+          sharpe: r.sharpe,
+          ret: r.portReturn * 100,
+          vol: r.portVol * 100,
+          n: r.nActive,
+        });
+      } catch {
+        /* skip */
+      }
+    }
+    return [...lab, ...presets];
+  }, [data, weightMin, weightMax, dataSeed, selectedTickers]);
 
   const weightSensitivityData = useMemo(() => {
     if (!data?.assets?.length) return [];
@@ -593,18 +803,26 @@ export default function QuantumPortfolioDashboard() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 28, height: 28, borderRadius: 6, background: t.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: t.bg, fontWeight: 700 }}>Q</div>
           <div>
-            <h1 style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em", margin: 0, fontFamily: FONT.sans }}>Quantum Portfolio Lab</h1>
+            <h1 id="page-heading" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em", margin: 0, fontFamily: FONT.sans }}>Quantum Portfolio Lab</h1>
             <p style={{ fontSize: 11, color: t.textDim, margin: 0 }}>Hybrid Optimization Dashboard</p>
           </div>
         </div>
-        <nav style={{ display: "flex", gap: 2 }}>
+        <nav role="tablist" aria-label="Lab sections" style={{ display: "flex", gap: 2 }}>
           {TABS.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
-              padding: "8px 16px", background: "none", border: "none", cursor: "pointer",
-              borderBottom: activeTab === tab.key ? `2px solid ${t.accent}` : "2px solid transparent",
-              color: activeTab === tab.key ? t.text : t.textMuted, fontSize: 13, fontWeight: activeTab === tab.key ? 600 : 400,
-              fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6, transition: "all 150ms",
-            }}>
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              id={`tab-${tab.key}`}
+              aria-selected={activeTab === tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: "8px 16px", background: "none", border: "none", cursor: "pointer",
+                borderBottom: activeTab === tab.key ? `2px solid ${t.accent}` : "2px solid transparent",
+                color: activeTab === tab.key ? t.text : t.textMuted, fontSize: 13, fontWeight: activeTab === tab.key ? 600 : 400,
+                fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6, transition: "all 150ms",
+              }}
+            >
               {tab.icon} {tab.label}
             </button>
           ))}
@@ -867,10 +1085,74 @@ export default function QuantumPortfolioDashboard() {
               {ibmLoading ? "Disconnecting..." : "Disconnect"}
             </button>
           )}
+
+          <div style={{ height: 1, background: t.border, margin: "14px 0" }} />
+          <ControlLabel>IBM Runtime workloads</ControlLabel>
+          <p style={{ fontSize: 9, color: t.textDim, margin: "0 0 8px", lineHeight: 1.35 }}>
+            Recent jobs on your IBM account (GET /api/config/ibm-quantum/workloads).
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleIbmWorkloadsRefresh()}
+            disabled={!ibmStatus.configured || ibmWorkloadsLoading}
+            style={{
+              width: "100%", padding: "6px 0", marginBottom: 8, background: t.surface,
+              border: `1px solid ${t.border}`, borderRadius: 4, color: t.accent, fontSize: 10, fontWeight: 600,
+              fontFamily: FONT.mono, cursor: !ibmStatus.configured || ibmWorkloadsLoading ? "default" : "pointer",
+              opacity: !ibmStatus.configured ? 0.5 : 1,
+            }}
+          >
+            {ibmWorkloadsLoading ? "Refreshing…" : "Refresh IBM workloads"}
+          </button>
+          {ibmWorkloadsError && (
+            <div style={{ fontSize: 9, color: t.red, fontFamily: FONT.mono, marginBottom: 6 }}>
+              {ibmWorkloadsError}
+            </div>
+          )}
+          {!ibmStatus.configured ? (
+            <div style={{ fontSize: 9, color: t.textDim, padding: 8, border: `1px dashed ${t.border}`, borderRadius: 4, textAlign: "center" }}>
+              Connect IBM to list Runtime jobs.
+            </div>
+          ) : ibmWorkloadsLoading && ibmWorkloads.length === 0 ? (
+            <div style={{ fontSize: 9, color: t.textDim, textAlign: "center", padding: 8 }}>Loading…</div>
+          ) : ibmWorkloads.length === 0 ? (
+            <div style={{ fontSize: 9, color: t.textDim, padding: 8, border: `1px dashed ${t.border}`, borderRadius: 4, textAlign: "center" }}>
+              No recent IBM jobs (last 20).
+            </div>
+          ) : (
+            <div style={{ maxHeight: 220, overflowY: "auto", border: `1px solid ${t.border}`, borderRadius: 4 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 9, fontFamily: FONT.mono }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${t.border}`, color: t.textMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    <th style={{ textAlign: "left", padding: "4px 6px" }}>ID</th>
+                    <th style={{ textAlign: "left", padding: "4px 6px" }}>St</th>
+                    <th style={{ textAlign: "left", padding: "4px 6px" }}>QPU</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ibmWorkloads.map((w, idx) => (
+                    <tr key={w.job_id || `wl-${idx}`} style={{ borderBottom: `1px solid ${t.border}` }}>
+                      <td style={{ padding: "4px 6px", maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={w.job_id}>
+                        {(w.job_id || "—").slice(0, 12)}
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>{(w.status || "—").slice(0, 8)}</td>
+                      <td style={{ padding: "4px 6px", maxWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={w.backend}>
+                        {(w.backend || "—").slice(0, 10)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </aside>
 
         {/* ── Main Content ── */}
-        <main style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        <main
+          id="qpl-main"
+          aria-labelledby="page-heading"
+          style={{ flex: 1, overflowY: "auto", padding: 24 }}
+        >
 
           <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <DataSourceBadge source={dataSourceMode === "live" && liveLabData ? "api" : "sim"} />
@@ -1048,47 +1330,119 @@ export default function QuantumPortfolioDashboard() {
               </Panel>
 
               <Panel>
-                <SectionHeader subtitle="All methods side-by-side">Strategy Comparison</SectionHeader>
-                {strategyComparison.length > 0 && (
+                <SectionHeader subtitle="Lab matrix + embedded presets · horizontal bars">
+                  Strategy Comparison
+                </SectionHeader>
+                {strategyRows.length > 0 && (() => {
+                  const maxSharpe = Math.max(...strategyRows.map((x) => x.sharpe), 0);
+                  const minSharpe = Math.min(...strategyRows.map((x) => x.sharpe), 0);
+                  const sharpeSpan = Math.max(maxSharpe - minSharpe, 1e-9);
+                  const labRows = strategyRows.filter((r) => r.kind === "lab");
+                  const presetRows = strategyRows.filter((r) => r.kind === "preset");
+                  const maxLabelChars = strategyRows.reduce((m, r) => Math.max(m, (r.chartLabel || "").length), 0);
+                  const yAxisWidth = Math.min(200, Math.max(92, 8 + maxLabelChars * 6.5));
+                  const chartH = Math.min(640, 48 + strategyRows.length * 46);
+                  const renderRow = (b) => {
+                    const isBest = b.sharpe >= maxSharpe - 1e-6;
+                    const sn = (b.sharpe - minSharpe) / sharpeSpan;
+                    const sharpeBg = `rgba(45, 212, 191, ${0.06 + sn * 0.18})`;
+                    return (
+                      <tr
+                        key={b.key}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = t.surfaceLight; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${t.border}`, fontWeight: 600, verticalAlign: "top" }}>
+                          <span style={{ color: t.text }}>{b.name}</span>
+                          {isBest && (
+                            <span title="Best Sharpe in this view" style={{ marginLeft: 6, display: "inline-flex", verticalAlign: "middle" }}>
+                              <FaStar size={10} style={{ color: t.accent }} />
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${t.border}`, fontSize: 10, color: t.textDim, fontFamily: FONT.sans, verticalAlign: "top" }}>{b.profile}</td>
+                        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right", fontVariantNumeric: "tabular-nums", background: sharpeBg, color: isBest ? t.green : t.text, fontWeight: isBest ? 700 : 500 }}>{b.sharpe.toFixed(3)}</td>
+                        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{b.ret.toFixed(2)}%</td>
+                        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{b.vol.toFixed(2)}%</td>
+                        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right" }}>{b.n}</td>
+                      </tr>
+                    );
+                  };
+                  return (
                   <>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={strategyComparison} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-                        <CartesianGrid {...gridProps} />
-                        <XAxis dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} axisLine={{ stroke: t.border }} tickLine={false} />
-                        <YAxis tick={axisStyle} tickFormatter={fmtAxis2} axisLine={{ stroke: t.border }} tickLine={false} />
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", justifyContent: "flex-end", marginBottom: 10, fontSize: 11, fontFamily: FONT.mono, color: t.textMuted }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: t.accent, borderRadius: 2 }} /> Sharpe</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: t.green, borderRadius: 2 }} /> Return %</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: t.accentWarm, borderRadius: 2 }} /> Vol %</span>
+                    </div>
+                    <ResponsiveContainer width="100%" height={chartH}>
+                      <BarChart
+                        layout="vertical"
+                        data={strategyRows}
+                        margin={{ top: 4, right: 20, bottom: 8, left: 4 }}
+                        barCategoryGap={strategyRows.length > 8 ? "10%" : "16%"}
+                        barGap={2}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={t.border} horizontal={false} vertical />
+                        <XAxis type="number" tick={{ fontSize: 10, fill: t.textMuted, fontFamily: FONT.mono }} axisLine={{ stroke: t.border }} tickLine={false} />
+                        <YAxis
+                          type="category"
+                          dataKey="chartLabel"
+                          width={yAxisWidth}
+                          tick={{ fontSize: 10, fill: t.textMuted, fontFamily: FONT.mono }}
+                          axisLine={{ stroke: t.border }}
+                          tickLine={false}
+                          reversed
+                        />
                         <Tooltip content={<ChartTooltip />} />
-                        <Legend wrapperStyle={{ fontSize: 11, color: t.textMuted, paddingTop: 8 }} />
-                        <Bar dataKey="sharpe" name="Sharpe" fill={t.accent} radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="ret" name="Return %" fill={t.green} radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="vol" name="Vol %" fill={t.accentWarm} radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="sharpe" name="Sharpe" fill={t.accent} maxBarSize={14} radius={[0, 3, 3, 0]} />
+                        <Bar dataKey="ret" name="Return %" fill={t.green} maxBarSize={14} radius={[0, 3, 3, 0]} />
+                        <Bar dataKey="vol" name="Vol %" fill={t.accentWarm} maxBarSize={14} radius={[0, 3, 3, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
-                    <div style={{ marginTop: 16, overflowX: "auto" }}>
+                    <div style={{ marginTop: 18, overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: FONT.mono }}>
                         <thead>
-                          <tr>{["Strategy", "Sharpe", "Return", "Volatility", "Positions"].map(h => (
-                            <th key={h} style={{ padding: "8px 12px", textAlign: h === "Strategy" ? "left" : "right", borderBottom: `1px solid ${t.border}`, color: t.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
-                          ))}</tr>
+                          <tr>
+                            {["Strategy", "Profile", "Sharpe", "Return", "Volatility", "Positions"].map((h) => (
+                              <th
+                                key={h}
+                                style={{
+                                  padding: "10px 12px",
+                                  textAlign: h === "Strategy" || h === "Profile" ? "left" : "right",
+                                  borderBottom: `1px solid ${t.border}`,
+                                  color: t.textDim,
+                                  fontSize: 10,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.05em",
+                                }}
+                              >
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
                         </thead>
                         <tbody>
-                          {strategyComparison.map((b) => {
-                            const maxS = Math.max(...strategyComparison.map(x => x.sharpe));
-                            const isBest = b.sharpe >= maxS - 0.001;
-                            return (
-                              <tr key={b.name} onMouseEnter={e => e.currentTarget.style.background = t.surfaceLight} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                                <td style={{ padding: "8px 12px", borderBottom: `1px solid ${t.border}`, fontWeight: 600 }}>{b.name} {isBest && <FaStar size={10} style={{ color: t.accent, verticalAlign: "middle" }} />}</td>
-                                <td style={{ padding: "8px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right", color: isBest ? t.green : t.text, fontVariantNumeric: "tabular-nums" }}>{b.sharpe.toFixed(3)}</td>
-                                <td style={{ padding: "8px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{b.ret.toFixed(2)}%</td>
-                                <td style={{ padding: "8px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{b.vol.toFixed(2)}%</td>
-                                <td style={{ padding: "8px 12px", borderBottom: `1px solid ${t.border}`, textAlign: "right" }}>{b.n}</td>
-                              </tr>
-                            );
-                          })}
+                          <tr>
+                            <td colSpan={6} style={{ padding: "10px 12px 6px", fontSize: 9, fontFamily: FONT.mono, color: t.accent, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, borderBottom: `1px solid ${t.border}` }}>
+                              Lab objectives · same Σ as the sidebar
+                            </td>
+                          </tr>
+                          {labRows.map(renderRow)}
+                          {presetRows.length > 0 && (
+                            <tr>
+                              <td colSpan={6} style={{ padding: "14px 12px 6px", fontSize: 9, fontFamily: FONT.mono, color: t.accentWarm, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, borderBottom: `1px solid ${t.border}` }}>
+                                Embedded presets · re-simulated
+                              </td>
+                            </tr>
+                          )}
+                          {presetRows.map(renderRow)}
                         </tbody>
                       </table>
                     </div>
                   </>
-                )}
+                  );
+                })()}
               </Panel>
             </div>
           )}
@@ -1277,7 +1631,26 @@ export default function QuantumPortfolioDashboard() {
 
           {/* ── Sensitivity Tab ── */}
           {activeTab === "sensitivity" && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 16 }}>
+            <div role="tabpanel" id="panel-sensitivity" aria-labelledby="tab-sensitivity" aria-describedby="qpl-playground" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 16 }}>
+              <HypothesisPlaygroundStrip
+                t={t}
+                marketMode={dataSourceMode === "live" ? "live" : "synthetic"}
+                isLiveLoaded={dataSourceMode === "live" && !!liveLabData}
+                startDate={undefined}
+                endDate={undefined}
+                regimeKey={regime}
+                dataSeed={dataSeed}
+                activeLabel={activeLabel}
+                objectiveGroup={activeObjectiveGroup}
+                weightMin={weightMin}
+                weightMax={weightMax}
+                turnoverLimit={turnoverLimit}
+                nAssets={data?.assets?.length ?? nAssets}
+                activeTab={activeTab}
+              />
+              <div style={{ gridColumn: "1 / -1", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceLight, fontSize: 10, color: t.textMuted, lineHeight: 1.45 }}>
+                <strong style={{ color: t.text }}>Heatmap focus:</strong> sweeps objective × <code style={{ fontFamily: FONT.mono }}>w_max</code> on the same Σ as the <strong style={{ color: t.text }}>Hypothesis playground</strong> strip above — pair with Risk and Performance for full context.
+              </div>
               <Panel span>
                 <SectionHeader subtitle="Sharpe across max-weight cap and objective (current universe)">Parameter heatmap</SectionHeader>
                 <div style={{ overflowX: "auto" }}>

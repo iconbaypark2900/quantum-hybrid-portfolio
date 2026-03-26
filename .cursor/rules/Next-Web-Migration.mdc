@@ -1,0 +1,13 @@
+---
+description: Next.js web app — Flask API via lib/api, design tokens, migration phases
+globs: web/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Next.js (`web/`) — migration track
+
+- Call the backend through `web/src/lib/api.ts` (envelope unwrap, 401/429 toasts). Do not bypass with ad-hoc `fetch` unless documented.
+- Client bundle: only `NEXT_PUBLIC_*` env vars; no server secrets in client components.
+- Prefer thin route pages under `src/app/`; move stateful logic to hooks/components.
+- **Design:** Use Quantum Ledger tokens from `tailwind.config.ts` (`ql-*` and Stitch aliases like `bg-surface`). See `docs/design/DESIGN.md` and `docs/plans/MIGRATION_PHASES_AND_CHECKPOINTS.md` (Phase 4+).
+- **CRA** lives in `frontend/` — do not share global CSS between CRA and Next; duplicate tokens in Tailwind is intentional until cutover.
