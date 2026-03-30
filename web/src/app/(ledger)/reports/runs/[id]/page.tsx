@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
 import Link from "next/link";
 
 import { getLabRun, type LabRun } from "@/lib/api";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
+import {
+  useNextPageProps,
+  type NextClientPagePropsWithId,
+} from "@/lib/nextPageProps";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 120;
@@ -136,8 +139,9 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function RunReportPage() {
-  const { id } = useParams<{ id: string }>();
+export default function RunReportPage(props: NextClientPagePropsWithId) {
+  const { params } = useNextPageProps(props);
+  const id = params.id;
   const [run, setRun] = useState<LabRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

@@ -161,8 +161,32 @@ export async function getEfficientFrontier(
   return res.data;
 }
 
-export async function setIbmQuantumToken(token: string) {
-  const res = await api.post("/api/config/ibm-quantum", { token });
+export type IbmQuantumCredentials = {
+  token: string;
+  /** IBM Cloud instance CRN (optional; Open Plan / specific instance). */
+  instance?: string;
+};
+
+export async function setIbmQuantumToken(
+  token: string,
+  opts?: { instance?: string }
+) {
+  const body: Record<string, string> = { token };
+  const inst = opts?.instance?.trim();
+  if (inst) body.instance = inst;
+  const res = await api.post("/api/config/ibm-quantum", body);
+  return res.data;
+}
+
+/** Dry-run: token validity + backends + IBM instance summary; does not persist. */
+export async function verifyIbmQuantumToken(
+  token: string,
+  opts?: { instance?: string }
+) {
+  const body: Record<string, string> = { token };
+  const inst = opts?.instance?.trim();
+  if (inst) body.instance = inst;
+  const res = await api.post("/api/config/ibm-quantum/verify", body);
   return res.data;
 }
 
@@ -174,6 +198,20 @@ export async function clearIbmQuantumToken() {
 export async function getIbmQuantumStatus() {
   const res = await api.get("/api/config/ibm-quantum/status");
   return res.data;
+}
+
+/** IBM Cloud instance row (from qiskit-ibm-runtime `instances()`); no secrets. */
+export interface IbmInstanceSummary {
+  name?: string | null;
+  plan?: string | null;
+  crn_suffix?: string | null;
+}
+
+/** Server-side DB / tenant hints from GET /api/config/ibm-quantum/status. */
+export interface IbmIntegrationContext {
+  tenant_id: string;
+  secrets_persistence: boolean;
+  api_db_basename: string;
 }
 
 /** Row shape from GET /api/config/ibm-quantum/workloads (IBM Runtime job list). */
@@ -200,6 +238,57 @@ export async function getIbmQuantumWorkloads(limit = 20) {
     tenant_id?: string;
     error?: string;
   };
+}
+
+/** VQE-shaped Runtime smoke: market data + one EfficientSU2 sample (fixed params). */
+export type IbmSmokeTestMode = "hardware" | "simulator";
+
+export interface IbmSmokeTestResult {
+  ok: boolean;
+  configured?: boolean;
+  tenant_id?: string;
+  error?: string;
+  smoke_profile?: string;
+  vqe_ansatz?: string;
+  n_layers?: number;
+  fixed_parameters?: string;
+  market_source?: string;
+  tickers?: string[];
+  n_assets?: number;
+  ann_returns?: number[];
+  weights?: number[];
+  portfolio_return?: number;
+  portfolio_volatility?: number;
+  sharpe_ratio?: number | null;
+  backend?: string;
+  simulator?: boolean;
+  mode?: IbmSmokeTestMode;
+  shots?: number;
+  elapsed_ms?: number;
+  counts?: Record<string, number>;
+  job_id?: string | null;
+  ibm_saved_instance_crn_suffix?: string | null;
+}
+
+export type IbmSmokeTestRequest = {
+  mode?: IbmSmokeTestMode;
+  /** Server defaults when omitted: Mag 7 + JPM (see `services/ibm_quantum.py`). */
+  tickers?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+};
+
+/** POST /api/config/ibm-quantum/smoke-test — market fetch + queue can take several minutes. */
+export async function postIbmQuantumSmokeTest(opts?: IbmSmokeTestRequest) {
+  const mode = opts?.mode ?? "hardware";
+  const body: Record<string, unknown> = { mode };
+  if (opts?.tickers?.length) body.tickers = opts.tickers;
+  if (opts?.start_date) body.start_date = opts.start_date;
+  if (opts?.end_date) body.end_date = opts.end_date;
+  const res = await api.post("/api/config/ibm-quantum/smoke-test", body, {
+    timeout: 180000,
+  });
+  return res.data as IbmSmokeTestResult;
 }
 
 export async function getIntegrationTenants() {

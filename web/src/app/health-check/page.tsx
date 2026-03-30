@@ -8,11 +8,13 @@ import {
   healthCheck,
   optimizePortfolio,
 } from "@/lib/api";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 /**
  * Phase 2 proof page: live API health JSON (and Phase 3 smoke: market-data + optimize).
  */
-export default function HealthCheckPage() {
+export default function HealthCheckPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   const [health, setHealth] = useState<unknown>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Strategy Builder | Quantum Ledger</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@300;400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-background": "#e2e2e6",
+              "tertiary-container": "#00b45b",
+              "on-secondary": "#023353",
+              "on-tertiary-fixed": "#00210b",
+              "on-secondary-fixed": "#001d33",
+              "on-surface": "#e2e2e6",
+              "surface-variant": "#333538",
+              "secondary-fixed": "#cfe5ff",
+              "on-tertiary-fixed-variant": "#005226",
+              "outline-variant": "#3f4852",
+              "surface-bright": "#37393d",
+              "on-tertiary": "#003918",
+              "on-secondary-fixed-variant": "#22496b",
+              "on-tertiary-container": "#003d1b",
+              "inverse-surface": "#e2e2e6",
+              "primary-fixed-dim": "#98cbff",
+              "outline": "#88919d",
+              "surface-container-lowest": "#0c0e11",
+              "surface-tint": "#98cbff",
+              "tertiary-fixed": "#62ff96",
+              "surface": "#111316",
+              "surface-container-low": "#1a1c1f",
+              "primary-fixed": "#cfe5ff",
+              "inverse-on-surface": "#2f3034",
+              "secondary-container": "#22496b",
+              "on-primary-fixed": "#001d33",
+              "surface-dim": "#111316",
+              "on-error-container": "#ffdad6",
+              "surface-container": "#1e2023",
+              "on-primary-fixed-variant": "#004a77",
+              "error-container": "#93000a",
+              "tertiary-fixed-dim": "#00e475",
+              "on-primary": "#003354",
+              "on-secondary-container": "#94b9e0",
+              "background": "#111316",
+              "on-primary-container": "#00375a",
+              "error": "#ffb4ab",
+              "inverse-primary": "#00629d",
+              "secondary-fixed-dim": "#a5caf2",
+              "on-error": "#690005",
+              "on-surface-variant": "#bec7d4",
+              "tertiary": "#00e475",
+              "secondary": "#a5caf2",
+              "primary": "#98cbff",
+              "surface-container-highest": "#333538",
+              "primary-container": "#00a3ff",
+              "surface-container-high": "#282a2d"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .glass-panel {
+            background: rgba(51, 53, 56, 0.6);
+            backdrop-filter: blur(24px);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary/30 selection:text-primary">
+<!-- SideNavBar -->
+<aside class="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-[#111316] border-r border-[#3f4852]/15 py-6 z-50">
+<div class="px-6 mb-10">
+<h1 class="font-['Space_Grotesk'] text-[#98cbff] text-lg font-black tracking-tighter">Quantum Ledger</h1>
+<p class="text-[10px] text-slate-500 font-medium tracking-widest mt-1">V1.0.4 ACTIVE</p>
+</div>
+<nav class="flex-1 px-3 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl">dashboard</span>
+<span class="font-['Inter'] text-sm font-medium">Executive Dashboard</span>
+</a>
+<a class="flex items-center gap-3 bg-[#1e2023] text-[#98cbff] rounded-lg px-4 py-3 border-l-4 border-[#00a3ff] scale-[0.99] duration-150 group" href="#">
+<span class="material-symbols-outlined text-xl">architecture</span>
+<span class="font-['Inter'] text-sm font-medium">Strategy Builder</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl">memory</span>
+<span class="font-['Inter'] text-sm font-medium">Quantum Engine</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl">query_stats</span>
+<span class="font-['Inter'] text-sm font-medium">Simulations</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl">settings</span>
+<span class="font-['Inter'] text-sm font-medium">Settings</span>
+</a>
+</nav>
+<div class="px-6 mt-auto">
+<button class="w-full py-3 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed rounded-lg font-semibold text-sm shadow-lg shadow-primary/10 hover:opacity-90 transition-opacity">
+                Optimize Portfolio
+            </button>
+<div class="mt-6 pt-6 border-t border-[#3f4852]/15 space-y-4">
+<a class="flex items-center gap-3 text-slate-500 text-xs hover:text-white transition-colors" href="#">
+<span class="material-symbols-outlined text-lg">help</span>
+                    Help Center
+                </a>
+<a class="flex items-center gap-3 text-slate-500 text-xs hover:text-white transition-colors" href="#">
+<span class="material-symbols-outlined text-lg">code</span>
+                    API Docs
+                </a>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="md:ml-64 min-h-screen bg-surface">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center w-full px-8 h-16 bg-[#111316] sticky top-0 z-40">
+<div class="flex items-center gap-8">
+<div class="hidden lg:flex items-center gap-6">
+<a class="text-[#98cbff] border-b-2 border-[#98cbff] pb-1 font-['Space_Grotesk'] font-bold text-sm tracking-tight opacity-80 transition-all" href="#">Market Live</a>
+<a class="text-slate-400 hover:text-white transition-colors font-['Space_Grotesk'] font-bold text-sm tracking-tight" href="#">Alpha Stream</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="h-8 w-px bg-outline-variant/20 mx-2"></div>
+<button class="flex items-center gap-2 px-4 py-2 bg-surface-container rounded-full text-primary border border-outline-variant/10">
+<span class="material-symbols-outlined text-lg">account_balance_wallet</span>
+<span class="text-xs font-bold font-headline">$2.48M</span>
+</button>
+<img alt="User Profile" class="w-8 h-8 rounded-full border border-primary/20 object-cover" data-alt="close-up portrait of a professional trader in front of a multi-monitor trading desk setup with dark room lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBwLU4xgcYSjtXJpxP9YZ-ATXLxY_YBZQDA0RJSz006JWwwqjkRZSzYWWc3U2aJv_CeK8E6aI9XuBkGUGWI7v8XrUNH5qX2P8VISeX62D6PMehq0eQFYKJVnVS8ilYDnXo2kWQCSKxFyvLmx8LjByHjA9ECYeN4tAygL9vyw0lmyBCsg9xNTA_xCbCBawBtdJH10mAiuCgih9eYNCi9pjI7BWnTiEQPByInJoykDY0uOg0JWJeR_Pvw5bVVgwigpsecX4-OWry-51m2"/>
+</div>
+</header>
+<div class="p-8">
+<!-- Hero Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+<div>
+<span class="text-tertiary font-bold tracking-[0.2em] text-[10px] uppercase">Environment: Alpha-7</span>
+<h2 class="text-4xl font-headline font-black text-on-surface mt-2 tracking-tighter">Strategy <span class="text-primary italic">Architect</span></h2>
+<p class="text-on-surface-variant mt-2 max-w-xl text-sm leading-relaxed">Configure high-dimensional predictive models and define linguistic data ingestion parameters for the Quantum Engine.</p>
+</div>
+<div class="flex gap-3">
+<button class="px-6 py-3 rounded-lg border border-outline-variant/30 text-on-surface hover:bg-surface-container transition-colors font-medium text-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">upload_file</span> Import Config
+                    </button>
+<button class="px-6 py-3 rounded-lg bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-bold text-sm shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
+                        Initiate Deployment
+                    </button>
+</div>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Left Column: Model & Data Configuration -->
+<div class="lg:col-span-8 space-y-6">
+<!-- Section: Architecture Selection -->
+<div class="bg-surface-container-low rounded-xl p-6 border border-outline-variant/5">
+<div class="flex items-center justify-between mb-8">
+<h3 class="font-headline font-bold text-lg text-primary flex items-center gap-2">
+<span class="material-symbols-outlined">neurology</span>
+                                Predictive Architecture
+                            </h3>
+<span class="px-3 py-1 bg-tertiary/10 text-tertiary text-[10px] font-bold rounded-full border border-tertiary/20">STABLE V2.4</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<label class="relative group cursor-pointer">
+<input checked="" class="peer sr-only" name="model" type="radio"/>
+<div class="h-full p-4 rounded-lg bg-surface-container border border-outline-variant/10 peer-checked:border-primary/50 peer-checked:bg-surface-container-high transition-all">
+<div class="flex items-center justify-between mb-4">
+<span class="material-symbols-outlined text-primary">analytics</span>
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+</div>
+<p class="font-headline font-bold text-sm text-on-surface">LSTM Recurrent</p>
+<p class="text-xs text-on-surface-variant mt-1 leading-tight">Optimized for time-series momentum &amp; volatility decay.</p>
+</div>
+</label>
+<label class="relative group cursor-pointer">
+<input class="peer sr-only" name="model" type="radio"/>
+<div class="h-full p-4 rounded-lg bg-surface-container border border-outline-variant/10 peer-checked:border-primary/50 peer-checked:bg-surface-container-high transition-all">
+<div class="flex items-center justify-between mb-4">
+<span class="material-symbols-outlined text-secondary">model_training</span>
+</div>
+<p class="font-headline font-bold text-sm text-on-surface">Transformer-XL</p>
+<p class="text-xs text-on-surface-variant mt-1 leading-tight">Attention-based modeling for long-term macro correlations.</p>
+</div>
+</label>
+<label class="relative group cursor-pointer">
+<input class="peer sr-only" name="model" type="radio"/>
+<div class="h-full p-4 rounded-lg bg-surface-container border border-outline-variant/10 peer-checked:border-primary/50 peer-checked:bg-surface-container-high transition-all">
+<div class="flex items-center justify-between mb-4">
+<span class="material-symbols-outlined text-on-surface-variant">add_circle</span>
+</div>
+<p class="font-headline font-bold text-sm text-on-surface">Custom Hybrid</p>
+<p class="text-xs text-on-surface-variant mt-1 leading-tight">Define proprietary ensembles via YAML/Python API.</p>
+</div>
+</label>
+</div>
+</div>
+<!-- Section: SLM Data Feeds -->
+<div class="bg-surface-container-low rounded-xl p-6 border border-outline-variant/5">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline font-bold text-lg text-primary flex items-center gap-2">
+<span class="material-symbols-outlined">data_object</span>
+                                Semantic Logic Inputs (SLM)
+                            </h3>
+</div>
+<div class="space-y-4">
+<!-- Input Row 1 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-lowest rounded-lg border border-outline-variant/10">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-secondary-container/20 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">newspaper</span>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Global News Aggegator</p>
+<p class="text-[10px] text-on-surface-variant">Bloomberg, Reuters, Financial Times (Latency: <span class="text-tertiary">4ms</span>)</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<p class="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Weighting</p>
+<p class="text-sm font-headline font-bold text-primary">0.45</p>
+</div>
+<div class="w-12 h-6 bg-surface-container-high rounded-full p-1 relative cursor-pointer">
+<div class="w-4 h-4 bg-tertiary rounded-full absolute right-1"></div>
+</div>
+</div>
+</div>
+<!-- Input Row 2 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-lowest rounded-lg border border-outline-variant/10 opacity-75 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">forum</span>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Sentiment Pulse (Social)</p>
+<p class="text-[10px] text-on-surface-variant">Real-time X/Twitter &amp; Reddit (Latency: <span class="text-tertiary">12ms</span>)</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<p class="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Weighting</p>
+<p class="text-sm font-headline font-bold text-on-surface-variant">0.12</p>
+</div>
+<div class="w-12 h-6 bg-surface-container-high rounded-full p-1 relative cursor-pointer">
+<div class="w-4 h-4 bg-on-surface-variant rounded-full absolute left-1"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Code/Syntax Interface -->
+<div class="bg-[#0c0e11] rounded-xl overflow-hidden border border-outline-variant/20">
+<div class="bg-surface-container-high px-4 py-2 flex items-center justify-between border-b border-outline-variant/20">
+<div class="flex items-center gap-2">
+<div class="flex gap-1.5">
+<div class="w-2.5 h-2.5 rounded-full bg-error-container/50"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-secondary-container/50"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-tertiary-container/50"></div>
+</div>
+<span class="ml-4 text-[11px] font-mono text-on-surface-variant">quantum_config.yaml</span>
+</div>
+<button class="text-primary text-xs hover:underline">Copy Object</button>
+</div>
+<div class="p-6 font-mono text-xs leading-relaxed overflow-x-auto no-scrollbar">
+<pre><span class="text-primary">strategy_config:</span>
+  <span class="text-secondary">id:</span> QL-ALPHA-TRANSFORMER-01
+  <span class="text-secondary">engine:</span> "QUANTUM_FLOW_V3"
+  <span class="text-secondary">model_ensemble:</span>
+    - <span class="text-tertiary">type:</span> "TRANSFORMER_XL"
+    - <span class="text-tertiary">heads:</span> 12
+    - <span class="text-tertiary">context_window:</span> 2048
+  <span class="text-secondary">risk_parameters:</span>
+    <span class="text-tertiary">max_drawdown:</span> 0.15
+    <span class="text-tertiary">leverage_cap:</span> 3.5x
+    <span class="text-tertiary">stop_loss_mode:</span> "DYNAMIC_VOLATILITY"</pre>
+</div>
+</div>
+</div>
+<!-- Right Column: Interactive Controls & Feedback -->
+<div class="lg:col-span-4 space-y-6">
+<!-- Rapid Test Parameters -->
+<div class="bg-surface-container-low rounded-xl p-6 border border-outline-variant/5">
+<h3 class="font-headline font-bold text-lg text-on-surface mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined">timer</span>
+                            Rapid Test Parameters
+                        </h3>
+<div class="space-y-6">
+<div>
+<div class="flex justify-between mb-2">
+<label class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Historical Context</label>
+<span class="text-[11px] font-mono text-primary">36 Months</span>
+</div>
+<input class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary" type="range"/>
+</div>
+<div>
+<label class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">Simulation Interval</label>
+<div class="grid grid-cols-3 gap-2">
+<button class="py-2 text-[10px] font-bold bg-surface-container rounded border border-outline-variant/10 text-on-surface-variant hover:text-white">1M</button>
+<button class="py-2 text-[10px] font-bold bg-surface-container-high rounded border border-primary/40 text-primary">5M</button>
+<button class="py-2 text-[10px] font-bold bg-surface-container rounded border border-outline-variant/10 text-on-surface-variant hover:text-white">15M</button>
+</div>
+</div>
+<div class="pt-4 border-t border-outline-variant/10">
+<div class="flex items-center justify-between mb-4">
+<span class="text-sm font-bold">Dynamic Weighting</span>
+<div class="w-10 h-5 bg-tertiary/20 rounded-full flex items-center px-1">
+<div class="w-3 h-3 bg-tertiary rounded-full ml-auto"></div>
+</div>
+</div>
+<button class="w-full py-3 bg-surface-container-high border border-primary/20 text-primary font-bold text-xs rounded uppercase tracking-widest hover:bg-primary hover:text-on-primary transition-all">
+                                    Run Simulation
+                                </button>
+</div>
+</div>
+</div>
+<!-- Live Simulation Results (Glassmorphism) -->
+<div class="glass-panel rounded-xl p-6 border border-white/5 relative overflow-hidden">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline font-bold text-lg text-white">Backtest Signal</h3>
+<span class="material-symbols-outlined text-tertiary animate-pulse">monitoring</span>
+</div>
+<div class="flex items-center justify-center h-32 mb-6">
+<div class="w-full flex items-end justify-between gap-1 h-full">
+<div class="w-2 bg-primary/20 h-1/2 rounded-t"></div>
+<div class="w-2 bg-primary/40 h-2/3 rounded-t"></div>
+<div class="w-2 bg-primary/30 h-1/3 rounded-t"></div>
+<div class="w-2 bg-primary/60 h-3/4 rounded-t"></div>
+<div class="w-2 bg-primary h-full rounded-t"></div>
+<div class="w-2 bg-tertiary h-4/5 rounded-t shadow-[0_-8px_15px_rgba(0,228,117,0.3)]"></div>
+<div class="w-2 bg-primary/40 h-1/2 rounded-t"></div>
+<div class="w-2 bg-primary/20 h-1/4 rounded-t"></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="p-3 rounded bg-white/5">
+<p class="text-[10px] text-white/50 uppercase font-bold">Precision</p>
+<p class="text-xl font-headline font-black text-tertiary">94.2%</p>
+</div>
+<div class="p-3 rounded bg-white/5">
+<p class="text-[10px] text-white/50 uppercase font-bold">Latency</p>
+<p class="text-xl font-headline font-black text-white">0.08ms</p>
+</div>
+</div>
+<div class="mt-4 p-3 rounded bg-primary/10 border border-primary/20">
+<div class="flex items-start gap-2">
+<span class="material-symbols-outlined text-sm text-primary mt-0.5">info</span>
+<p class="text-[10px] text-on-primary-container leading-tight">Optimization suggests increasing context window for current volatility cluster.</p>
+</div>
+</div>
+</div>
+<!-- Optimization Toggle (Custom Component) -->
+<div class="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
+<div class="flex items-center justify-between">
+<div>
+<h4 class="font-bold text-sm text-on-surface">Auto-Weighting Alpha</h4>
+<p class="text-[10px] text-on-surface-variant">System-wide AI balancing active</p>
+</div>
+<div class="relative w-14 h-8 bg-surface-container-lowest rounded-full p-1 border border-tertiary/30">
+<div class="w-6 h-6 bg-tertiary rounded-full shadow-[0_0_12px_rgba(0,228,117,0.6)] animate-[pulse_2s_infinite]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Contextual FAB Suppression: FAB not rendered on Strategy Builder -->
+<div class="md:hidden fixed bottom-0 left-0 w-full bg-[#111316] h-16 flex items-center justify-around px-6 z-50">
+<span class="material-symbols-outlined text-slate-500">dashboard</span>
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">architecture</span>
+<span class="material-symbols-outlined text-slate-500">memory</span>
+<span class="material-symbols-outlined text-slate-500">query_stats</span>
+<span class="material-symbols-outlined text-slate-500">settings</span>
+</div>
+</body></html>

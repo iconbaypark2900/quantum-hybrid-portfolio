@@ -140,154 +140,179 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* Material Symbols: loaded in root layout <head> (not here — body <link> breaks layout/CSS ordering in some browsers). */}
       {/* Sidebar */}
       <aside
-        className={`hidden md:flex flex-col h-screen fixed left-0 top-0 bg-ql-surface-low border-r border-ql-outline-variant/15 py-6 z-50 overflow-x-hidden overflow-y-auto transition-[width] duration-200 ease-out ${
+        className={`hidden md:flex flex-col h-screen fixed left-0 top-0 bg-ql-surface-low border-r border-ql-outline-variant/15 z-50 overflow-hidden transition-[width] duration-200 ease-out ${
           sidebarCollapsed ? "w-16" : "w-64"
         }`}
       >
-        <div
-          className={`mb-6 shrink-0 flex gap-2 ${
-            sidebarCollapsed ? "flex-col items-center px-2" : "items-start justify-between px-6"
-          }`}
-        >
-          <Link
-            href="/dashboard"
-            className={`block no-underline text-inherit hover:opacity-95 transition-opacity min-w-0 ${
-              sidebarCollapsed ? "text-center" : ""
+        {/* Inner column: header + scrollable nav + fixed footer — avoids whole-aside scroll collapsing flex layout */}
+        <div className="flex flex-col flex-1 min-h-0 py-6">
+          <div
+            className={`mb-6 shrink-0 flex gap-2 ${
+              sidebarCollapsed ? "flex-col items-center px-2" : "items-start justify-between px-6"
             }`}
-            title={sidebarCollapsed ? "Quantum Ledger · Dashboard" : undefined}
+          >
+            <Link
+              href="/dashboard"
+              className={`block no-underline text-inherit hover:opacity-95 transition-opacity min-w-0 ${
+                sidebarCollapsed ? "text-center" : ""
+              }`}
+              title={sidebarCollapsed ? "Quantum Ledger · Dashboard" : undefined}
+            >
+              {sidebarCollapsed ? (
+                <span className="font-headline text-ql-primary text-lg font-bold tracking-tighter block">
+                  QL
+                </span>
+              ) : (
+                <>
+                  <h1 className="font-headline text-ql-primary text-lg font-bold tracking-tighter">
+                    Quantum Ledger
+                  </h1>
+                  <p className="text-ql-on-surface-variant text-[10px] uppercase tracking-widest mt-1">
+                    v1.0 Active
+                  </p>
+                </>
+              )}
+            </Link>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className={`shrink-0 flex items-center justify-center rounded-lg p-1.5 text-ql-on-surface-variant hover:bg-ql-surface-container hover:text-ql-on-surface transition-colors ${
+                sidebarCollapsed ? "w-full" : ""
+              }`}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse to icons"}
+            >
+              <span className="material-symbols-outlined text-xl">
+                {sidebarCollapsed ? "chevron_right" : "chevron_left"}
+              </span>
+            </button>
+          </div>
+
+          <nav
+            className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain space-y-1 ${
+              sidebarCollapsed ? "px-1.5" : "px-3"
+            }`}
+          >
+            {NAV_ITEMS.map((item) => (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                active={pathname.startsWith(item.href)}
+                collapsed={sidebarCollapsed}
+              />
+            ))}
+          </nav>
+
+          <div
+            className={`flex flex-col gap-4 shrink-0 border-t border-ql-outline-variant/15 pt-4 w-full min-w-0 ${
+              sidebarCollapsed ? "px-1.5" : "px-6"
+            }`}
           >
             {sidebarCollapsed ? (
-              <span className="font-headline text-ql-primary text-lg font-bold tracking-tighter block">
-                QL
-              </span>
-            ) : (
-              <>
-                <h1 className="font-headline text-ql-primary text-lg font-bold tracking-tighter">
-                  Quantum Ledger
-                </h1>
-                <p className="text-ql-on-surface-variant text-[10px] uppercase tracking-widest mt-1">
-                  v1.0 Active
-                </p>
-              </>
-            )}
-          </Link>
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            aria-expanded={!sidebarCollapsed}
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={`shrink-0 flex items-center justify-center rounded-lg p-1.5 text-ql-on-surface-variant hover:bg-ql-surface-container hover:text-ql-on-surface transition-colors ${
-              sidebarCollapsed ? "w-full" : ""
-            }`}
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse to icons"}
-          >
-            <span className="material-symbols-outlined text-xl">
-              {sidebarCollapsed ? "chevron_right" : "chevron_left"}
-            </span>
-          </button>
-        </div>
-
-        <nav className={`flex-1 space-y-1 min-h-0 ${sidebarCollapsed ? "px-1.5" : "px-3"}`}>
-          {NAV_ITEMS.map((item) => (
-            <NavItem
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              active={pathname.startsWith(item.href)}
-              collapsed={sidebarCollapsed}
-            />
-          ))}
-        </nav>
-
-        <div className={`mt-auto space-y-3 shrink-0 ${sidebarCollapsed ? "px-1.5" : "px-6"}`}>
-          <button
-            type="button"
-            onClick={cycle}
-            className={`flex items-center rounded-lg text-xs font-bold text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors ${
-              sidebarCollapsed
-                ? "justify-center w-full p-2"
-                : "gap-2 w-full px-3 py-2"
-            }`}
-            title={`Theme: ${themeMeta.label}. Click to cycle.`}
-          >
-            <span className="material-symbols-outlined text-base shrink-0">
-              {themeMeta.icon}
-            </span>
-            {!sidebarCollapsed ? themeMeta.label : null}
-          </button>
-
-          {sidebarCollapsed ? (
-            <div
-              className="flex justify-center rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant/10 p-2"
-              title={sessionTooltip}
-            >
-              <span className="material-symbols-outlined text-ql-on-surface-variant text-xl">
-                insights
-              </span>
-            </div>
-          ) : (
-            <div className="rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant/10 px-3 py-2.5 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">
-                  Session
+              <div
+                className="flex justify-center rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant/10 p-2.5 shrink-0"
+                title={sessionTooltip}
+              >
+                <span className="material-symbols-outlined text-ql-on-surface-variant text-xl">
+                  insights
                 </span>
-                {lo ? (
-                  <span className="flex items-center gap-1 text-[9px] text-ql-tertiary font-bold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-ql-tertiary" />
-                    Last run
+              </div>
+            ) : (
+              <div
+                role="region"
+                aria-label="Session summary"
+                className="flex flex-col gap-1.5 w-full min-w-0 shrink-0 rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant/10 px-3 py-3"
+              >
+                <div className="flex items-center justify-between gap-2 min-h-[14px]">
+                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">
+                    Session
                   </span>
+                  {lo ? (
+                    <span className="flex items-center gap-1 text-[9px] text-ql-tertiary font-bold shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-ql-tertiary" />
+                      Last run
+                    </span>
+                  ) : null}
+                </div>
+                <p
+                  className="text-xs font-mono text-ql-on-surface leading-snug break-words"
+                  title={lo ? lo.at : undefined}
+                >
+                  {objectiveLabel(displayObjective)}
+                </p>
+                <p className="text-[10px] text-slate-500 leading-snug">
+                  {displayTickerCount} ticker{displayTickerCount === 1 ? "" : "s"}
+                  {lo ? (
+                    <span className="text-slate-600">
+                      {" "}
+                      ·{" "}
+                      {new Date(lo.at).toLocaleString([], {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  ) : null}
+                </p>
+                {currentDiffersFromLast ? (
+                  <p className="text-[9px] text-slate-500 leading-snug pt-1 border-t border-ql-outline-variant/10">
+                    Current: {objectiveLabel(session.objective)} ·{" "}
+                    {session.tickers.length} ticker
+                    {session.tickers.length === 1 ? "" : "s"}
+                  </p>
                 ) : null}
               </div>
-              <p className="text-xs font-mono text-ql-on-surface truncate" title={lo ? lo.at : undefined}>
-                {objectiveLabel(displayObjective)}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                {displayTickerCount} ticker{displayTickerCount === 1 ? "" : "s"}
-                {lo ? (
-                  <span className="text-slate-600">
-                    {" "}
-                    ·{" "}
-                    {new Date(lo.at).toLocaleString([], {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                ) : null}
-              </p>
-              {currentDiffersFromLast ? (
-                <p className="text-[9px] text-slate-500 leading-snug pt-0.5 border-t border-ql-outline-variant/10 mt-1">
-                  Current: {objectiveLabel(session.objective)} ·{" "}
-                  {session.tickers.length} ticker
-                  {session.tickers.length === 1 ? "" : "s"}
-                </p>
+            )}
+
+            <button
+              type="button"
+              onClick={cycle}
+              className={`flex items-center rounded-lg text-xs font-bold text-ql-on-surface-variant border border-transparent hover:bg-ql-surface-container hover:border-ql-outline-variant/15 transition-colors shrink-0 ${
+                sidebarCollapsed
+                  ? "justify-center w-full p-2.5"
+                  : "gap-2 w-full px-3 py-2.5"
+              }`}
+              title={`Theme: ${themeMeta.label}. Click to cycle.`}
+            >
+              <span className="material-symbols-outlined text-base shrink-0">
+                {themeMeta.icon}
+              </span>
+              {!sidebarCollapsed ? (
+                <span className="truncate">{themeMeta.label}</span>
               ) : null}
-            </div>
-          )}
-          <Link
-            href="/portfolio"
-            title="Portfolio Lab"
-            className={`flex items-center justify-center w-full no-underline primary-gradient text-[#001D33] font-bold rounded-lg transition-all active:scale-[0.98] shadow-lg shadow-ql-primary/10 ${
-              sidebarCollapsed ? "py-2.5 px-0" : "gap-1.5 py-3 text-sm"
-            }`}
-          >
-            <span className="material-symbols-outlined text-lg shrink-0">science</span>
-            {!sidebarCollapsed ? <span>PL</span> : null}
-          </Link>
-          <a
-            href="/api/docs/openapi"
-            target="_blank"
-            rel="noopener"
-            title="API Docs (OpenAPI)"
-            className={`flex items-center text-ql-on-surface-variant hover:text-ql-on-surface transition-colors no-underline ${
-              sidebarCollapsed ? "justify-center mt-2 p-1" : "gap-3 text-xs mt-4"
-            }`}
-          >
-            <span className="material-symbols-outlined text-sm shrink-0">code</span>
-            {!sidebarCollapsed ? <span>API Docs</span> : null}
-          </a>
+            </button>
+
+            <Link
+              href="/portfolio"
+              title="Portfolio Lab"
+              className={`flex items-center justify-center w-full no-underline primary-gradient text-[#001D33] font-bold rounded-lg transition-all active:scale-[0.98] shadow-lg shadow-ql-primary/10 ${
+                sidebarCollapsed ? "py-2.5 px-0" : "gap-1.5 py-3 text-sm"
+              }`}
+            >
+              <span className="material-symbols-outlined text-lg shrink-0">
+                science
+              </span>
+              {!sidebarCollapsed ? <span>PL</span> : null}
+            </Link>
+            <a
+              href="/api/docs/openapi"
+              target="_blank"
+              rel="noopener"
+              title="API Docs (OpenAPI)"
+              className={`flex items-center text-ql-on-surface-variant hover:text-ql-on-surface transition-colors no-underline shrink-0 ${
+                sidebarCollapsed ? "justify-center p-1" : "gap-3 text-xs"
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm shrink-0">
+                code
+              </span>
+              {!sidebarCollapsed ? <span>API Docs</span> : null}
+            </a>
+          </div>
         </div>
       </aside>
 

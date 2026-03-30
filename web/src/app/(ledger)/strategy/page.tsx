@@ -10,8 +10,10 @@ import {
   normalizePresets,
   type ObjectiveFamily,
   type ObjectiveInfo,
+  type PaperRole,
   type PresetInfo,
 } from "@/lib/configApiNormalize";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 const FAMILY_ORDER: ObjectiveFamily[] = ["classical", "hybrid", "quantum"];
 
@@ -63,7 +65,46 @@ function CopyPathButton({
   );
 }
 
-export default function StrategyPage() {
+function PaperRoleBadge({ role }: { role?: PaperRole }) {
+  if (!role || role === "foundational") {
+    return (
+      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-ql-surface-container text-ql-on-surface-variant border border-ql-outline-variant/20">
+        Foundational
+      </span>
+    );
+  }
+  return (
+    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">
+      Modern
+    </span>
+  );
+}
+
+function DownloadLink({
+  href,
+  label = "Download",
+  isLocal = false,
+}: {
+  href: string;
+  label?: string;
+  isLocal?: boolean;
+}) {
+  return (
+    <a
+      href={href}
+      target={isLocal ? undefined : "_blank"}
+      rel={isLocal ? undefined : "noopener noreferrer"}
+      download={isLocal || undefined}
+      onClick={(e) => e.stopPropagation()}
+      className="text-[10px] font-bold uppercase text-ql-primary hover:underline"
+    >
+      {label} ↓
+    </a>
+  );
+}
+
+export default function StrategyPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   const [objectives, setObjectives] = useState<Record<string, ObjectiveInfo>>(
     {}
   );
@@ -78,6 +119,10 @@ export default function StrategyPage() {
     K_screen: "",
     K_select: "",
   });
+  /** Set after mount so SSR and first client paint match (avoids hydration mismatch from Date). */
+  const [manifestGeneratedAt, setManifestGeneratedAt] = useState<string | null>(
+    null
+  );
 
   const repoFileBase =
     typeof process.env.NEXT_PUBLIC_REPO_FILE_BASE === "string"
@@ -107,6 +152,10 @@ export default function StrategyPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    setManifestGeneratedAt(new Date().toISOString());
   }, []);
 
   const applyPreset = useCallback(
@@ -141,8 +190,10 @@ export default function StrategyPage() {
 #   primary_notebook: ${selectedInfo.notebooks[0]?.path ?? "none"}
 #   primary_code: ${selectedInfo.codeRefs[0]?.path ?? "none"}
 `;
+    const generated =
+      manifestGeneratedAt != null ? manifestGeneratedAt : "—";
     return `# Quantum Ledger Strategy Manifest
-# Generated: ${new Date().toISOString()}
+# Generated: ${generated}
 objective: ${selectedObj}
 constraints:
   weight_min: ${config.weight_min}
@@ -151,7 +202,7 @@ ${config.K_screen ? `  K_screen: ${config.K_screen}` : "  # K_screen: auto"}
 ${config.K_select ? `  K_select: ${config.K_select}` : "  # K_select: auto"}
 engine: quantum_ledger_v1
 ${doc ?? ""}`;
-  }, [selectedObj, config, selectedInfo]);
+  }, [selectedObj, config, selectedInfo, manifestGeneratedAt]);
 
   const groupedObjectives = useMemo(() => {
     const groups: { family: ObjectiveFamily; entries: [string, ObjectiveInfo][] }[] =
@@ -290,28 +341,48 @@ ${doc ?? ""}`;
                               <p className="text-[9px] font-bold uppercase text-ql-on-surface-variant mb-1">
                                 Papers
                               </p>
-                              <ul className="space-y-1">
+                              <ul className="space-y-2">
                                 {obj.papers.map((p, i) => (
                                   <li
                                     key={i}
-                                    className="text-[10px] text-ql-on-surface-variant leading-snug"
+                                    className="text-[10px] text-ql-on-surface-variant leading-snug space-y-0.5"
                                   >
-                                    {p.url ? (
-                                      <a
-                                        href={p.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-ql-primary hover:underline"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        {p.title || p.citation || p.url}
-                                      </a>
-                                    ) : (
-                                      <span>
-                                        {p.title
-                                          ? `${p.title}${p.citation ? ` — ${p.citation}` : ""}`
-                                          : p.citation}
-                                      </span>
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <PaperRoleBadge role={p.role} />
+                                      {p.url ? (
+                                        <a
+                                          href={p.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-ql-primary hover:underline"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {p.title || p.citation || p.url}
+                                        </a>
+                                      ) : (
+                                        <span>
+                                          {p.title
+                                            ? `${p.title}${p.citation ? ` — ${p.citation}` : ""}`
+                                            : p.citation}
+                                        </span>
+                                      )}
+                                      {p.downloadPath && (
+                                        <DownloadLink
+                                          href={p.downloadPath}
+                                          label="PDF"
+                                          isLocal={p.downloadPath.startsWith("/")}
+                                        />
+                                      )}
+                                    </div>
+                                    {p.citation && p.url && (
+                                      <p className="text-[10px] text-ql-on-surface-variant/70 pl-0.5">
+                                        {p.citation}
+                                      </p>
+                                    )}
+                                    {p.note && (
+                                      <p className="text-[10px] italic text-ql-on-surface-variant/60 pl-0.5">
+                                        {p.note}
+                                      </p>
                                     )}
                                   </li>
                                 ))}
@@ -345,6 +416,13 @@ ${doc ?? ""}`;
                                         View on GitHub
                                       </a>
                                     ) : null}
+                                    {nb.downloadPath && (
+                                      <DownloadLink
+                                        href={nb.downloadPath}
+                                        label="Download"
+                                        isLocal={nb.downloadPath.startsWith("/")}
+                                      />
+                                    )}
                                   </li>
                                 ))}
                               </ul>

@@ -10,6 +10,7 @@ import {
   STRESS_BEAR_SCENARIOS,
   STRESS_BULL_SCENARIOS,
 } from "@/lib/stressScenarios";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 function heuristicImpact(shock: number, baseVol: number): number {
   return shock * (0.5 + baseVol * 3) * 100;
@@ -55,7 +56,8 @@ function StressCard({
   );
 }
 
-export default function SimulationsPage() {
+export default function SimulationsPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   const { scenarios, error, runComparison } = useSimulationComparison();
 
   useEffect(() => {

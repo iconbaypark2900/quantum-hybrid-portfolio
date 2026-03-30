@@ -7,6 +7,7 @@ import LedgerPageHeader from "@/components/LedgerPageHeader";
 import { healthCheck, optimizePortfolio } from "@/lib/api";
 import { DEFAULT_TICKERS, DEFAULT_WEIGHT_MAX, DEFAULT_WEIGHT_MIN } from "@/lib/defaultUniverse";
 import { mergeOptimizeResponse } from "@/lib/reportExport";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 const QUICK_ACTION_GROUPS: {
   heading: string;
@@ -145,7 +146,8 @@ interface FeedEvent {
   iconColor: string;
 }
 
-export default function DashboardPage() {
+export default function DashboardPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   const { session, setLastOptimize } = useLedgerSession();
 
   const [health, setHealth] = useState<HealthData | null>(null);

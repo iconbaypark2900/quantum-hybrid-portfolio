@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import LedgerPageHeader from "@/components/LedgerPageHeader";
@@ -17,6 +16,10 @@ import {
   summarizeStoredPayload,
   type StoredOptimizationRun,
 } from "@/lib/optimizationRunHistory";
+import {
+  useNextPageProps,
+  type NextClientPagePropsWithId,
+} from "@/lib/nextPageProps";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -31,8 +34,9 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function BrowserRunDetailPage() {
-  const { id: rawId } = useParams<{ id: string }>();
+export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
+  const { params } = useNextPageProps(props);
+  const rawId = params.id;
   const id = typeof rawId === "string" ? decodeURIComponent(rawId) : "";
   const [run, setRun] = useState<StoredOptimizationRun | null | undefined>(
     undefined
