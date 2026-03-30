@@ -40,6 +40,9 @@ htmlcov/
 # IDEs
 .vscode/
 .idea/
+# Cursor — local hook/session state (machine-specific)
+.cursor/hooks/state/
+
 *.swp
 *.swo
 *~
