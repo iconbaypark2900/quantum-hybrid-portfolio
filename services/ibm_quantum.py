@@ -6,12 +6,41 @@ gracefully if it is not installed, returning {"ok": False, "error": "..."}.
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
+import time
 from datetime import datetime
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+_DEBUG_LOG_PATH = (
+    "/home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/.cursor/debug-c1bc30.log"
+)
+
+
+def _debug_ndjson(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: Optional[dict[str, Any]] = None,
+) -> None:
+    # #region agent log
+    try:
+        payload = {
+            "sessionId": "c1bc30",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+        }
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
+    # #endregion
 
 
 def resolve_tenant(explicit: Optional[str] = None) -> str:
@@ -38,8 +67,8 @@ def resolve_tenant(explicit: Optional[str] = None) -> str:
     return "default"
 
 _lock = threading.Lock()
-# tenant_id -> (QiskitRuntimeService | None, token str)
-_services: dict[str, tuple[Optional[object], Optional[str]]] = {}
+# tenant_id -> (QiskitRuntimeService | None, token str, optional instance CRN)
+_services: dict[str, tuple[Optional[object], Optional[str], Optional[str]]] = {}
 
 _db_conn_factory: Optional[Callable[[], object]] = None
 
@@ -50,28 +79,78 @@ def set_db_conn_factory(fn: Callable[[], object]) -> None:
     _db_conn_factory = fn
 
 
-def _persist_token(tenant_id: str, token: str) -> None:
+def _persist_credentials(
+    tenant_id: str, token: str, instance_crn: Optional[str] = None
+) -> None:
     if not _db_conn_factory:
         return
     try:
         from services import tenant_integrations as ti
 
-        ti.save_secret(_db_conn_factory, tenant_id, "ibm", token)
+        meta: Optional[dict[str, Any]] = None
+        if instance_crn and (instance_crn := instance_crn.strip()):
+            meta = {"instance": instance_crn}
+        ti.save_secret(_db_conn_factory, tenant_id, "ibm", token, metadata=meta)
     except Exception as exc:
         logger.warning("IBM token persist failed: %s", exc)
 
 
-def _load_token(tenant_id: str) -> Optional[str]:
+def _load_credentials(tenant_id: str) -> Optional[tuple[str, Optional[str]]]:
+    """Return (token, instance_crn) from DB, or None."""
     if not _db_conn_factory:
         return None
     try:
         from services import tenant_integrations as ti
 
         row = ti.load_secret(_db_conn_factory, tenant_id, "ibm")
-        return row[0] if row else None
+        if not row:
+            return None
+        token, meta = row[0], row[1] or {}
+        inst = meta.get("instance") if isinstance(meta, dict) else None
+        if isinstance(inst, str):
+            inst = inst.strip() or None
+        else:
+            inst = None
+        return (token, inst)
     except Exception as exc:
         logger.warning("IBM token load failed: %s", exc)
         return None
+
+
+def _crn_suffix(crn: Optional[str]) -> Optional[str]:
+    """Non-secret display hint for a CRN (truncated)."""
+    if not crn:
+        return None
+    s = str(crn).strip()
+    if not s:
+        return None
+    if len(s) <= 20:
+        return s
+    return f"...{s[-20:]}"
+
+
+def _build_runtime_service(token: str, instance_crn: Optional[str] = None) -> Any:
+    from qiskit_ibm_runtime import QiskitRuntimeService
+
+    kwargs: dict[str, Any] = dict(
+        channel="ibm_quantum_platform",
+        token=(token or "").strip(),
+    )
+    if instance_crn and (instance_crn := instance_crn.strip()):
+        kwargs["instance"] = instance_crn
+    return QiskitRuntimeService(**kwargs)
+
+
+def _saved_instance_suffix_for_tenant(tenant_id: str) -> Optional[str]:
+    """Truncated saved instance CRN for API responses (never the API token)."""
+    with _lock:
+        t = _services.get(tenant_id)
+        if t and len(t) > 2 and t[2]:
+            return _crn_suffix(t[2])
+    creds = _load_credentials(tenant_id)
+    if creds and creds[1]:
+        return _crn_suffix(creds[1])
+    return None
 
 
 def _clear_persisted(tenant_id: str) -> None:
@@ -85,9 +164,96 @@ def _clear_persisted(tenant_id: str) -> None:
         logger.warning("IBM token delete failed: %s", exc)
 
 
-def set_token(tenant_id: str, token: str) -> dict:
+def secrets_persistence_enabled() -> bool:
+    """Whether integration secrets (IBM token) are persisted to SQLite."""
+    return _db_conn_factory is not None
+
+
+def _instance_probe(svc: Any) -> dict[str, Any]:
+    """
+    Safe, JSON-serializable IBM account/instance summary (qiskit-ibm-runtime 0.46+).
+
+    Does not include raw tokens. CRN is truncated for display only.
+    """
+    out: dict[str, Any] = {
+        "instances": [],
+        "active_instance": None,
+        "instances_error": None,
+    }
+    try:
+        raw = svc.instances()
+        for inst in raw:
+            if isinstance(inst, dict):
+                crn = inst.get("crn")
+                crn_suffix = str(crn)[-24:] if crn else None
+                out["instances"].append(
+                    {
+                        "name": inst.get("name"),
+                        "plan": inst.get("plan"),
+                        "crn_suffix": crn_suffix,
+                    }
+                )
+    except Exception as exc:
+        out["instances_error"] = str(exc)[:400]
+
+    try:
+        ai = svc.active_instance()
+        out["active_instance"] = str(ai) if ai is not None else None
+    except Exception:
+        pass
+
+    return out
+
+
+def verify_token(
+    tenant_id: str, token: str, instance_crn: Optional[str] = None
+) -> dict:
+    """
+    Validate an IBM Quantum API token without persisting or updating the cached service.
+
+    Optional ``instance_crn`` is the IBM Cloud instance CRN (same as ``instance=`` in
+    ``QiskitRuntimeService`` / ``save_account``).
+
+    Returns {"ok": True, "backends": [...], "tenant_id", "ibm_instances", ...} or
+            {"ok": False, "error": "..."}.
+    """
+    token = (token or "").strip()
+    if not token:
+        return {"ok": False, "error": "Token is empty"}
+
+    try:
+        svc = _build_runtime_service(token, instance_crn)
+        backends = [b.name for b in svc.backends()]
+        probe = _instance_probe(svc)
+    except ImportError:
+        return {
+            "ok": False,
+            "error": "qiskit-ibm-runtime is not installed. "
+            "Run: pip install qiskit qiskit-ibm-runtime",
+        }
+    except Exception as exc:
+        logger.warning("IBM Quantum verify failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+    return {
+        "ok": True,
+        "backends": backends,
+        "tenant_id": tenant_id,
+        "ibm_instances": probe["instances"],
+        "ibm_active_instance": probe["active_instance"],
+        "ibm_instances_error": probe["instances_error"],
+        "ibm_saved_instance_crn_suffix": _crn_suffix(instance_crn),
+    }
+
+
+def set_token(
+    tenant_id: str, token: str, instance_crn: Optional[str] = None
+) -> dict:
     """
     Store an IBM Quantum API token for tenant_id and verify connectivity.
+
+    Optional ``instance_crn`` is persisted in the tenant integration metadata (not the
+    encrypted secret blob) and passed to ``QiskitRuntimeService(..., instance=...)``.
 
     Returns {"ok": True, "backends": [...]} on success or
             {"ok": False, "error": "..."} on failure.
@@ -97,25 +263,24 @@ def set_token(tenant_id: str, token: str) -> dict:
         return {"ok": False, "error": "Token is empty"}
 
     try:
-        from qiskit_ibm_runtime import QiskitRuntimeService
+        svc = _build_runtime_service(token, instance_crn)
+        backends = [b.name for b in svc.backends()]
+        probe = _instance_probe(svc)
     except ImportError:
         return {
             "ok": False,
             "error": "qiskit-ibm-runtime is not installed. "
             "Run: pip install qiskit qiskit-ibm-runtime",
         }
-
-    try:
-        svc = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
-        backends = [b.name for b in svc.backends()]
     except Exception as exc:
         logger.warning("IBM Quantum token rejected: %s", exc)
         return {"ok": False, "error": str(exc)}
 
+    inst = instance_crn.strip() if instance_crn and instance_crn.strip() else None
     with _lock:
-        _services[tenant_id] = (svc, token)
+        _services[tenant_id] = (svc, token, inst)
 
-    _persist_token(tenant_id, token)
+    _persist_credentials(tenant_id, token, inst)
 
     logger.info(
         "IBM Quantum token accepted tenant=%s — %d backends: %s",
@@ -123,27 +288,49 @@ def set_token(tenant_id: str, token: str) -> dict:
         len(backends),
         backends,
     )
-    return {"ok": True, "backends": backends}
+    return {
+        "ok": True,
+        "backends": backends,
+        "ibm_instances": probe["instances"],
+        "ibm_active_instance": probe["active_instance"],
+        "ibm_instances_error": probe["instances_error"],
+        "ibm_saved_instance_crn_suffix": _crn_suffix(inst),
+    }
 
 
 def ensure_loaded(tenant_id: str) -> None:
-    """Lazy-load token from DB into memory if missing (no duplicate persist)."""
+    """Lazy-load token (+ optional instance CRN) from DB if missing (no duplicate persist)."""
     with _lock:
         if tenant_id in _services and _services[tenant_id][0] is not None:
             return
-    tok = _load_token(tenant_id)
-    if not tok:
+    creds = _load_credentials(tenant_id)
+    if not creds:
         return
+    tok, inst = creds[0], creds[1]
     try:
-        from qiskit_ibm_runtime import QiskitRuntimeService
+        svc = _build_runtime_service(tok, inst)
+        with _lock:
+            _services[tenant_id] = (svc, tok, inst)
+        _debug_ndjson(
+            "H2",
+            "ibm_quantum.py:ensure_loaded",
+            "lazy_load_ok",
+            {"tenant_id": tenant_id, "token_len": len(tok), "has_instance": bool(inst)},
+        )
     except ImportError:
         return
-    try:
-        svc = QiskitRuntimeService(channel="ibm_quantum_platform", token=tok)
-        with _lock:
-            _services[tenant_id] = (svc, tok)
     except Exception as exc:
         logger.warning("IBM lazy load failed tenant=%s: %s", tenant_id, exc)
+        _debug_ndjson(
+            "H2",
+            "ibm_quantum.py:ensure_loaded",
+            "lazy_load_failed",
+            {
+                "tenant_id": tenant_id,
+                "exc_type": type(exc).__name__,
+                "exc_prefix": (str(exc) or "")[:200],
+            },
+        )
 
 
 def get_service(tenant_id: Optional[str] = None):
@@ -167,30 +354,65 @@ def get_status(tenant_id: str) -> dict:
     """
     Return connection status for tenant_id.
 
-    {"configured": bool, "backends": [...], "tenant_id": str, "error": str?}
+    {"configured": bool, "backends": [...], "tenant_id": str, "error": str?,
+     "ibm_saved_instance_crn_suffix": str?}
     """
     ensure_loaded(tenant_id)
+    suffix = _saved_instance_suffix_for_tenant(tenant_id)
     with _lock:
         t = _services.get(tenant_id)
         svc = t[0] if t else None
 
     if svc is None:
+        _debug_ndjson(
+            "H2",
+            "ibm_quantum.py:get_status",
+            "no_service_for_tenant",
+            {"tenant_id": tenant_id},
+        )
         return {
             "configured": False,
             "backends": [],
             "tenant_id": tenant_id,
+            "ibm_saved_instance_crn_suffix": suffix,
         }
 
     try:
         backends = [b.name for b in svc.backends()]
-        return {"configured": True, "backends": backends, "tenant_id": tenant_id}
+        probe = _instance_probe(svc)
+        _debug_ndjson(
+            "H1",
+            "ibm_quantum.py:get_status",
+            "backends_ok",
+            {"tenant_id": tenant_id, "n_backends": len(backends)},
+        )
+        return {
+            "configured": True,
+            "backends": backends,
+            "tenant_id": tenant_id,
+            "ibm_instances": probe["instances"],
+            "ibm_active_instance": probe["active_instance"],
+            "ibm_instances_error": probe["instances_error"],
+            "ibm_saved_instance_crn_suffix": suffix,
+        }
     except Exception as exc:
         logger.warning("IBM Quantum status check failed: %s", exc)
+        _debug_ndjson(
+            "H1",
+            "ibm_quantum.py:get_status",
+            "backends_failed",
+            {
+                "tenant_id": tenant_id,
+                "exc_type": type(exc).__name__,
+                "exc_prefix": (str(exc) or "")[:220],
+            },
+        )
         return {
             "configured": False,
             "backends": [],
             "tenant_id": tenant_id,
             "error": str(exc),
+            "ibm_saved_instance_crn_suffix": suffix,
         }
 
 
@@ -259,6 +481,253 @@ def _runtime_job_to_dict(job: Any) -> dict[str, Any]:
         pass
 
     return row
+
+
+# IBM VQE-shaped smoke: small n keeps Runtime jobs cheap; must match EfficientSU2 width.
+_SMOKE_MIN_ASSETS = 2
+_SMOKE_MAX_ASSETS = 8
+_SMOKE_SHOTS = 128
+_SMOKE_N_LAYERS = 1
+_WEIGHT_MIN = 0.001
+_WEIGHT_MAX = 0.30
+# Mag 7 + financial tilt (JPM). Length 8 matches _SMOKE_MAX_ASSETS (one EfficientSU2 width).
+_SMOKE_DEFAULT_TICKERS: tuple[str, ...] = (
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "NVDA",
+    "TSLA",
+    "JPM",
+)
+
+
+def _marginal_weights_from_counts(
+    counts: dict, n: int, weight_min: float, weight_max: float
+) -> Any:
+    """Map Z-basis counts to marginal |1⟩ probabilities → normalized weights (VQE IBM path)."""
+    import numpy as np
+
+    probs = np.zeros(n)
+    total = sum(counts.values())
+    if total <= 0:
+        return np.ones(n) / n
+    for bitstring, count in counts.items():
+        s = str(bitstring)
+        for q_idx, bit in enumerate(reversed(s[-n:])):
+            if bit == "1":
+                probs[q_idx] += count / total
+    w = np.clip(probs, weight_min, weight_max)
+    s = w.sum()
+    if s <= 0:
+        return np.ones(n) / n
+    w = w / s
+    return w
+
+
+def _pick_smoke_backend(service: Any, *, mode: str, min_qubits: int) -> Any:
+    """Choose least-busy operational backend with at least ``min_qubits`` qubits."""
+    n = max(1, int(min_qubits))
+    bm = (mode or "hardware").lower()
+    if bm not in ("hardware", "simulator"):
+        raise ValueError("mode must be 'hardware' or 'simulator'")
+    try:
+        pool = list(service.backends(operational=True, min_num_qubits=n))
+    except Exception:
+        pool = [b for b in service.backends() if b.configuration().n_qubits >= n]
+    if bm == "simulator":
+        candidates = [b for b in pool if b.configuration().simulator]
+        label = "simulator"
+    else:
+        candidates = [b for b in pool if not b.configuration().simulator]
+        label = "hardware"
+    if not candidates:
+        raise RuntimeError(f"No operational IBM {label} backend with ≥{n} qubit(s)")
+    return min(candidates, key=lambda b: b.status().pending_jobs)
+
+
+def hardware_smoke_test(
+    tenant_id: str,
+    *,
+    mode: str = "hardware",
+    market_payload: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """
+    VQE-shaped IBM Runtime smoke: load market data (or matrices), run one fixed-parameter
+    EfficientSU2 sample (same ansatz family as ``methods.vqe`` IBM path), map counts to
+    weights, and report a single-eval Sharpe-style metric vs loaded ``mu`` / ``Sigma``.
+
+    ``market_payload`` (optional) may include:
+      - ``tickers``: list of symbols (default Mag 7 + JPM — see ``_SMOKE_DEFAULT_TICKERS`` — if omitted)
+      - ``start_date`` / ``end_date`` (optional, yfinance path)
+      - or ``returns`` + ``covariance`` (+ optional ``asset_names``) for matrix input
+
+    Uses the same stored IBM token and instance CRN as the rest of the integration.
+    ``mode`` is ``hardware`` (default) or ``simulator``.
+
+    Returns a stable dict including: smoke_profile, market_source, tickers, n_assets,
+    ann_returns, weights, portfolio_return, portfolio_volatility, sharpe_ratio, counts, …
+    """
+    bm = (mode or "hardware").lower()
+    if bm not in ("hardware", "simulator"):
+        return {
+            "ok": False,
+            "configured": False,
+            "error": "mode must be 'hardware' or 'simulator'",
+            "tenant_id": tenant_id,
+        }
+
+    try:
+        from qiskit.circuit.library import EfficientSU2
+        from qiskit_ibm_runtime import SamplerV2 as Sampler
+        from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+
+        import numpy as np
+    except ImportError:
+        return {
+            "ok": False,
+            "configured": False,
+            "error": "qiskit-ibm-runtime is not installed. "
+            "Run: pip install qiskit qiskit-ibm-runtime",
+            "tenant_id": tenant_id,
+        }
+
+    from services.data_provider import load_market_payload
+
+    ensure_loaded(tenant_id)
+    with _lock:
+        t = _services.get(tenant_id)
+        svc = t[0] if t else None
+
+    if svc is None:
+        return {
+            "ok": False,
+            "configured": False,
+            "error": "IBM Quantum not configured for this tenant",
+            "tenant_id": tenant_id,
+        }
+
+    mp = dict(market_payload) if market_payload else {}
+    try:
+        if mp.get("returns") is not None and mp.get("covariance") is not None:
+            payload: dict[str, Any] = {
+                "returns": mp["returns"],
+                "covariance": mp["covariance"],
+                "asset_names": mp.get("asset_names"),
+            }
+        else:
+            tickers = mp.get("tickers")
+            if tickers is None:
+                tickers = list(_SMOKE_DEFAULT_TICKERS)
+            elif isinstance(tickers, str):
+                tickers = [x.strip() for x in tickers.split(",") if x.strip()]
+            payload = {
+                "tickers": list(tickers),
+                "start_date": mp.get("start_date") or mp.get("startDate"),
+                "end_date": mp.get("end_date") or mp.get("endDate"),
+            }
+        market = load_market_payload(payload)
+    except Exception as exc:
+        logger.warning("IBM smoke test market load failed tenant=%s: %s", tenant_id, exc)
+        return {
+            "ok": False,
+            "configured": False,
+            "error": f"Market data: {exc}",
+            "tenant_id": tenant_id,
+        }
+
+    mu = market.returns
+    sigma = market.covariance
+    n = int(len(mu))
+    if n < _SMOKE_MIN_ASSETS:
+        return {
+            "ok": False,
+            "configured": False,
+            "error": f"Need at least {_SMOKE_MIN_ASSETS} assets; got {n}",
+            "tenant_id": tenant_id,
+        }
+    if n > _SMOKE_MAX_ASSETS:
+        return {
+            "ok": False,
+            "configured": False,
+            "error": f"Smoke test supports at most {_SMOKE_MAX_ASSETS} assets; got {n}",
+            "tenant_id": tenant_id,
+        }
+
+    shots = _SMOKE_SHOTS
+    t0 = time.perf_counter()
+    try:
+        backend = _pick_smoke_backend(svc, mode=bm, min_qubits=n)
+        ansatz = EfficientSU2(n, reps=_SMOKE_N_LAYERS, entanglement="linear")
+        ansatz.measure_all()
+        pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
+        isa_circuit = pm.run(ansatz)
+        theta0 = np.zeros(len(isa_circuit.parameters))
+        bound = isa_circuit.assign_parameters(theta0)
+        sampler = Sampler(mode=backend)
+        result = sampler.run([bound], shots=shots).result()
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+        counts: dict[str, int] = {}
+        try:
+            raw = result[0].data.meas.get_counts()
+            if isinstance(raw, dict):
+                counts = {str(k): int(v) for k, v in raw.items()}
+        except Exception:
+            counts = {}
+
+        w = _marginal_weights_from_counts(counts, n, _WEIGHT_MIN, _WEIGHT_MAX)
+        port_ret = float(np.dot(w, mu))
+        var = float(w @ sigma @ w)
+        port_vol = float(np.sqrt(max(var, 0.0)))
+        sharpe = (port_ret / port_vol) if port_vol > 1e-10 else None
+
+        job_id: Optional[str] = None
+        try:
+            pub_result = result[0]
+            if hasattr(pub_result, "job_id"):
+                jid = pub_result.job_id
+                job_id = str(jid) if jid is not None else None
+        except Exception:
+            pass
+
+        cfg = backend.configuration()
+        ann_ret_list = [float(x) for x in np.asarray(mu).ravel()]
+        w_list = [float(x) for x in np.asarray(w).ravel()]
+        return {
+            "ok": True,
+            "configured": True,
+            "tenant_id": tenant_id,
+            "smoke_profile": "efficient_su2_fixed_params_vqe_shaped",
+            "vqe_ansatz": "EfficientSU2",
+            "n_layers": _SMOKE_N_LAYERS,
+            "fixed_parameters": "zeros",
+            "market_source": market.source,
+            "tickers": list(market.tickers),
+            "n_assets": n,
+            "ann_returns": ann_ret_list,
+            "weights": w_list,
+            "portfolio_return": port_ret,
+            "portfolio_volatility": port_vol,
+            "sharpe_ratio": sharpe,
+            "backend": backend.name,
+            "simulator": bool(cfg.simulator),
+            "mode": bm,
+            "shots": shots,
+            "elapsed_ms": elapsed_ms,
+            "counts": counts,
+            "job_id": job_id,
+            "ibm_saved_instance_crn_suffix": _saved_instance_suffix_for_tenant(tenant_id),
+        }
+    except Exception as exc:
+        logger.warning("IBM hardware smoke test failed tenant=%s: %s", tenant_id, exc)
+        return {
+            "ok": False,
+            "configured": True,
+            "error": str(exc),
+            "tenant_id": tenant_id,
+            "elapsed_ms": round((time.perf_counter() - t0) * 1000, 2),
+        }
 
 
 def list_runtime_workloads(tenant_id: str, *, limit: int = 20) -> dict:

@@ -13,10 +13,14 @@ import {
   getIntegrationsCatalog,
   getJobStatus,
   healthCheck,
+  postIbmQuantumSmokeTest,
   setActiveIntegrationTenant,
   setIbmQuantumToken,
   submitBacktestJob,
   submitOptimizeJob,
+  verifyIbmQuantumToken,
+  type IbmIntegrationContext,
+  type IbmSmokeTestResult,
   type IbmWorkloadRow,
 } from "@/lib/api";
 import {
@@ -36,6 +40,16 @@ export interface QuantumIbmStatus {
   backends?: string[];
   error?: string;
   tenant_id?: string;
+  ibm_instances?: Array<{
+    name?: string | null;
+    plan?: string | null;
+    crn_suffix?: string | null;
+  }>;
+  ibm_active_instance?: string | null;
+  ibm_instances_error?: string | null;
+  /** Truncated CRN hint for the saved instance (if any). */
+  ibm_saved_instance_crn_suffix?: string | null;
+  integration_context?: IbmIntegrationContext;
 }
 
 export interface IntegrationTenant {
@@ -79,6 +93,8 @@ export function useQuantumEngine() {
   const { session, setLastOptimize } = useLedgerSession();
   const [ibm, setIbm] = useState<QuantumIbmStatus>({ configured: false });
   const [token, setToken] = useState("");
+  /** Optional IBM Cloud instance CRN (same as Qiskit `instance=` / `save_account`). */
+  const [instanceCrn, setInstanceCrn] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [bootstrapLoading, setBootstrapLoading] = useState(true);
   const [apiHealth, setApiHealth] = useState<Record<string, unknown> | null>(
@@ -95,6 +111,25 @@ export function useQuantumEngine() {
   const [ibmWorkloads, setIbmWorkloads] = useState<IbmWorkloadRow[]>([]);
   const [ibmWorkloadsLoading, setIbmWorkloadsLoading] = useState(false);
   const [ibmWorkloadsError, setIbmWorkloadsError] = useState<string | null>(
+    null
+  );
+  const [verifyPreview, setVerifyPreview] = useState<{
+    ok: boolean;
+    backends?: string[];
+    ibm_instances?: QuantumIbmStatus["ibm_instances"];
+    ibm_active_instance?: string | null;
+    ibm_instances_error?: string | null;
+    ibm_saved_instance_crn_suffix?: string | null;
+    error?: string;
+  } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [smokeMode, setSmokeMode] = useState<"hardware" | "simulator">(
+    "hardware"
+  );
+  /** Comma-separated symbols; empty = API default (Mag 7 + JPM). */
+  const [smokeTickersInput, setSmokeTickersInput] = useState("");
+  const [smokeRunning, setSmokeRunning] = useState(false);
+  const [smokeResult, setSmokeResult] = useState<IbmSmokeTestResult | null>(
     null
   );
 
@@ -124,6 +159,14 @@ export function useQuantumEngine() {
       pollTimersRef.current.delete(localId);
     }
   }, []);
+
+  useEffect(() => {
+    setVerifyPreview(null);
+  }, [token, instanceCrn]);
+
+  useEffect(() => {
+    setSmokeResult(null);
+  }, [activeTenantId]);
 
   const refreshIbmAndIntegrations = useCallback(async () => {
     const status = (await getIbmQuantumStatus()) as QuantumIbmStatus;
@@ -275,21 +318,69 @@ export function useQuantumEngine() {
     [refreshIbmAndIntegrations]
   );
 
+  const handleVerify = useCallback(async () => {
+    const t = token.trim();
+    if (!t) return;
+    setVerifying(true);
+    setBannerError(null);
+    const inst = instanceCrn.trim();
+    try {
+      const data = (await verifyIbmQuantumToken(t, {
+        instance: inst || undefined,
+      })) as {
+        ok?: boolean;
+        backends?: string[];
+        ibm_instances?: QuantumIbmStatus["ibm_instances"];
+        ibm_active_instance?: string | null;
+        ibm_instances_error?: string | null;
+        ibm_saved_instance_crn_suffix?: string | null;
+        error?: string;
+      };
+      if (data.ok) {
+        setVerifyPreview({
+          ok: true,
+          backends: data.backends,
+          ibm_instances: data.ibm_instances,
+          ibm_active_instance: data.ibm_active_instance ?? null,
+          ibm_instances_error: data.ibm_instances_error ?? null,
+          ibm_saved_instance_crn_suffix: data.ibm_saved_instance_crn_suffix ?? null,
+        });
+      } else {
+        setVerifyPreview({
+          ok: false,
+          error: data.error ?? "Verification failed",
+        });
+      }
+    } catch (e) {
+      setVerifyPreview({
+        ok: false,
+        error: e instanceof Error ? e.message : "Verification failed",
+      });
+    } finally {
+      setVerifying(false);
+    }
+  }, [token, instanceCrn]);
+
   const handleConnect = useCallback(async () => {
     if (!token.trim()) return;
     setConnecting(true);
     setBannerError(null);
+    const inst = instanceCrn.trim();
     try {
-      await setIbmQuantumToken(token.trim());
+      await setIbmQuantumToken(token.trim(), {
+        instance: inst || undefined,
+      });
       await refreshIbmAndIntegrations();
       setToken("");
+      setInstanceCrn("");
+      setVerifyPreview(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Connection failed";
       setBannerError(msg);
     } finally {
       setConnecting(false);
     }
-  }, [token, refreshIbmAndIntegrations]);
+  }, [token, instanceCrn, refreshIbmAndIntegrations]);
 
   const handleDisconnect = useCallback(async () => {
     setConnecting(true);
@@ -297,6 +388,7 @@ export function useQuantumEngine() {
     try {
       await clearIbmQuantumToken();
       await refreshIbmAndIntegrations();
+      setSmokeResult(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Disconnect failed";
       setBannerError(msg);
@@ -304,6 +396,31 @@ export function useQuantumEngine() {
       setConnecting(false);
     }
   }, [refreshIbmAndIntegrations]);
+
+  const handleSmokeTest = useCallback(async () => {
+    if (!ibm.configured) return;
+    setSmokeRunning(true);
+    setBannerError(null);
+    setSmokeResult(null);
+    try {
+      const raw = smokeTickersInput
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+      const data = await postIbmQuantumSmokeTest({
+        mode: smokeMode,
+        tickers: raw.length ? raw : undefined,
+      });
+      setSmokeResult(data);
+    } catch (e) {
+      setSmokeResult({
+        ok: false,
+        error: e instanceof Error ? e.message : "Smoke test failed",
+      });
+    } finally {
+      setSmokeRunning(false);
+    }
+  }, [ibm.configured, smokeMode, smokeTickersInput]);
 
   const submitJob = useCallback(
     async (type: "optimize" | "backtest", options?: SubmitJobOptions) => {
@@ -478,6 +595,8 @@ export function useQuantumEngine() {
     ibm,
     token,
     setToken,
+    instanceCrn,
+    setInstanceCrn,
     connecting,
     bootstrapLoading,
     apiHealth,
@@ -495,6 +614,16 @@ export function useQuantumEngine() {
     integrations,
     handleConnect,
     handleDisconnect,
+    handleVerify,
+    verifying,
+    verifyPreview,
+    smokeMode,
+    setSmokeMode,
+    smokeTickersInput,
+    setSmokeTickersInput,
+    smokeRunning,
+    smokeResult,
+    handleSmokeTest,
     submitJob,
   };
 }

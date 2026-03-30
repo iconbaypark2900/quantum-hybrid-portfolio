@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -35,11 +36,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('ql-theme');var d=document.documentElement;if(t==='light'){d.className='light'}else if(t==='system'){if(window.matchMedia('(prefers-color-scheme:light)').matches){d.className='light'}else{d.className='dark'}}else{d.className='dark'}}catch(e){}})()`,
-          }}
-        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
@@ -56,6 +52,13 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-body antialiased`}
       >
+        <Script
+          id="ql-theme-init"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('ql-theme');var d=document.documentElement;if(t==='light'){d.className='light'}else if(t==='system'){if(window.matchMedia('(prefers-color-scheme:light)').matches){d.className='light'}else{d.className='dark'}}else{d.className='dark'}}catch(e){}})()`,
+          }}
+        />
         <ThemeProvider>
           {children}
         </ThemeProvider>

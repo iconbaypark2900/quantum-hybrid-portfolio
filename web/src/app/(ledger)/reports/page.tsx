@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { useReportGeneration } from "@/hooks/useReportGeneration";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
 import ReportsRunHistory from "@/components/ReportsRunHistory";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 const REPORT_TYPES: {
   key: "performance" | "risk" | "compliance" | "full";
@@ -214,7 +215,8 @@ function PrintSummary({ report }: { report: Record<string, unknown> }) {
   );
 }
 
-export default function ReportsPage() {
+export default function ReportsPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   const {
     selectedType,
     setSelectedType,

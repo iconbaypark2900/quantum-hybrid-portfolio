@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { useLedgerSession } from "@/context/LedgerSessionContext";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 const ENV_VARS: { name: string; desc: string; required: boolean }[] = [
   {
@@ -19,7 +20,8 @@ const ENV_VARS: { name: string; desc: string; required: boolean }[] = [
   },
 ];
 
-export default function SettingsPage() {
+export default function SettingsPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   const { session } = useLedgerSession();
 
   const copySessionJson = useCallback(() => {

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quantum Ledger | Report Configuration</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-variant": "#333538",
+                        "surface-container-lowest": "#0c0e11",
+                        "on-primary-container": "#00375a",
+                        "primary-fixed-dim": "#98cbff",
+                        "on-primary-fixed": "#001d33",
+                        "on-surface": "#e2e2e6",
+                        "surface-container-high": "#282a2d",
+                        "outline-variant": "#3f4852",
+                        "tertiary-fixed-dim": "#00e475",
+                        "on-primary": "#003354",
+                        "surface-container": "#1e2023",
+                        "primary-container": "#00a3ff",
+                        "on-tertiary-fixed-variant": "#005226",
+                        "primary": "#98cbff",
+                        "on-secondary-fixed": "#001d33",
+                        "error-container": "#93000a",
+                        "background": "#111316",
+                        "on-surface-variant": "#bec7d4",
+                        "on-secondary-fixed-variant": "#22496b",
+                        "surface": "#111316",
+                        "on-tertiary-fixed": "#00210b",
+                        "outline": "#88919d",
+                        "on-secondary": "#023353",
+                        "on-error-container": "#ffdad6",
+                        "inverse-on-surface": "#2f3034",
+                        "tertiary-fixed": "#62ff96",
+                        "secondary": "#a5caf2",
+                        "primary-fixed": "#cfe5ff",
+                        "surface-bright": "#37393d",
+                        "surface-tint": "#98cbff",
+                        "surface-container-low": "#1a1c1f",
+                        "on-tertiary": "#003918",
+                        "secondary-container": "#22496b",
+                        "on-primary-fixed-variant": "#004a77",
+                        "inverse-surface": "#e2e2e6",
+                        "tertiary": "#00e475",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "secondary-fixed": "#cfe5ff",
+                        "secondary-fixed-dim": "#a5caf2",
+                        "on-background": "#e2e2e6",
+                        "inverse-primary": "#00629d",
+                        "on-tertiary-container": "#003d1b",
+                        "on-secondary-container": "#94b9e0",
+                        "surface-container-highest": "#333538",
+                        "surface-dim": "#111316",
+                        "tertiary-container": "#00b45b"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(51, 53, 56, 0.6);
+            backdrop-filter: blur(24px);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #98cbff 0%, #00a3ff 100%);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container overflow-hidden">
+<!-- TopNavBar -->
+<nav class="bg-[#111316] text-[#98cbff] font-['Space_Grotesk'] font-bold text-sm tracking-tight docked full-width top-0 flex justify-between items-center w-full px-6 h-16 fixed z-50">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tighter text-[#98cbff]">Quantum Ledger</span>
+<div class="hidden md:flex items-center gap-6">
+<a class="text-slate-400 hover:text-white transition-colors" href="#">Market Live</a>
+<a class="text-slate-400 hover:text-white transition-colors" href="#">Alpha Stream</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-slate-400 hover:text-white transition-colors">notifications</button>
+<button class="material-symbols-outlined text-slate-400 hover:text-white transition-colors">account_balance_wallet</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant/30">
+<img alt="User Profile" data-alt="close-up portrait of a professional trader avatar with minimalist tech features and dark neutral colors" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJHLD8SV-9B6e4JcdJl3bUdNcF84vPZ-SzpwiSU88d3usRyrKXtT1RsbLrHIKbjrlEQvbV668mDDL0kZR8LgHZZQwHFVbf45K0Wv7V4YkqDZrsXCp3VqKVRWNVglu4e-jMX4HhTy9pWYyiZZPb4fhALA5aw873NxrtiBKCygEe6DaV9YQ6A1KXCSbbsdnxui2VkNDpKfnoCLaGBDZONLHYXUQnxT8Gi5QWnSozohG0YayEoclbmjWJH2M3_TyAPr21gS5vVnaSEeby"/>
+</div>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="hidden md:flex flex-col h-full py-6 bg-[#111316] h-screen w-64 fixed left-0 top-0 pt-20 border-r border-[#3f4852]/15 z-40">
+<div class="px-6 mb-8">
+<h2 class="font-['Space_Grotesk'] text-[#98cbff] text-lg font-black">Quantum Ledger</h2>
+<p class="text-xs text-slate-500 font-medium">V1.0.4 Active</p>
+</div>
+<nav class="flex-1 space-y-1 px-3">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] hover:text-white transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-['Inter'] text-sm font-medium">Executive Dashboard</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] hover:text-white transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">architecture</span>
+<span class="font-['Inter'] text-sm font-medium">Strategy Builder</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] hover:text-white transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">memory</span>
+<span class="font-['Inter'] text-sm font-medium">Quantum Engine</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] hover:text-white transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">query_stats</span>
+<span class="font-['Inter'] text-sm font-medium">Simulations</span>
+</a>
+<a class="flex items-center gap-3 bg-[#1e2023] text-[#98cbff] rounded-lg px-4 py-3 border-l-4 border-[#00a3ff]" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-['Inter'] text-sm font-medium">Settings</span>
+</a>
+</nav>
+<div class="mt-auto px-3 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] hover:text-white transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">help</span>
+<span class="font-['Inter'] text-sm font-medium">Help Center</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] hover:text-white transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">code</span>
+<span class="font-['Inter'] text-sm font-medium">API Docs</span>
+</a>
+</div>
+</aside>
+<!-- Main Content (Overlay Background) -->
+<main class="md:pl-64 pt-16 h-screen overflow-hidden">
+<div class="h-full w-full p-8 relative">
+<!-- Dashboard Content (Blurred Background Context) -->
+<div class="grid grid-cols-12 gap-6 opacity-40">
+<div class="col-span-8 space-y-6">
+<div class="h-64 bg-surface-container-low rounded-xl"></div>
+<div class="grid grid-cols-2 gap-6">
+<div class="h-48 bg-surface-container rounded-xl"></div>
+<div class="h-48 bg-surface-container rounded-xl"></div>
+</div>
+</div>
+<div class="col-span-4 h-full bg-surface-container-low rounded-xl"></div>
+</div>
+<!-- Configuration Overlay -->
+<div class="absolute inset-0 z-50 flex items-center justify-center p-8">
+<div class="w-full max-w-4xl glass-panel rounded-2xl overflow-hidden border border-outline-variant/15 shadow-2xl">
+<div class="flex flex-col md:flex-row h-[600px]">
+<!-- Left Panel: Summary & Preview -->
+<div class="w-full md:w-1/3 bg-surface-container-lowest p-8 flex flex-col">
+<div class="mb-12">
+<span class="text-[10px] uppercase tracking-[0.2em] font-bold text-primary opacity-70 mb-2 block">System Engine</span>
+<h1 class="font-headline text-3xl font-black text-on-surface leading-tight">Generate Report</h1>
+<p class="text-on-surface-variant text-sm mt-4 leading-relaxed">Configuring advanced telemetry export for portfolio optimization metrics and live ledger logs.</p>
+</div>
+<div class="space-y-6 mt-auto">
+<div class="p-4 bg-surface-container rounded-lg border border-outline-variant/10">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Estimated Size</span>
+<span class="material-symbols-outlined text-xs text-primary">data_usage</span>
+</div>
+<div class="font-headline text-xl text-on-surface">14.8 MB</div>
+</div>
+<div class="p-4 bg-surface-container rounded-lg border border-outline-variant/10">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Data Points</span>
+<span class="material-symbols-outlined text-xs text-tertiary">bolt</span>
+</div>
+<div class="font-headline text-xl text-on-surface">42,801 <span class="text-xs text-tertiary">Calculated</span></div>
+</div>
+</div>
+</div>
+<!-- Right Panel: Controls -->
+<div class="flex-1 p-8 overflow-y-auto custom-scrollbar bg-surface-container-low/50">
+<div class="space-y-10">
+<!-- Timeframe Selection -->
+<section>
+<h3 class="text-xs font-bold text-on-surface-variant uppercase tracking-[0.1em] mb-4">Timeframe</h3>
+<div class="grid grid-cols-4 gap-3">
+<button class="py-3 px-4 rounded-lg bg-surface-container border border-outline-variant/10 hover:border-primary/50 transition-all text-sm font-medium text-slate-400">1D</button>
+<button class="py-3 px-4 rounded-lg bg-surface-container border border-outline-variant/10 hover:border-primary/50 transition-all text-sm font-medium text-slate-400">1W</button>
+<button class="py-3 px-4 rounded-lg bg-surface-container-high border border-primary text-primary transition-all text-sm font-bold shadow-[0_0_15px_rgba(152,203,255,0.15)]">1M</button>
+<button class="py-3 px-4 rounded-lg bg-surface-container border border-outline-variant/10 hover:border-primary/50 transition-all text-sm font-medium text-slate-400">YTD</button>
+</div>
+</section>
+<!-- Data Granularity -->
+<section>
+<div class="flex justify-between items-center mb-4">
+<h3 class="text-xs font-bold text-on-surface-variant uppercase tracking-[0.1em]">Granularity</h3>
+<span class="text-[10px] text-tertiary font-medium bg-tertiary/10 px-2 py-0.5 rounded">High Fidelity</span>
+</div>
+<div class="flex flex-col gap-3">
+<label class="flex items-center justify-between p-4 bg-surface-container rounded-lg cursor-pointer group hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">analytics</span>
+<div>
+<div class="text-sm font-bold">High Precision</div>
+<div class="text-xs text-slate-500">Full tick-by-tick data points</div>
+</div>
+</div>
+<input checked="" class="form-radio bg-background border-outline-variant text-primary focus:ring-offset-background" name="granularity" type="radio"/>
+</label>
+<label class="flex items-center justify-between p-4 bg-surface-container rounded-lg cursor-pointer group hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-slate-500">insights</span>
+<div>
+<div class="text-sm font-bold">Medium Summary</div>
+<div class="text-xs text-slate-500">Optimized for dashboard review</div>
+</div>
+</div>
+<input class="form-radio bg-background border-outline-variant text-primary focus:ring-offset-background" name="granularity" type="radio"/>
+</label>
+</div>
+</section>
+<!-- Toggle Switches -->
+<section class="grid grid-cols-2 gap-6">
+<div class="flex items-center justify-between p-4 bg-surface-container/40 rounded-lg">
+<span class="text-sm font-medium">Include Raw Logs</span>
+<button class="w-10 h-5 rounded-full bg-tertiary/20 relative flex items-center transition-all duration-300 px-1 border border-tertiary/30">
+<div class="w-3 h-3 bg-tertiary rounded-full ml-auto shadow-[0_0_8px_rgba(0,228,117,0.5)] animate-pulse"></div>
+</button>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container/40 rounded-lg">
+<span class="text-sm font-medium">Verify Ledger</span>
+<button class="w-10 h-5 rounded-full bg-surface-container-high relative flex items-center transition-all duration-300 px-1 border border-outline-variant/30">
+<div class="w-3 h-3 bg-slate-600 rounded-full"></div>
+</button>
+</div>
+</section>
+<!-- Export Format Selection -->
+<section>
+<h3 class="text-xs font-bold text-on-surface-variant uppercase tracking-[0.1em] mb-4">Export Format</h3>
+<div class="grid grid-cols-4 gap-4">
+<div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-surface-container-lowest border border-outline-variant/10 cursor-pointer hover:border-primary transition-all">
+<span class="material-symbols-outlined text-primary opacity-60">picture_as_pdf</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">PDF</span>
+</div>
+<div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-surface-container-lowest border border-primary cursor-pointer shadow-[0_0_20px_rgba(152,203,255,0.05)]">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">csv</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-primary">CSV</span>
+</div>
+<div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-surface-container-lowest border border-outline-variant/10 cursor-pointer hover:border-primary transition-all">
+<span class="material-symbols-outlined text-primary opacity-60">data_object</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">JSON</span>
+</div>
+<div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-surface-container-lowest border border-outline-variant/10 cursor-pointer hover:border-primary transition-all">
+<span class="material-symbols-outlined text-primary opacity-60">api</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">API</span>
+</div>
+</div>
+</section>
+<!-- Actions -->
+<div class="flex gap-4 pt-6 border-t border-outline-variant/10">
+<button class="flex-1 py-4 text-sm font-bold uppercase tracking-widest text-on-surface-variant hover:text-white transition-colors">Cancel</button>
+<button class="flex-[2] py-4 primary-gradient text-on-primary-fixed rounded-lg text-sm font-bold uppercase tracking-widest shadow-lg active:scale-[0.98] transition-all">Execute Generation</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Optimization Alerts (Floating elements for depth) -->
+<div class="fixed bottom-12 right-12 w-64 p-4 glass-panel rounded-xl border border-tertiary/20 flex items-center gap-4 z-40">
+<div class="w-2 h-2 rounded-full bg-tertiary shadow-[0_0_8px_rgba(0,228,117,1)]"></div>
+<div class="text-xs">
+<div class="font-bold text-tertiary">Engine Ready</div>
+<div class="text-slate-400">Optimization active</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Mobile Navigation Suppressed per Instructions -->
+<div class="md:hidden fixed inset-0 flex items-center justify-center p-6 bg-background z-[100] text-center">
+<div>
+<span class="material-symbols-outlined text-4xl text-primary mb-4">desktop_windows</span>
+<h2 class="font-headline text-2xl font-bold mb-2">High Precision Access Only</h2>
+<p class="text-on-surface-variant text-sm px-8">The Quantum Ledger reporting engine requires a wide-viewport interface for secure configuration.</p>
+</div>
+</div>
+</body></html>

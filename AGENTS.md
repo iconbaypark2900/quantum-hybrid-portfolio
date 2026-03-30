@@ -1,0 +1,16 @@
+## Learned User Preferences
+
+- Prefers concrete runnable scripts and explicit ports when running the Flask API, CRA dashboard, and Next `web/` app at the same time (see `scripts/run-next-web.sh` and its header comments).
+
+## Learned Workspace Facts
+
+- Flask API: `python api.py` — documented default **http://localhost:5000** (health and OpenAPI under `/api/`).
+- CORS: Flask uses **`CORS_ORIGINS`** (default **`http://localhost:3000`**). Browsers on other origins (e.g. Next on **3042** or **3001**) must list that origin in **`CORS_ORIGINS`**, or call the API same-origin via Next rewrites / empty **`NEXT_PUBLIC_API_URL`** so CORS does not apply.
+- CRA dashboard: `cd frontend && npm install && npm start` — **http://localhost:3000**; `frontend/package.json` proxies API requests to the Flask port.
+- Hugging Face Space / Docker HF path: **`Dockerfile.hf`** builds **`frontend/`** and runs **`serve_hf.py`**; README frontmatter **`app_port: 7860`**. This path is **not** the Next.js **`web/`** app.
+- Next.js UI: **`web/`** — use **`scripts/run-next-web.sh`** to run `next dev` with **`NEXT_WEB_PORT`** (default **3042**) so it stays clear of CRA **3000** and Flask **5000**; requires **`cd web && npm install`** when dependencies are not yet present. Full **`web/`** App Router source is tracked on branch **`hf-deploy`**; if **`web/package.json`** is missing, restore with **`git checkout hf-deploy -- web`** (other branches may omit it).
+- Flask app key (**`API_KEY`** / **`NEXT_PUBLIC_API_KEY`** / **`X-API-Key`**) is separate from the **IBM Quantum** API token (stored per tenant via the API database), and from CORS.
+- IBM / integration persistence: tenant-scoped secrets (e.g. IBM token) live in the API SQLite DB (**`API_DB_PATH`**, default under **`data/`**); new machines or empty DBs need credentials re-entered or the DB/volume restored alongside **`API_KEY`** env alignment.
+- IBM Quantum: optional **instance CRN** is stored in tenant integration metadata and passed to **`QiskitRuntimeService(..., instance=...)`** when set; **`POST /api/config/ibm-quantum/verify`** validates token (and optional instance) without persisting; see **`docs/ibm-quantum-credentials.md`** for token/CRN setup and troubleshooting.
+- IBM Quantum smoke test: **`POST /api/config/ibm-quantum/smoke-test`** runs **`hardware_smoke_test`** in **`services/ibm_quantum.py`** — VQE-shaped single shot (**EfficientSU2** + **`load_market_payload`**), default tickers **Mag 7 + JPM** (optional body overrides), **`hardware`** or **`simulator`** mode; **`notebooks/test.ipynb`** mirrors this path.
+- CRA lab UI: **`frontend/src/CustomizableQuantumDashboard.js`**. Incomplete **`web/`** checkouts (e.g. only **`web/.next`**) should be treated as a separate stack from the HF/CRA path until source matches **`hf-deploy`**.
