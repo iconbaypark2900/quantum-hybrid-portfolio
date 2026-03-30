@@ -4,7 +4,6 @@ Test script to validate the enhanced quantum portfolio optimization system.
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-import yfinance as yf
 
 from core.quantum_inspired.enhanced_quantum_walk import EnhancedQuantumStochasticWalkOptimizer
 from core.quantum_inspired.enhanced_graph_builder import EnhancedFinancialGraphBuilder, AdaptiveGraphBuilder
@@ -204,43 +203,30 @@ def test_enhanced_components():
 def test_real_world_simulation():
     """
     Test with real-world data simulation.
+
+    Uses the configured market data provider (Tiingo when TIINGO_API_KEY is set,
+    yfinance legacy fallback otherwise — see TIINGO_API_KEY in .env.example).
     """
+    from services.data_provider_v2 import fetch_price_panel
+
     print("\n" + "="*60)
     print("REAL-WORLD SIMULATION TEST")
     print("="*60)
-    
+
     # Use a subset of common ETFs for a more realistic test
     symbols = ['SPY', 'QQQ', 'IWM', 'EFA', 'EEM', 'TLT', 'GLD', 'VNQ', 'DBC', 'AGG']
     print(f"Testing with real ETFs: {symbols}")
-    
+
     try:
-        # Download recent data
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365)  # 1 year of data
-        
+
         print("Downloading market data...")
-        raw_data = yf.download(symbols, start=start_date, end=end_date, progress=False)
-        
-        # Handle different return structures from yfinance
-        if isinstance(raw_data.columns, pd.MultiIndex):
-            # Multi-asset download returns MultiIndex: (attribute, symbol)
-            if 'Adj Close' in raw_data.columns.get_level_values(0):
-                data = raw_data['Adj Close']
-            elif 'Close' in raw_data.columns.get_level_values(0):
-                data = raw_data['Close']
-            else:
-                # Use whatever price column is available
-                first_price_type = raw_data.columns.get_level_values(0)[0]
-                data = raw_data[first_price_type]
-        else:
-            # Single asset or flat structure
-            if 'Adj Close' in raw_data.columns:
-                data = raw_data['Adj Close']
-            elif 'Close' in raw_data.columns:
-                data = raw_data['Close']
-            else:
-                # Fallback to first available column
-                data = raw_data.iloc[:, :len(symbols)]  # Take first N columns for N symbols
+        data = fetch_price_panel(
+            symbols,
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+        )
         
         # Calculate returns and covariance
         returns_series = data.pct_change().dropna()

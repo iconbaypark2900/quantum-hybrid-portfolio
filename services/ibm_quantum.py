@@ -560,7 +560,7 @@ def hardware_smoke_test(
 
     ``market_payload`` (optional) may include:
       - ``tickers``: list of symbols (default Mag 7 + JPM — see ``_SMOKE_DEFAULT_TICKERS`` — if omitted)
-      - ``start_date`` / ``end_date`` (optional, yfinance path)
+      - ``start_date`` / ``end_date`` (optional, market data provider path — Tiingo / yfinance fallback)
       - or ``returns`` + ``covariance`` (+ optional ``asset_names``) for matrix input
 
     Uses the same stored IBM token and instance CRN as the rest of the integration.

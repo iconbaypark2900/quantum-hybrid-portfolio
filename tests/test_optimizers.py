@@ -181,20 +181,21 @@ class TestQUBOSA:
 class TestVQE:
     def test_weights_valid(self):
         mu, S = _make_universe(6)
-        w = vqe_weights(mu, S, n_layers=2, n_restarts=3)
+        w, meta = vqe_weights(mu, S, n_layers=2, n_restarts=3)
         _assert_valid_weights(w, "vqe")
+        assert isinstance(meta, dict) and meta.get("objective") == "vqe"
 
     def test_weight_bounds_respected(self):
         mu, S = _make_universe(6)
-        w = vqe_weights(mu, S, weight_min=0.05, weight_max=0.25, n_restarts=3)
+        w, _ = vqe_weights(mu, S, weight_min=0.05, weight_max=0.25, n_restarts=3)
         active = w[w > 1e-4]
         assert np.all(active >= 0.05 - 1e-5)
         assert np.all(active <= 0.25 + 1e-5)
 
     def test_reproducible_with_seed(self):
         mu, S = _make_universe(6)
-        w1 = vqe_weights(mu, S, n_restarts=3, seed=7)
-        w2 = vqe_weights(mu, S, n_restarts=3, seed=7)
+        w1, _ = vqe_weights(mu, S, n_restarts=3, seed=7)
+        w2, _ = vqe_weights(mu, S, n_restarts=3, seed=7)
         assert np.allclose(w1, w2)
 
 
@@ -274,3 +275,19 @@ class TestRunOptimization:
         names = [f"TICKER{i}" for i in range(len(mu))]
         result = run_optimization(mu, S, objective="hybrid", asset_names=names)
         assert isinstance(result.stage_info["stage2_selected_names"][0], str)
+
+    def test_quantum_metadata_on_pipeline_and_quantum_objectives(self, universe):
+        mu, S = universe
+        h = run_optimization(mu, S, objective="hybrid")
+        assert h.quantum_metadata is not None
+        assert h.quantum_metadata.get("execution_kind") == "hybrid_pipeline"
+        assert "circuit" in h.quantum_metadata
+
+        q = run_optimization(mu, S, objective="qaoa", n_restarts=2)
+        assert q.quantum_metadata is not None
+        assert q.quantum_metadata.get("objective") == "qaoa"
+
+        v = run_optimization(mu, S, objective="vqe", n_restarts=2, n_layers=2)
+        assert v.quantum_metadata is not None
+        assert v.quantum_metadata.get("objective") == "vqe"
+        assert "circuit" in v.quantum_metadata

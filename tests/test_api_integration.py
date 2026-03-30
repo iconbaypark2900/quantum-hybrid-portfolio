@@ -157,6 +157,10 @@ class TestHybridStageInfo:
         assert 'stage2_selected_idx' in si
         assert 'stage3_sharpe' in si
         assert 'stage2_qubo_obj' in si
+        qm = data.get('quantum_metadata')
+        assert qm is not None
+        assert qm.get('execution_kind') == 'hybrid_pipeline'
+        assert 'circuit' in qm
 
     def test_k_screen_k_select_respected(self, client):
         payload = _optimize_payload('hybrid', n=10)
@@ -187,11 +191,16 @@ class TestOptimizeErrors:
             err = resp.get_json()
             assert 'quantum_magic' in str(err)
 
-    def test_target_return_without_value(self, client):
+    def test_target_return_defaults_when_omitted(self, client):
+        """Omitted target_return uses mean(asset returns), matching core optimizer tests."""
         payload = _optimize_payload('target_return')
         del payload['targetReturn']
         resp = client.post('/api/portfolio/optimize', json=payload)
-        assert resp.status_code in (400, 429)
+        assert resp.status_code in (200, 429)
+        if resp.status_code == 200:
+            data = _unwrap(resp)
+            qsw = data.get('qsw_result') or data
+            assert 'weights' in qsw
 
 
 # ── 5. Optimize — response shape backward compatibility ──────────────────────
@@ -290,8 +299,8 @@ def _mock_backtest_result():
 
 class TestBacktest:
 
-    @patch('services.backtest.yf')
-    def test_backtest_happy(self, mock_yf, client):
+    @patch('services.backtest.fetch_price_panel')
+    def test_backtest_happy(self, _mock_panel, client):
         with patch('api._run_backtest_payload', return_value=_mock_backtest_result()):
             resp = client.post('/api/portfolio/backtest', json={
                 'tickers': ['AAPL', 'MSFT'],

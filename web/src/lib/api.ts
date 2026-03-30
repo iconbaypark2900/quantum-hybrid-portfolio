@@ -88,7 +88,8 @@ api.interceptors.response.use(
 export async function fetchMarketData(
   tickers: string | string[],
   startDate: string | null = null,
-  endDate: string | null = null
+  endDate: string | null = null,
+  includeDailyReturns = false
 ) {
   const res = await api.post("/api/market-data", {
     tickers: Array.isArray(tickers)
@@ -96,6 +97,7 @@ export async function fetchMarketData(
       : tickers.split(",").map((t) => t.trim()).filter(Boolean),
     start_date: startDate,
     end_date: endDate,
+    include_daily_returns: includeDailyReturns,
   });
   return res.data;
 }
@@ -350,6 +352,8 @@ export interface LabRunSpec {
   K_select?: number | null;
   backend_name?: string | null;
   ibm_backend_mode?: string;
+  /** Set when objective is target_return */
+  target_return?: number | null;
 }
 
 export interface LabRun {
@@ -361,6 +365,8 @@ export interface LabRun {
   result: Record<string, unknown> | null;
   error: string | null;
   external_job_id: string | null;
+  /** Full sanitized optimize request body when persisted (returns, covariance, tickers, etc.). */
+  payload: Record<string, unknown> | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

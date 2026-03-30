@@ -8,8 +8,11 @@ This is the master index for all Quantum Hybrid Portfolio documentation.
 |----------|-------------|
 | [README.md](../README.md) | Project overview and quick start |
 | [GETTING_STARTED.md](GETTING_STARTED.md) | **Canonical** install, API, dashboard, env, troubleshooting |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Production deploy: Next + Flask, env vars, rollback, same-host vs split-host |
+| [DATA_PIPELINE.md](DATA_PIPELINE.md) | Scripts, methods, notebooks classification; SQLite DB ownership and backup |
 | [guides/HOW_TO_RUN.md](guides/HOW_TO_RUN.md) | Detailed run commands and troubleshooting |
 | [guides/QUICKSTART.md](guides/QUICKSTART.md) | Quick start companion |
+| [guides/LAB_VS_BACKTEST.md](guides/LAB_VS_BACKTEST.md) | Portfolio Lab notional vs rolling backtest semantics |
 | [../.env.example](../.env.example) | Environment variable reference |
 
 ## Public demo & hosting
@@ -37,6 +40,7 @@ This is the master index for all Quantum Hybrid Portfolio documentation.
 | [plans/README.md](plans/README.md) | Hub: Next.js + API + pipeline migration |
 | [plans/MIGRATION_PHASES_AND_CHECKPOINTS.md](plans/MIGRATION_PHASES_AND_CHECKPOINTS.md) | Phases 0–7, checkpoints, verification tests |
 | [plans/WORKSTREAM_BREAKDOWN.md](plans/WORKSTREAM_BREAKDOWN.md) | Parallel workstreams (web, API, pipeline) |
+| [plans/INTEGRATED_MARKET_DATA_AND_FLOW_TASKS.md](plans/INTEGRATED_MARKET_DATA_AND_FLOW_TASKS.md) | Tiingo + unified data flow — phased task plan |
 
 ## API documentation
 

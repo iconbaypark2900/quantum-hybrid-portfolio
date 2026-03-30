@@ -4,35 +4,35 @@ Basic example of using the portfolio optimization API.
 
 Uses the unified run_optimization service with notebook-based methods
 (hybrid, QUBO-SA, VQE) and classical optimizers.
+
+Requires TIINGO_API_KEY in environment for live market data (free sign-up at
+https://api.tiingo.com). Without it, the market data provider falls back to
+yfinance (legacy, deprecated) if that package is still installed.
 """
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from datetime import datetime, timedelta
 
+from services.data_provider_v2 import fetch_price_panel
 from services.portfolio_optimizer import run_optimization
 
 
 def download_sample_data():
-    """Download sample S&P 500 data for testing."""
+    """Download sample S&P 500 price history via the configured market data provider."""
     symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'BRK-B', 'JNJ',
                'JPM', 'V', 'PG', 'UNH', 'HD', 'MA', 'DIS', 'NVDA', 'PYPL', 'BAC',
                'VZ', 'ADBE', 'NFLX', 'KO', 'NKE', 'PFE', 'PEP', 'T', 'MRK', 'WMT',
                'ABT', 'CVX']
 
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=3*365)
+    start_date = end_date - timedelta(days=3 * 365)
 
     print(f"Downloading data for {len(symbols)} stocks...")
-    raw_data = yf.download(symbols, start=start_date, end=end_date, progress=False, auto_adjust=True)
-
-    if isinstance(raw_data.columns, pd.MultiIndex):
-        if 'Close' in raw_data.columns.get_level_values(0):
-            data = raw_data['Close']
-        else:
-            data = raw_data[raw_data.columns.get_level_values(0)[0]]
-    else:
-        data = raw_data
+    data = fetch_price_panel(
+        symbols,
+        start_date.strftime('%Y-%m-%d'),
+        end_date.strftime('%Y-%m-%d'),
+    )
 
     data = data.ffill().bfill()
     data = data.dropna(axis=1, how='all')
@@ -84,5 +84,5 @@ def run_basic_optimization():
 if __name__ == "__main__":
     optimization_result = run_basic_optimization()
     print("\nOptimization complete!")
-    print("Run the API server: python middleware/api.py")
+    print("Run the API server: python api.py")
     print("Or explore examples: python examples/quantum_integration_example.py")

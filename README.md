@@ -59,15 +59,19 @@ The API runs at **http://localhost:5000**
 - Health check: http://localhost:5000/api/health
 - OpenAPI docs: http://localhost:5000/api/docs/openapi
 
-### 5. Launch Dashboard (Optional)
+### 5. Launch Dashboard
+
+**Next.js (primary):**
 
 ```bash
-cd frontend
+cd web
 npm install
-npm start
+npm run dev
 ```
 
-Dashboard opens at **http://localhost:3000**
+Dashboard opens at **http://localhost:3042** (configured via `NEXT_WEB_PORT`; defaults to 3042 to avoid conflicts with the API on 5000).
+
+**CRA (legacy, archived):** The original React dashboard in `frontend/` is retained for reference. To run it: `cd frontend && npm install && npm start` (http://localhost:3000).
 
 ### Public demo
 

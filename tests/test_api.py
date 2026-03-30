@@ -46,6 +46,22 @@ def _minimal_optimize_payload():
     }
 
 
+def _unwrap_success(resp):
+    """Return the inner ``data`` dict from a success-envelope response.
+
+    All 200-level responses from this API use::
+
+        {"data": {...}, "meta": {...}}
+
+    This helper asserts the envelope is present and returns the payload so
+    tests can assert on business fields without repeating the unwrap.
+    """
+    body = resp.get_json()
+    assert body is not None, "Response body is None"
+    assert "data" in body, f"Expected 'data' key in response; got keys: {list(body.keys())}"
+    return body["data"]
+
+
 def _mock_market_data_response(tickers=None):
     """Return mock market data in the format expected by the API."""
     tickers = tickers or ['AAPL', 'MSFT', 'GOOGL']
@@ -72,11 +88,10 @@ def test_health_returns_200_and_json(client):
     """Test GET /api/health returns 200 and correct JSON."""
     resp = client.get('/api/health')
     assert resp.status_code == 200
-    data = resp.get_json()
-    assert data is not None
-    assert data.get('status') == 'healthy'
-    assert 'message' in data
-    assert 'Quantum' in data.get('message', '')
+    payload = _unwrap_success(resp)
+    assert payload.get('status') == 'healthy'
+    assert 'message' in payload
+    assert 'Quantum' in payload.get('message', '')
 
 
 def test_config_objectives_returns_200(client):
@@ -107,9 +122,8 @@ def test_config_constraints_returns_200(client):
     """Test GET /api/config/constraints returns 200."""
     resp = client.get('/api/config/constraints')
     assert resp.status_code == 200
-    data = resp.get_json()
-    assert data is not None
-    assert 'sector_limits' in data or 'cardinality' in data
+    payload = _unwrap_success(resp)
+    assert 'sector_limits' in payload or 'cardinality' in payload
 
 
 @patch('api.fetch_market_data')
@@ -122,12 +136,11 @@ def test_portfolio_optimize_with_minimal_valid_data(mock_fetch, client):
         content_type='application/json',
     )
     assert resp.status_code == 200
-    data = resp.get_json()
-    assert data is not None
-    assert 'qsw_result' in data
-    assert 'holdings' in data
-    assert 'benchmarks' in data
-    assert 'weights' in data['qsw_result']
+    payload = _unwrap_success(resp)
+    assert 'qsw_result' in payload
+    assert 'holdings' in payload
+    assert 'benchmarks' in payload
+    assert 'weights' in payload['qsw_result']
     mock_fetch.assert_not_called()  # Uses returns/covariance path, no yfinance
 
 
@@ -219,10 +232,9 @@ def test_efficient_frontier_with_minimal_valid_data(mock_fetch, client):
         content_type='application/json',
     )
     assert resp.status_code == 200
-    data = resp.get_json()
-    assert data is not None
-    assert 'frontier_points' in data
-    assert 'min_return' in data
-    assert 'max_return' in data
-    assert 'tickers' in data
+    payload = _unwrap_success(resp)
+    assert 'frontier_points' in payload
+    assert 'min_return' in payload
+    assert 'max_return' in payload
+    assert 'tickers' in payload
     mock_fetch.assert_called_once()

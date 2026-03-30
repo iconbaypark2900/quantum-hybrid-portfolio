@@ -55,19 +55,48 @@ def ensure_table() -> None:
             "CREATE INDEX IF NOT EXISTS idx_lab_runs_tenant ON lab_runs(tenant_id)"
         )
         conn.commit()
+        _migrate_add_payload_column(conn)
     finally:
         conn.close()
+
+
+def _migrate_add_payload_column(conn) -> None:
+    """Add payload_json column to persist full optimize request body (returns, covariance, tickers)."""
+    try:
+        cur = conn.execute("PRAGMA table_info(lab_runs)")
+        cols = {row[1] for row in cur.fetchall()}
+        if "payload_json" not in cols:
+            conn.execute("ALTER TABLE lab_runs ADD COLUMN payload_json TEXT")
+            conn.commit()
+            logger.info("lab_runs: added payload_json column")
+    except Exception as exc:
+        logger.warning("lab_runs migrate payload_json failed: %s", exc)
+
+
+_PAYLOAD_STRIP_KEYS = frozenset({"__api_key", "api_key", "password", "token"})
+
+
+def sanitize_request_payload(payload: dict) -> dict:
+    """Strip sensitive keys before persisting a raw optimize request payload."""
+    return {k: v for k, v in payload.items() if k not in _PAYLOAD_STRIP_KEYS}
 
 
 def create_run(
     tenant_id: str,
     spec: dict[str, Any],
     execution_kind: str = "async_optimize",
+    *,
+    request_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if execution_kind not in VALID_EXECUTION_KINDS:
         raise ValueError(f"Invalid execution_kind: {execution_kind}")
     run_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    sanitized_payload = (
+        sanitize_request_payload(request_payload)
+        if request_payload is not None
+        else None
+    )
     row = {
         "id": run_id,
         "tenant_id": tenant_id,
@@ -77,6 +106,7 @@ def create_run(
         "result_json": None,
         "error": None,
         "external_job_id": None,
+        "payload_json": json.dumps(sanitized_payload) if sanitized_payload is not None else None,
         "created_at": now,
         "started_at": None,
         "finished_at": None,
@@ -86,10 +116,10 @@ def create_run(
         conn.execute(
             """
             INSERT INTO lab_runs (id, tenant_id, status, execution_kind,
-                spec_json, result_json, error, external_job_id,
+                spec_json, result_json, error, external_job_id, payload_json,
                 created_at, started_at, finished_at)
             VALUES (:id, :tenant_id, :status, :execution_kind,
-                :spec_json, :result_json, :error, :external_job_id,
+                :spec_json, :result_json, :error, :external_job_id, :payload_json,
                 :created_at, :started_at, :finished_at)
             """,
             row,
@@ -99,6 +129,8 @@ def create_run(
         conn.close()
     logger.info("run_created run_id=%s tenant=%s kind=%s", run_id, tenant_id, execution_kind)
     row["spec"] = spec
+    if sanitized_payload is not None:
+        row["payload"] = sanitized_payload
     return row
 
 
@@ -182,8 +214,11 @@ def _dict_factory(cursor, row):
 
 
 def _inflate(row: dict) -> dict:
-    for key in ("spec_json", "result_json"):
+    for key in ("spec_json", "result_json", "payload_json"):
         val = row.pop(key, None)
-        out_key = key.replace("_json", "")
-        row[out_key] = json.loads(val) if val else None
+        if key == "payload_json":
+            row["payload"] = json.loads(val) if val else None
+        else:
+            out_key = key.replace("_json", "")
+            row[out_key] = json.loads(val) if val else None
     return row

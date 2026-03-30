@@ -534,3 +534,150 @@ export function downloadFile(content: string, filename: string, mime: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ── Analyst Run Bundle V3 ────────────────────────────────────────────────────
+
+export type RunKind = "browser" | "lab_run" | "session";
+
+/** Extracted optimize request inputs — all optional since they may not be persisted. */
+export interface AnalystInputs {
+  tickers?: string[];
+  asset_names?: string[];
+  returns?: number[];
+  covariance?: number[][];
+  sectors?: string[];
+  objective?: string;
+  weight_min?: number;
+  weight_max?: number;
+  K?: number | null;
+  K_screen?: number | null;
+  K_select?: number | null;
+  n_layers?: number;
+  n_restarts?: number;
+  lambda_risk?: number;
+  gamma?: number;
+  seed?: number;
+}
+
+export interface AnalystRunBundleV3 {
+  schema_version: "3";
+  run_id: string;
+  run_kind: RunKind;
+  captured_at: string;
+  snapshot_at: string | null;
+  tickers: string[];
+  /** Merged API optimize response — single source of truth for charts and CSV. */
+  optimize: Record<string, unknown>;
+  /** Optional: structured request inputs when the raw payload is available. */
+  inputs: AnalystInputs | null;
+}
+
+const INPUT_STRIP_KEYS = new Set(["__api_key", "api_key", "password", "token"]);
+
+/** Extract analyst-relevant inputs from a raw optimize request payload. */
+export function extractInputsFromPayload(raw: unknown): AnalystInputs | null {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+
+  const out: AnalystInputs = {};
+  let hasAny = false;
+
+  function pick<T>(key: string, guard: (v: unknown) => v is T, target: keyof AnalystInputs) {
+    if (INPUT_STRIP_KEYS.has(key)) return;
+    const v = r[key];
+    if (v !== undefined && guard(v)) {
+      (out as Record<string, unknown>)[target] = v;
+      hasAny = true;
+    }
+  }
+
+  const isNum = (v: unknown): v is number => typeof v === "number";
+  const isNumArr = (v: unknown): v is number[] =>
+    Array.isArray(v) && v.every((x) => typeof x === "number");
+  const isNum2d = (v: unknown): v is number[][] =>
+    Array.isArray(v) && v.every((row) => Array.isArray(row) && row.every((x) => typeof x === "number"));
+  const isStrArr = (v: unknown): v is string[] =>
+    Array.isArray(v) && v.every((x) => typeof x === "string");
+  const isStr = (v: unknown): v is string => typeof v === "string";
+  const isNumOrNull = (v: unknown): v is number | null =>
+    v === null || typeof v === "number";
+
+  pick("tickers", isStrArr, "tickers");
+  pick("asset_names", isStrArr, "asset_names");
+  pick("returns", isNumArr, "returns");
+  pick("covariance", isNum2d, "covariance");
+  pick("sectors", isStrArr, "sectors");
+  pick("objective", isStr, "objective");
+  pick("weight_min", isNum, "weight_min");
+  pick("weight_max", isNum, "weight_max");
+  pick("maxWeight", isNum, "weight_max"); // legacy alias
+  pick("K", isNumOrNull, "K");
+  pick("K_screen", isNumOrNull, "K_screen");
+  pick("K_select", isNumOrNull, "K_select");
+  pick("n_layers", isNum, "n_layers");
+  pick("n_restarts", isNum, "n_restarts");
+  pick("lambda_risk", isNum, "lambda_risk");
+  pick("gamma", isNum, "gamma");
+  pick("seed", isNum, "seed");
+
+  return hasAny ? out : null;
+}
+
+export interface BuildBundleOptions {
+  runId: string;
+  runKind: RunKind;
+  tickers: string[];
+  provenance?: ReportProvenance;
+  rawPayload?: unknown;
+}
+
+/** Build the single source-of-truth artifact for one optimization run. */
+export function buildAnalystRunBundle(
+  merged: Record<string, unknown>,
+  opts: BuildBundleOptions
+): AnalystRunBundleV3 {
+  return {
+    schema_version: "3",
+    run_id: opts.runId,
+    run_kind: opts.runKind,
+    captured_at: new Date().toISOString(),
+    snapshot_at: opts.provenance?.snapshot_at ?? null,
+    tickers: opts.tickers,
+    optimize: merged,
+    inputs: extractInputsFromPayload(opts.rawPayload),
+  };
+}
+
+/** Download the analyst bundle JSON with a stable filename. */
+export function downloadAnalystBundle(
+  bundle: AnalystRunBundleV3,
+  filenamePrefix = "analyst_run"
+): void {
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  downloadFile(
+    JSON.stringify(bundle, null, 2),
+    `${filenamePrefix}_${bundle.run_id.slice(0, 8)}_${ts}.json`,
+    "application/json"
+  );
+}
+
+/** Download CSV derived from the same `bundle.optimize` object, proving single source of truth. */
+export function downloadAnalystCsvFromBundle(
+  bundle: AnalystRunBundleV3,
+  ctx?: ReportContext,
+  filenamePrefix = "analyst_run"
+): void {
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  const report = buildReportPayload(
+    "full",
+    bundle.optimize,
+    bundle.tickers,
+    ctx,
+    { source: bundle.snapshot_at ? "snapshot" : "fresh", snapshot_at: bundle.snapshot_at }
+  );
+  downloadFile(
+    reportToCsv(report as Record<string, unknown>),
+    `${filenamePrefix}_${bundle.run_id.slice(0, 8)}_${ts}.csv`,
+    "text/csv"
+  );
+}

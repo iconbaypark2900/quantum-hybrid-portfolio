@@ -56,23 +56,27 @@ Failed:  1 (Efficient Frontier - minor 400 error, non-blocking)
 **Supported Providers:**
 | Provider | Tier | Status |
 |----------|------|--------|
-| yfinance | Free | ✅ Default, always available |
+| Tiingo | Free tier (API key required) | ✅ Default when `TIINGO_API_KEY` is set |
+| yfinance | Free (deprecated) | ⚠️ Legacy fallback — emits DeprecationWarning |
 | Alpaca | Free tier | ✅ Ready, needs API keys |
 | Polygon | Paid | ✅ Ready, needs API keys |
 
 **Configuration (`.env.example` updated):**
 ```bash
-# Primary provider
-DATA_PROVIDER=yfinance  # or alpaca, polygon
+# Primary provider (tiingo is default when TIINGO_API_KEY is set)
+DATA_PROVIDER=tiingo
+
+# Tiingo API key (https://api.tiingo.com)
+TIINGO_API_KEY=your_key
 
 # Enable fallback
 DATA_PROVIDER_FALLBACK=true
 
-# Alpaca configuration
+# Alpaca configuration (optional)
 ALPACA_API_KEY=your_key
 ALPACA_API_SECRET=your_secret
 
-# Polygon configuration
+# Polygon configuration (optional)
 POLYGON_API_KEY=your_key
 ```
 
@@ -80,16 +84,16 @@ POLYGON_API_KEY=your_key
 ```python
 from services.data_provider_v2 import MarketDataProvider
 
-# Use default (yfinance with fallback)
+# Use default (Tiingo when TIINGO_API_KEY is set, yfinance otherwise)
 provider = MarketDataProvider()
 data = provider.fetch_market_data(['AAPL', 'MSFT'], start_date='2023-01-01', end_date='2023-12-31')
 
 # Use specific provider
-provider = MarketDataProvider(provider='alpaca')
+provider = MarketDataProvider(provider='tiingo')
 data = provider.fetch_market_data(['AAPL', 'MSFT'], ...)
 
 # Check available providers
-print(provider.get_available_providers())  # ['yfinance', 'alpaca']
+print(provider.get_available_providers())  # ['tiingo', 'yfinance']
 ```
 
 ### 3. Documentation Updates ✅
@@ -180,7 +184,7 @@ print(provider.get_available_providers())  # ['yfinance', 'alpaca']
 | Metric | Value |
 |--------|-------|
 | API Integration Tests | 90.9% passing |
-| Data Providers | 3 (yfinance, Alpaca, Polygon) |
+| Data Providers | 4 (Tiingo default, Alpaca, Polygon, yfinance legacy) |
 | Authentication | JWT + API keys |
 | Deployment Targets | 2 (HF Spaces, self-hosted) |
 | Documentation | Updated |

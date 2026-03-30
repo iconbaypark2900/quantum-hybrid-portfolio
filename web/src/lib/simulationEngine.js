@@ -654,22 +654,100 @@ export function simulatePerAssetEquity(data, weights, nDays, notional = 100000) 
 }
 
 // ─── VaR ───
+
+/**
+ * Inverse standard-normal CDF (probit) via the Beasley–Springer–Moro rational
+ * approximation. Accurate to ~1e-9 for p in (0, 1).
+ */
+function probitApprox(p) {
+  const a = [
+    -3.969683028665376e+01,  2.209460984245205e+02,
+    -2.759285104469687e+02,  1.383577518672690e+02,
+    -3.066479806614716e+01,  2.506628277459239e+00,
+  ];
+  const b = [
+    -5.447609879822406e+01,  1.615858368580409e+02,
+    -1.556989798598866e+02,  6.680131188771972e+01,
+    -1.328068155288572e+01,
+  ];
+  const c = [
+    -7.784894002430293e-03, -3.223964580411365e-01,
+    -2.400758277161838e+00, -2.549732539343734e+00,
+     4.374664141464968e+00,  2.938163982698783e+00,
+  ];
+  const d = [
+     7.784695709041462e-03,  3.224671290700398e-01,
+     2.445134137142996e+00,  3.754408661907416e+00,
+  ];
+  const pLow = 0.02425;
+  const pHigh = 1 - pLow;
+  let q, r;
+  if (p < pLow) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+           ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= pHigh) {
+    q = p - 0.5; r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+           (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+              ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+}
+
+function _stdNormPDF(x) {
+  return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+}
+
+/**
+ * Compute one-day Value-at-Risk and Conditional VaR (Expected Shortfall)
+ * using an analytic multivariate-normal approach.
+ *
+ * Method: one-day portfolio P&L ~ N(μ_p / 252, w^T Σ_annual w / 252), where
+ * Σ_annual[i][j] = corr[i][j] * vol_i * vol_j and Σ is the same Ledoit–Wolf
+ * matrix used by the optimizer. This is consistent with the optimizer's risk
+ * model and avoids the independent-bootstrap problem of per-asset random day
+ * draws (which ignored cross-asset correlation).
+ *
+ * Returns values as percentages (multiply by notional to get dollar amounts).
+ *
+ * @param {object}   data       - market data: data.assets[i].{annReturn, annVol}
+ *                                and data.corr[i][j] (annual correlation matrix)
+ * @param {number[]} weights    - portfolio weights summing to 1
+ * @param {number}   confidence - VaR confidence level, e.g. 0.95
+ */
 export function computeVaR(data, weights, confidence) {
   const n = weights.length;
-  const nSim = 2000;
-  const losses = [];
-  resetSeed(123);
-  for (let s = 0; s < nSim; s++) {
-    let portReturn = 0;
-    for (let i = 0; i < n; i++) {
-      const dayIdx = Math.floor(seededRandom() * (data.assets[i]?.returns.length || 1));
-      portReturn += weights[i] * (data.assets[i]?.returns[dayIdx] || 0);
+  if (n === 0 || !data?.assets?.length || !data?.corr) return { var95: 0, cvar: 0 };
+
+  // Annual portfolio variance: w^T Σ_annual w
+  let annualPortVar = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const vi = data.assets[i]?.annVol ?? 0;
+      const vj = data.assets[j]?.annVol ?? 0;
+      const corr = data.corr[i]?.[j] ?? (i === j ? 1 : 0);
+      annualPortVar += weights[i] * weights[j] * corr * vi * vj;
     }
-    losses.push(-portReturn);
   }
-  losses.sort((a, b) => a - b);
-  const varIdx = Math.floor(nSim * confidence);
-  const var95 = losses[varIdx] || 0;
-  const cvar = losses.slice(varIdx).reduce((a, b) => a + b, 0) / (nSim - varIdx || 1);
+
+  // Scale to one trading day
+  const dailyPortVol = Math.sqrt(Math.max(0, annualPortVar) / 252);
+
+  // Annual expected return → daily
+  let annualPortReturn = 0;
+  for (let i = 0; i < n; i++) annualPortReturn += weights[i] * (data.assets[i]?.annReturn ?? 0);
+  const dailyPortReturn = annualPortReturn / 252;
+
+  // Normal quantile and PDF at the confidence threshold
+  const zc  = probitApprox(confidence);
+  const phi = _stdNormPDF(zc);
+
+  // One-day VaR and CVaR as loss fractions (positive = loss)
+  const var95 = -dailyPortReturn + zc * dailyPortVol;
+  const cvar  = -dailyPortReturn + dailyPortVol * phi / (1 - confidence);
+
   return { var95: var95 * 100, cvar: cvar * 100 };
 }

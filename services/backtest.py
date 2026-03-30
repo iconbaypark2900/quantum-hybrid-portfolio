@@ -3,6 +3,10 @@ Backtesting service for portfolio strategies.
 
 Runs periodic rebalances using optimization over historical lookback windows,
 computes equity curve and summary metrics.
+
+Price history is fetched via ``services.data_provider_v2.fetch_price_panel``
+which uses the configured market data provider (Tiingo by default when
+TIINGO_API_KEY is set, otherwise yfinance as fallback).
 """
 
 from datetime import datetime
@@ -11,11 +15,7 @@ from typing import Dict, List, Optional, Any
 import numpy as np
 import pandas as pd
 
-try:
-    import yfinance as yf
-except ImportError:
-    yf = None
-
+from services.data_provider_v2 import fetch_price_panel
 from services.market_data import get_asset_metadata
 from services.portfolio_optimizer import run_optimization
 from services.constraints import PortfolioConstraints
@@ -79,28 +79,8 @@ def run_backtest(
     if rebalance_frequency not in valid_freqs:
         raise ValueError(f"Invalid rebalance frequency. Valid options: {valid_freqs}")
 
-    if yf is None:
-        raise ImportError("yfinance is required for backtest: pip install yfinance")
-
-    # Download full price history
-    data = yf.download(
-        tickers,
-        start=start_date,
-        end=end_date,
-        progress=False,
-        group_by="ticker",
-        auto_adjust=True,
-    )
-
-    # Normalize to (date -> ticker -> Adj Close)
-    if len(tickers) == 1:
-        prices = pd.DataFrame({tickers[0]: data["Adj Close"] if "Adj Close" in data.columns else data["Close"]})
-    elif isinstance(data.columns, pd.MultiIndex):
-        prices = data.xs("Adj Close", axis=1, level=1) if "Adj Close" in data.columns.get_level_values(1) else data.xs("Close", axis=1, level=1)
-        prices = prices[[t for t in tickers if t in prices.columns]]
-    else:
-        prices = data[["Adj Close", "Close"]].iloc[:, 0] if "Adj Close" in data.columns else data
-        prices = pd.DataFrame({tickers[0]: prices})
+    # Fetch full price history via unified provider (Tiingo, or fallback)
+    prices = fetch_price_panel(tickers, start_date, end_date)
 
     if prices.empty or len(prices.columns) < 2:
         raise ValueError("Insufficient price data for backtest")

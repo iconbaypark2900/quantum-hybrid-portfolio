@@ -31,6 +31,8 @@ export type SidebarSnapshot = {
   cardinality: number | null;
   kScreen: number | null;
   kSelect: number | null;
+  /** Annualized return target for `target_return` objective (API field target_return). */
+  targetReturn: number;
 };
 
 export type ObjectiveOption = {
@@ -68,6 +70,7 @@ type BenchSpec = {
   nRestarts: number;
   lambdaRisk: number;
   gamma: number;
+  targetReturn: number;
 };
 
 type MetricsLite = {
@@ -101,6 +104,10 @@ function emptySpec(sidebar: SidebarSnapshot): BenchSpec {
     nRestarts: 8,
     lambdaRisk: 1,
     gamma: 8,
+    targetReturn:
+      typeof sidebar.targetReturn === "number" && Number.isFinite(sidebar.targetReturn)
+        ? sidebar.targetReturn
+        : 0.1,
   };
 }
 
@@ -130,6 +137,7 @@ function specDiff(before: BenchSpec, after: BenchSpec): string[] {
     "nRestarts",
     "lambdaRisk",
     "gamma",
+    "targetReturn",
   ];
   for (const k of keys) {
     if (before[k] !== after[k]) {
@@ -346,6 +354,9 @@ export default function SensitivityLabPanel({
       if (spec.K.trim()) payload.K = parseInt(spec.K, 10);
       if (spec.kScreen.trim()) payload.K_screen = parseInt(spec.kScreen, 10);
       if (spec.kSelect.trim()) payload.K_select = parseInt(spec.kSelect, 10);
+      if (spec.objective === "target_return") {
+        payload.target_return = spec.targetReturn;
+      }
 
       const resp = (await optimizePortfolio(payload)) as Record<
         string,
@@ -361,7 +372,10 @@ export default function SensitivityLabPanel({
         setWeights(w);
         setLastApiMetrics(metricsLiteFromWeights(w, data));
       }
-      const qm = resp.quantum_metadata as Record<string, unknown> | undefined;
+      const qmRaw =
+        resp.quantum_metadata ??
+        (qsw.quantum_metadata as Record<string, unknown> | undefined);
+      const qm = qmRaw as Record<string, unknown> | undefined;
       setQuantumMeta(qm && typeof qm === "object" ? qm : null);
       setLastSource("api");
       setWeightsDirty(false);
@@ -827,6 +841,36 @@ export default function SensitivityLabPanel({
             }
             style={inputStyle(t)}
           />
+          {spec.objective === "target_return" && (
+            <>
+              <label style={labelStyle(t)}>target_return (annual, decimal)</label>
+              <input
+                type="number"
+                step={0.005}
+                min={0.01}
+                max={0.6}
+                value={spec.targetReturn}
+                onChange={(e) =>
+                  setSpec((s) => ({
+                    ...s,
+                    targetReturn: parseFloat(e.target.value) || 0.1,
+                  }))
+                }
+                style={inputStyle(t)}
+              />
+              <p
+                style={{
+                  fontSize: 9,
+                  color: t.textDim,
+                  margin: "0 0 8px",
+                  lineHeight: 1.4,
+                }}
+              >
+                Same units as asset annReturn (e.g. 0.08 = 8%/yr). Required by the API for this
+                objective.
+              </p>
+            </>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             <div>
               <label style={labelStyle(t)}>K (optional)</label>
@@ -1262,8 +1306,8 @@ export default function SensitivityLabPanel({
             Quantum / metadata
           </h3>
           <p style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.45 }}>
-            Standard optimize responses usually have no quantum block. Lab runs
-            with IBM may expose metadata elsewhere (Reports).
+            Populated when the objective uses a quantum or hybrid pipeline (QAOA,
+            VQE, hybrid, QUBO-SA). IBM Runtime runs add backend and timing fields.
           </p>
           {quantumMeta && Object.keys(quantumMeta).length > 0 ? (
             <pre
@@ -1289,7 +1333,7 @@ export default function SensitivityLabPanel({
           )}
         </section>
 
-        <section style={cardStyle} aria-label="Circuit placeholder">
+        <section style={cardStyle} aria-label="Circuit summary">
           <h3
             style={{
               margin: "0 0 10px",
@@ -1301,10 +1345,35 @@ export default function SensitivityLabPanel({
           >
             Circuit
           </h3>
-          <p style={{ fontSize: 10, color: t.textDim, lineHeight: 1.5 }}>
-            Circuit visualization requires backend circuit JSON (not yet exposed
-            on optimize).
+          <p style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.45 }}>
+            Structured summary from{" "}
+            <code style={{ fontSize: 9 }}>quantum_metadata.circuit</code> when the
+            API provides it (ansatz, depth, qubits). Full OpenQASM is not included.
           </p>
+          {quantumMeta &&
+          typeof quantumMeta.circuit === "object" &&
+          quantumMeta.circuit !== null ? (
+            <pre
+              style={{
+                fontSize: 9,
+                fontFamily: FONT.mono,
+                color: t.text,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+                margin: "10px 0 0",
+                padding: 8,
+                borderRadius: 6,
+                background: t.bg,
+                border: `1px solid ${t.border}`,
+              }}
+            >
+              {JSON.stringify(quantumMeta.circuit, null, 2)}
+            </pre>
+          ) : (
+            <p style={{ fontSize: 10, color: t.textDim, marginTop: 8 }}>
+              No circuit summary on last response (e.g. classical-only objective).
+            </p>
+          )}
         </section>
       </div>
     </div>
