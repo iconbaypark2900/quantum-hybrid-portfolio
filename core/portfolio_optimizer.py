@@ -16,16 +16,18 @@ All methods accept (mu, Sigma) in annualised units and return an
 OptimizationResult with a uniform fields contract.
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 import numpy as np
 
 from core.optimizers.equal_weight import equal_weight
 from core.optimizers.markowitz import markowitz_max_sharpe, min_variance, target_return_frontier
 from core.optimizers.hrp import hrp_weights
 from core.optimizers.qubo_sa import qubo_sa_weights
+from core.optimizers.qaoa import qaoa_weights
 from core.optimizers.vqe import vqe_weights
 from core.optimizers.hybrid_pipeline import hybrid_pipeline_weights
+from core.optimizers.hybrid_qaoa import hybrid_qaoa_weights
 
 
 # ── Valid objectives ────────────────────────────────────────────────────────
@@ -36,8 +38,10 @@ OBJECTIVES = {
     "min_variance":  "Global Minimum Variance",
     "hrp":           "Hierarchical Risk Parity (López de Prado 2016)",
     "qubo_sa":       "QUBO + Simulated Annealing (Orús et al. 2019)",
+    "qaoa":          "QAOA — Quantum Approx. Optimization (IBM Runtime / classical)",
     "vqe":           "VQE PauliTwoDesign (Scientific Reports 2023)",
-    "hybrid":        "3-Stage Hybrid Pipeline (Buonaiuto/Herman 2025)",
+    "hybrid":        "3-Stage Hybrid Pipeline — IC Screen → QUBO-SA → Markowitz",
+    "hybrid_qaoa":   "3-Stage Hybrid Pipeline — IC Screen → QAOA → Markowitz (IBM Runtime / classical)",
     "target_return": "Minimum-variance at target return",
 }
 
@@ -56,6 +60,7 @@ class OptimizationResult:
     # Optional richer diagnostics
     asset_names: Optional[List[str]] = None
     stage_info: Optional[Dict] = None   # populated by hybrid pipeline
+    quantum_metadata: Optional[Dict[str, Any]] = None  # diagnostics for lab / IBM paths
 
 
 # ── Portfolio metric helpers ────────────────────────────────────────────────
@@ -127,6 +132,7 @@ def run_optimization(
         )
 
     stage_info = None
+    quantum_metadata: Optional[Dict[str, Any]] = None
 
     # ── Dispatch ────────────────────────────────────────────────────────────
     if objective == "equal_weight":
@@ -149,9 +155,45 @@ def run_optimization(
             gamma=gamma,
             seed=seed,
         )
+        quantum_metadata = {
+            "execution_kind": "qubo_sa",
+            "objective": "qubo_sa",
+            "n_assets": len(mu),
+            "K": int(K) if K is not None else None,
+            "lambda_risk": lambda_risk,
+            "gamma": gamma,
+            "seed": seed,
+            "circuit": {"family": "QUBO", "solver": "simulated_annealing"},
+        }
+
+    elif objective == "qaoa":
+        w = qaoa_weights(
+            mu, Sigma,
+            K=K,
+            lambda_risk=lambda_risk,
+            gamma=gamma,
+            n_restarts=n_restarts,
+            weight_min=weight_min,
+            weight_max=weight_max,
+            seed=seed,
+        )
+        _K = K if K is not None else max(2, len(mu) // 3)
+        _K = min(int(_K), len(mu))
+        quantum_metadata = {
+            "execution_kind": "classical_statevector",
+            "objective": "qaoa",
+            "n_assets": len(mu),
+            "K": _K,
+            "p": 2,
+            "lambda_risk": lambda_risk,
+            "gamma": gamma,
+            "n_restarts": n_restarts,
+            "seed": seed,
+            "circuit": {"ansatz": "QAOA", "p": 2, "n_qubits": len(mu)},
+        }
 
     elif objective == "vqe":
-        w = vqe_weights(
+        w, vqe_meta = vqe_weights(
             mu, Sigma,
             n_layers=n_layers,
             n_restarts=n_restarts,
@@ -159,6 +201,7 @@ def run_optimization(
             weight_max=weight_max,
             seed=seed,
         )
+        quantum_metadata = dict(vqe_meta)
 
     elif objective == "hybrid":
         w, info = hybrid_pipeline_weights(
@@ -180,6 +223,49 @@ def run_optimization(
             "stage2_qubo_obj": info.stage2_qubo_obj,
             "stage3_sharpe": info.stage3_sharpe,
             "stage1_ic": info.stage1_ic.tolist(),
+        }
+        quantum_metadata = {
+            "execution_kind": "hybrid_pipeline",
+            "objective": "hybrid",
+            **stage_info,
+            "circuit": {
+                "stage2": "QUBO + simulated annealing",
+                "n_qubits_stage2": len(info.stage2_selected_idx),
+            },
+        }
+
+    elif objective == "hybrid_qaoa":
+        w, info = hybrid_qaoa_weights(
+            mu, Sigma,
+            K_screen=K_screen,
+            K_select=K_select,
+            lambda_risk=lambda_risk,
+            gamma=gamma,
+            n_qaoa_restarts=n_restarts,
+            weight_bounds=bounds,
+            seed=seed,
+        )
+        stage_info = {
+            "stage1_screened_count": len(info.stage1_screened_idx),
+            "stage2_selected_idx": info.stage2_selected_idx,
+            "stage2_selected_names": (
+                [asset_names[i] for i in info.stage2_selected_idx]
+                if asset_names else info.stage2_selected_idx
+            ),
+            "stage2_qubo_obj": info.stage2_qubo_obj,
+            "stage3_sharpe": info.stage3_sharpe,
+            "stage1_ic": info.stage1_ic.tolist(),
+            "stage2_solver": "qaoa",
+        }
+        quantum_metadata = {
+            "execution_kind": "hybrid_pipeline",
+            "objective": "hybrid_qaoa",
+            **stage_info,
+            "circuit": {
+                "stage2": "QAOA",
+                "p": 2,
+                "n_qubits_stage2": len(info.stage2_selected_idx),
+            },
         }
 
     elif objective == "target_return":
@@ -208,6 +294,7 @@ def run_optimization(
         n_active=metrics["n_active"],
         asset_names=asset_names,
         stage_info=stage_info,
+        quantum_metadata=quantum_metadata,
     )
 
 

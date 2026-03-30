@@ -33,6 +33,8 @@ from core.portfolio_optimizer import (
     _portfolio_metrics,
 )
 from methods.vqe import MAX_IBM_QUBITS, vqe_weights_ibm_strict
+from methods.qaoa import qaoa_weights_ibm_strict
+from methods.hybrid_pipeline import hybrid_qaoa_weights as _hybrid_qaoa_weights
 from config.api_config import OBJECTIVES_CONFIG, PRESETS_CONFIG
 from services.constraints import PortfolioConstraints
 from services import ibm_quantum as ibm_quantum_service
@@ -49,7 +51,7 @@ from services.auth import (
     JWT_AVAILABLE,
 )
 
-# Import market data service (multi-provider: yfinance, Alpaca, Polygon with fallback)
+# Import market data service (multi-provider: Tiingo (default), Alpaca, Polygon, yfinance fallback)
 from services.data_provider_v2 import MarketDataProvider, fetch_market_data
 from services.market_data import validate_tickers
 
@@ -107,8 +109,8 @@ _executor = ThreadPoolExecutor(max_workers=int(os.getenv("JOB_WORKERS", "4")))
 _jobs = {}
 _jobs_lock = threading.Lock()
 
-def _cache_key(tickers, start_date, end_date):
-    raw = f"{','.join(sorted(tickers))}:{start_date}:{end_date}"
+def _cache_key(tickers, start_date, end_date, include_daily_returns=False):
+    raw = f"{','.join(sorted(tickers))}:{start_date}:{end_date}:daily={include_daily_returns}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 def cache_get(key):
@@ -624,29 +626,32 @@ def validate_request(data, required_fields=None, numeric_ranges=None):
 @require_api_key
 @limiter.limit("10 per minute")
 def get_market_data():
-    """Endpoint to fetch real market data using yfinance."""
+    """Endpoint to fetch real market data via the configured market data provider (Tiingo by default)."""
     try:
         # Handle both GET and POST requests
+        include_daily_returns = False  # default; overridden per-method below
         if request.method == 'GET':
             # Get parameters from query string
             tickers_param = request.args.get('tickers', '')
             start_date = request.args.get('start', None)
             end_date = request.args.get('end', None)
-            
+            include_daily_returns = request.args.get('include_daily_returns', '').lower() in ('1', 'true', 'yes')
+
             if not tickers_param:
                 return error_response('Tickers parameter is required', code='BAD_REQUEST', status=400)
-                
+
             tickers = [t.strip().upper() for t in tickers_param.split(',')]
         else:  # POST
             # Get parameters from request body
             data = request.json
             if not data:
                 return error_response('Request body is required for POST requests', code='BAD_REQUEST', status=400)
-                
+
             tickers = data.get('tickers', [])
             start_date = data.get('start_date', None)
             end_date = data.get('end_date', None)
-            
+            include_daily_returns = bool(data.get('include_daily_returns', False))
+
             if not tickers:
                 return error_response('Tickers parameter is required', code='BAD_REQUEST', status=400)
         
@@ -671,8 +676,8 @@ def get_market_data():
             except:
                 return error_response('Invalid end date format. Use YYYY-MM-DD.', code='BAD_REQUEST', status=400)
         
-        # Check cache first
-        ck = _cache_key(tickers, start_date or '', end_date or '')
+        # Check cache first (key includes include_daily_returns flag)
+        ck = _cache_key(tickers, start_date or '', end_date or '', include_daily_returns)
         cached = cache_get(ck)
         if cached is not None:
             logger.info('market_data_cache_hit', extra={'cache_key': ck, 'tickers': tickers})
@@ -683,7 +688,8 @@ def get_market_data():
             market_data = fetch_market_data(
                 tickers=tickers,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                include_daily_returns=include_daily_returns,
             )
 
         # Store in cache
@@ -1015,11 +1021,14 @@ def optimize_portfolio():
             })
 
         with OPTIMIZATION_LATENCY.labels(objective=objective).time():
+            tr_opt = target_return
+            if objective == "target_return" and tr_opt is None:
+                tr_opt = float(np.mean(returns))
             result = run_optimization(
                 returns=returns,
                 covariance=covariance,
                 objective=objective,
-                target_return=float(target_return) if target_return is not None else None,
+                target_return=float(tr_opt) if tr_opt is not None else None,
                 asset_names=asset_names,
                 K=int(K) if K is not None else None,
                 K_screen=int(K_screen) if K_screen is not None else None,
@@ -1153,6 +1162,10 @@ def optimize_portfolio():
                 'weight_max': weight_max,
             },
         }
+        if getattr(result, "quantum_metadata", None) is not None:
+            response_payload["quantum_metadata"] = _safe_serialize_metrics(
+                result.quantum_metadata
+            )
 
         # Include correlation matrix if tickers provided
         if tickers:
@@ -1407,6 +1420,10 @@ def _build_optimize_spec(data: dict) -> dict:
     bn = data.get("backend_name")
     if isinstance(bn, str):
         bn = bn.strip() or None
+    tr_raw = data.get("target_return")
+    if tr_raw is None:
+        tr_raw = data.get("targetReturn")
+    target_return_spec = float(tr_raw) if tr_raw is not None else None
     return {
         "objective": objective,
         "weight_min": float(data.get("weight_min", data.get("minWeight", 0.005))),
@@ -1425,6 +1442,7 @@ def _build_optimize_spec(data: dict) -> dict:
         "n_assets": len(data.get("returns", [])) if data.get("returns") else None,
         "backend_name": bn,
         "ibm_backend_mode": str(data.get("ibm_backend_mode") or "auto").lower(),
+        "target_return": target_return_spec,
     }
 
 
@@ -1473,34 +1491,93 @@ def _run_optimize_for_run(run_id: str, tenant_id: str, data: dict, execution_kin
         assets = market_payload.assets
 
         if execution_kind == "ibm_runtime":
-            w, qmeta = vqe_weights_ibm_strict(
-                market_payload.returns,
-                market_payload.covariance,
-                n_layers=spec["n_layers"],
-                n_restarts=spec["n_restarts"],
-                weight_min=spec["weight_min"],
-                weight_max=spec["weight_max"],
-                seed=spec["seed"],
-                backend_name=spec.get("backend_name"),
-                backend_mode=spec.get("ibm_backend_mode") or "auto",
-            )
-            qmeta = dict(qmeta)
-            qmeta["execution_kind"] = "ibm_runtime"
-            metrics = _portfolio_metrics(w, market_payload.returns, market_payload.covariance)
-            result_payload = _lab_run_holdings_and_payload(
-                w,
-                metrics,
-                assets,
-                stage_info=None,
-                quantum_metadata=qmeta,
-                objective="vqe",
-            )
+            ibm_objective = spec.get("objective", "vqe")
+            ibm_service = ibm_quantum_service.get_service()
+            if ibm_objective == "hybrid_qaoa":
+                w, info = _hybrid_qaoa_weights(
+                    market_payload.returns,
+                    market_payload.covariance,
+                    K_screen=int(spec["K_screen"]) if spec.get("K_screen") is not None else None,
+                    K_select=int(spec["K_select"]) if spec.get("K_select") is not None else None,
+                    p=int(spec.get("p", 2)),
+                    lambda_risk=spec["lambda_risk"],
+                    gamma=spec["gamma"],
+                    n_qaoa_restarts=spec["n_restarts"],
+                    weight_bounds=(spec["weight_min"], spec["weight_max"]),
+                    seed=spec["seed"],
+                    ibm_service=ibm_service,
+                    backend_name=spec.get("backend_name"),
+                    backend_mode=spec.get("ibm_backend_mode") or "auto",
+                )
+                stage_info_payload = {
+                    "stage2_solver": "qaoa_ibm",
+                    "stage2_selected_idx": info.stage2_selected_idx,
+                    "stage2_qubo_obj": info.stage2_qubo_obj,
+                    "stage3_sharpe": info.stage3_sharpe,
+                }
+                qmeta = {"execution_kind": "ibm_runtime", "objective": "hybrid_qaoa"}
+                metrics = _portfolio_metrics(w, market_payload.returns, market_payload.covariance)
+                result_payload = _lab_run_holdings_and_payload(
+                    w, metrics, assets,
+                    stage_info=stage_info_payload,
+                    quantum_metadata=qmeta,
+                    objective="hybrid_qaoa",
+                )
+            elif ibm_objective == "qaoa":
+                w, qmeta = qaoa_weights_ibm_strict(
+                    market_payload.returns,
+                    market_payload.covariance,
+                    K=int(spec["K"]) if spec.get("K") is not None else None,
+                    p=int(spec.get("p", 2)),
+                    lambda_risk=spec["lambda_risk"],
+                    gamma=spec["gamma"],
+                    n_restarts=spec["n_restarts"],
+                    seed=spec["seed"],
+                    backend_name=spec.get("backend_name"),
+                    backend_mode=spec.get("ibm_backend_mode") or "auto",
+                )
+                qmeta = dict(qmeta)
+                qmeta["execution_kind"] = "ibm_runtime"
+                metrics = _portfolio_metrics(w, market_payload.returns, market_payload.covariance)
+                result_payload = _lab_run_holdings_and_payload(
+                    w, metrics, assets,
+                    stage_info=None,
+                    quantum_metadata=qmeta,
+                    objective=ibm_objective,
+                )
+            else:
+                w, qmeta = vqe_weights_ibm_strict(
+                    market_payload.returns,
+                    market_payload.covariance,
+                    n_layers=spec["n_layers"],
+                    n_restarts=spec["n_restarts"],
+                    weight_min=spec["weight_min"],
+                    weight_max=spec["weight_max"],
+                    seed=spec["seed"],
+                    backend_name=spec.get("backend_name"),
+                    backend_mode=spec.get("ibm_backend_mode") or "auto",
+                )
+                qmeta = dict(qmeta)
+                qmeta["execution_kind"] = "ibm_runtime"
+                metrics = _portfolio_metrics(w, market_payload.returns, market_payload.covariance)
+                result_payload = _lab_run_holdings_and_payload(
+                    w, metrics, assets,
+                    stage_info=None,
+                    quantum_metadata=qmeta,
+                    objective=ibm_objective,
+                )
         else:
+            tr_raw = data.get("target_return")
+            if tr_raw is None:
+                tr_raw = data.get("targetReturn")
+            if spec["objective"] == "target_return" and tr_raw is None:
+                tr_raw = float(np.mean(market_payload.returns))
+            target_return_val = float(tr_raw) if tr_raw is not None else None
             result = run_optimization(
                 returns=market_payload.returns,
                 covariance=market_payload.covariance,
                 objective=spec["objective"],
-                target_return=float(data["target_return"]) if data.get("target_return") else None,
+                target_return=target_return_val,
                 asset_names=[a["name"] for a in market_payload.assets],
                 K=int(spec["K"]) if spec.get("K") is not None else None,
                 K_screen=int(spec["K_screen"]) if spec.get("K_screen") is not None else None,
@@ -1560,10 +1637,11 @@ def create_run():
             code='BAD_REQUEST', status=400,
         )
 
+    _IBM_RUNTIME_OBJECTIVES = ("vqe", "qaoa", "hybrid_qaoa")
     if execution_kind == "ibm_runtime":
-        if spec["objective"] != "vqe":
+        if spec["objective"] not in _IBM_RUNTIME_OBJECTIVES:
             return error_response(
-                "execution_kind ibm_runtime requires objective vqe",
+                f"execution_kind ibm_runtime requires objective in {list(_IBM_RUNTIME_OBJECTIVES)}",
                 code='BAD_REQUEST', status=400,
             )
         if not ibm_quantum_service.is_configured():
@@ -1575,11 +1653,13 @@ def create_run():
         na = spec.get("n_assets")
         if na is not None and na > MAX_IBM_QUBITS:
             return error_response(
-                f"Universe size {na} exceeds MAX_IBM_QUBITS ({MAX_IBM_QUBITS}) for IBM Runtime VQE",
+                f"Universe size {na} exceeds MAX_IBM_QUBITS ({MAX_IBM_QUBITS}) for IBM Runtime",
                 code='BAD_REQUEST', status=400,
             )
     tenant_id = getattr(g, "tenant_id", "anonymous")
-    run = lab_run_service.create_run(tenant_id, spec, execution_kind)
+    run = lab_run_service.create_run(
+        tenant_id, spec, execution_kind, request_payload=payload
+    )
     _executor.submit(_run_optimize_for_run, run["id"], tenant_id, payload, execution_kind)
     log_business_audit("run_created", {"run_id": run["id"], "spec": spec}, {"status": "queued"}, 202)
     return success_response({"run_id": run["id"], "status": "queued"}, status=202)
@@ -2266,11 +2346,13 @@ def get_efficient_frontier():
                 if start_dt >= end_dt:
                     return error_response('Start date must be before end date', code='BAD_REQUEST', status=400)
 
-            # Fetch market data (dates default to 1y if not provided)
+            # Fetch market data with panel-aligned stats so frontier math uses
+            # the same primary μ/Σ as the Portfolio Lab (covariance_source="panel_aligned").
             market_data = fetch_market_data(
                 tickers=tickers,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                include_daily_returns=True,
             )
             returns = np.array(market_data['returns'])
             covariance = np.array(market_data['covariance'])

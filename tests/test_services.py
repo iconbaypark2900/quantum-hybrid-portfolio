@@ -281,50 +281,39 @@ class TestRunOptimization:
 
 
 # ============================================================================
-# 3. run_backtest tests (with mocked yfinance)
+# 3. run_backtest tests (mocked via fetch_price_panel)
 # ============================================================================
 
 
-def _make_mock_price_data(tickers, start_date: str, end_date: str, n_days: int = 260):
-    """Create synthetic price DataFrame matching yf.download(..., group_by='ticker').
+def _make_mock_price_panel(tickers, start_date: str, end_date: str, n_days: int = 260) -> pd.DataFrame:
+    """Create a synthetic (date × ticker) adjusted-close price DataFrame.
 
-    Columns are (Ticker, Attr) - level 0 = tickers, level 1 = OHLCV attrs.
-    Backtest uses xs('Adj Close', axis=1, level=1) to extract prices.
+    This is the shape returned by ``services.data_provider_v2.fetch_price_panel``
+    after the yfinance/Tiingo abstraction: a simple DataFrame indexed by date with
+    one column per ticker and no MultiIndex.
     """
     dates = pd.date_range(start=start_date, end=end_date, freq="B")[:n_days]
     np.random.seed(123)
-    data = {}
     base = 100.0
+    data = {}
     for t in tickers:
         rets = np.random.randn(len(dates)) * 0.01 + 0.0003
-        prices = base * np.cumprod(1 + rets)
-        data[t] = prices
-    df = pd.DataFrame(data, index=dates)
-    if len(tickers) > 1:
-        attrs = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
-        cols = [(t, attr) for t in tickers for attr in attrs]
-        mi = pd.MultiIndex.from_tuples(cols, names=["Ticker", "Attributes"])
-        out_data = {(t, attr): df[t].values for t in tickers for attr in attrs}
-        out = pd.DataFrame(out_data, index=df.index)
-        out.columns = mi
-        return out
-    return pd.DataFrame({"Adj Close": df[tickers[0]], "Close": df[tickers[0]]})
+        data[t] = base * np.cumprod(1 + rets)
+    return pd.DataFrame(data, index=dates)
 
 
 class TestRunBacktest:
-    """Tests for backtest.run_backtest with mocked yfinance."""
+    """Tests for backtest.run_backtest — mocks fetch_price_panel, not yfinance."""
 
     @patch("services.backtest.get_asset_metadata")
-    @patch("services.backtest.yf")
-    def test_backtest_results_have_expected_keys(self, mock_yf, mock_metadata):
+    @patch("services.backtest.fetch_price_panel")
+    def test_backtest_results_have_expected_keys(self, mock_panel, mock_metadata):
         """Backtest returns dict with results, summary_metrics, parameters."""
         tickers = ["AAPL", "MSFT", "GOOGL"]
         start_date = "2023-01-01"
         end_date = "2023-06-30"
 
-        mock_prices = _make_mock_price_data(tickers, start_date, end_date)
-        mock_yf.download.return_value = mock_prices
-
+        mock_panel.return_value = _make_mock_price_panel(tickers, start_date, end_date)
         mock_metadata.return_value = {
             t: {"sector": "Technology", "name": t} for t in tickers
         }
@@ -348,9 +337,8 @@ class TestRunBacktest:
         assert result["parameters"]["end_date"] == end_date
         assert result["parameters"]["objective"] == "max_sharpe"
 
-    @patch("services.backtest.get_asset_metadata")
-    @patch("services.backtest.yf")
-    def test_backtest_invalid_empty_tickers(self, mock_yf, mock_metadata):
+    @patch("services.backtest.fetch_price_panel")
+    def test_backtest_invalid_empty_tickers(self, _mock_panel):
         """Empty tickers raises ValueError."""
         with pytest.raises(ValueError, match="cannot be empty"):
             run_backtest(tickers=[], start_date="2023-01-01", end_date="2023-12-31")

@@ -87,6 +87,47 @@ class TestLabRunService(unittest.TestCase):
         with self.assertRaises(ValueError):
             lab_run_service.update_status(run["id"], "invalid_status")
 
+    def test_request_payload_round_trip(self):
+        """Full optimize request payload is persisted and returned on fetch."""
+        raw_payload = {
+            "returns": [0.1, 0.2, 0.15],
+            "covariance": [[0.04, 0.01, 0.005], [0.01, 0.09, 0.02], [0.005, 0.02, 0.06]],
+            "tickers": ["AAPL", "MSFT", "GOOG"],
+            "objective": "hybrid",
+            "weight_min": 0.01,
+            "weight_max": 0.3,
+            "seed": 42,
+        }
+        run = lab_run_service.create_run("t1", {"objective": "hybrid"}, request_payload=raw_payload)
+        # payload key exposed on create return value
+        self.assertIsNotNone(run.get("payload"))
+        self.assertEqual(run["payload"]["tickers"], ["AAPL", "MSFT", "GOOG"])
+
+        fetched = lab_run_service.get_run(run["id"], "t1")
+        self.assertIsNotNone(fetched["payload"])
+        self.assertAlmostEqual(fetched["payload"]["returns"][0], 0.1)
+        self.assertEqual(len(fetched["payload"]["covariance"]), 3)
+
+    def test_payload_strips_api_key(self):
+        """Sensitive keys must not be persisted."""
+        raw_payload = {
+            "tickers": ["X"],
+            "__api_key": "secret-token",
+            "api_key": "another-secret",
+            "returns": [0.1],
+        }
+        run = lab_run_service.create_run("t1", {"objective": "markowitz"}, request_payload=raw_payload)
+        fetched = lab_run_service.get_run(run["id"], "t1")
+        self.assertNotIn("__api_key", fetched["payload"])
+        self.assertNotIn("api_key", fetched["payload"])
+        self.assertIn("tickers", fetched["payload"])
+
+    def test_payload_none_when_not_provided(self):
+        """Runs created without request_payload have payload=None."""
+        run = lab_run_service.create_run("t1", {"objective": "hrp"})
+        fetched = lab_run_service.get_run(run["id"], "t1")
+        self.assertIsNone(fetched["payload"])
+
 
 if __name__ == "__main__":
     unittest.main()

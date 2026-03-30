@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAnalystRunBundle,
   buildReportPayload,
   computeWeightViolations,
+  downloadAnalystCsvFromBundle,
   escapeCsvField,
+  extractInputsFromPayload,
   mergeOptimizeResponse,
   reportToCsv,
   sanitizeBenchmarksForJson,
@@ -205,6 +208,138 @@ describe("stripReportForCsvFlat", () => {
     const rk = stripped.risk as Record<string, unknown>;
     expect(rk.correlation_matrix).toBeUndefined();
     expect(rk.var_95).toBe(1);
+  });
+});
+
+describe("extractInputsFromPayload", () => {
+  it("extracts returns, covariance, and tickers", () => {
+    const raw = {
+      returns: [0.1, 0.2],
+      covariance: [[0.04, 0.01], [0.01, 0.09]],
+      tickers: ["AAPL", "MSFT"],
+      objective: "hybrid",
+      weight_min: 0.01,
+      weight_max: 0.3,
+      K: 4,
+      seed: 42,
+    };
+    const inputs = extractInputsFromPayload(raw);
+    expect(inputs).not.toBeNull();
+    expect(inputs?.returns).toEqual([0.1, 0.2]);
+    expect(inputs?.covariance).toEqual([[0.04, 0.01], [0.01, 0.09]]);
+    expect(inputs?.tickers).toEqual(["AAPL", "MSFT"]);
+    expect(inputs?.objective).toBe("hybrid");
+    expect(inputs?.K).toBe(4);
+  });
+
+  it("maps legacy maxWeight alias to weight_max", () => {
+    const inputs = extractInputsFromPayload({ maxWeight: 0.25 });
+    expect(inputs?.weight_max).toBe(0.25);
+  });
+
+  it("strips API key fields", () => {
+    const inputs = extractInputsFromPayload({
+      tickers: ["X"],
+      __api_key: "secret",
+      api_key: "secret2",
+    });
+    const raw = inputs as unknown as Record<string, unknown>;
+    expect(raw.__api_key).toBeUndefined();
+    expect(raw.api_key).toBeUndefined();
+  });
+
+  it("returns null for empty or non-object payloads", () => {
+    expect(extractInputsFromPayload(null)).toBeNull();
+    expect(extractInputsFromPayload("string")).toBeNull();
+    expect(extractInputsFromPayload({})).toBeNull();
+  });
+});
+
+describe("buildAnalystRunBundle", () => {
+  const merged = {
+    sharpe_ratio: 1.5,
+    expected_return: 0.12,
+    volatility: 0.18,
+    n_active: 4,
+    holdings: [{ name: "AAPL", weight: 0.3, sector: "tech" }],
+    sector_allocation: [{ sector: "tech", weight: 0.3 }],
+  };
+
+  it("has schema_version 3 and all required fields", () => {
+    const bundle = buildAnalystRunBundle(merged, {
+      runId: "abc-123",
+      runKind: "browser",
+      tickers: ["AAPL"],
+    });
+    expect(bundle.schema_version).toBe("3");
+    expect(bundle.run_id).toBe("abc-123");
+    expect(bundle.run_kind).toBe("browser");
+    expect(bundle.tickers).toEqual(["AAPL"]);
+    expect(bundle.optimize).toBe(merged);
+    expect(typeof bundle.captured_at).toBe("string");
+  });
+
+  it("extracts inputs from rawPayload", () => {
+    const rawPayload = { returns: [0.1], covariance: [[0.04]], tickers: ["X"] };
+    const bundle = buildAnalystRunBundle(merged, {
+      runId: "r1",
+      runKind: "lab_run",
+      tickers: ["X"],
+      rawPayload,
+    });
+    expect(bundle.inputs?.returns).toEqual([0.1]);
+    expect(bundle.inputs?.tickers).toEqual(["X"]);
+  });
+
+  it("inputs is null when rawPayload absent", () => {
+    const bundle = buildAnalystRunBundle(merged, {
+      runId: "r2",
+      runKind: "session",
+      tickers: [],
+    });
+    expect(bundle.inputs).toBeNull();
+  });
+
+  it("records snapshot_at from provenance", () => {
+    const bundle = buildAnalystRunBundle(merged, {
+      runId: "r3",
+      runKind: "browser",
+      tickers: [],
+      provenance: { source: "snapshot", snapshot_at: "2025-01-01T00:00:00.000Z" },
+    });
+    expect(bundle.snapshot_at).toBe("2025-01-01T00:00:00.000Z");
+  });
+});
+
+describe("downloadAnalystCsvFromBundle — CSV derived from same optimize object", () => {
+  it("CSV produced is derived from bundle.optimize holdings", () => {
+    const merged = {
+      sharpe_ratio: 2.0,
+      expected_return: 0.15,
+      volatility: 0.10,
+      n_active: 2,
+      risk_metrics: { var_95: -0.01, cvar: -0.015 },
+      holdings: [{ name: "MSFT", weight: 0.5, sector: "tech" }, { name: "JPM", weight: 0.5, sector: "fin" }],
+      sector_allocation: [{ sector: "tech", weight: 0.5 }, { sector: "fin", weight: 0.5 }],
+    };
+    const bundle = buildAnalystRunBundle(merged, {
+      runId: "csv-test",
+      runKind: "browser",
+      tickers: ["MSFT", "JPM"],
+    });
+    // Verify CSV helper exists and accepts bundle (no download in test — just build report)
+    const report = buildReportPayload(
+      "full",
+      bundle.optimize,
+      bundle.tickers,
+      {},
+      { source: "fresh", snapshot_at: null }
+    );
+    const csv = reportToCsv(report as Record<string, unknown>);
+    expect(csv).toContain("MSFT");
+    expect(csv).toContain("JPM");
+    // downloadAnalystCsvFromBundle is exported (don't call it in unit test since it opens a file)
+    expect(typeof downloadAnalystCsvFromBundle).toBe("function");
   });
 });
 

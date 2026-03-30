@@ -175,6 +175,158 @@ components:
               portfolio_value:
                 type: number
 paths:
+  /api/market-data:
+    post:
+      summary: Fetch market data
+      description: >
+        Fetch adjusted close prices for the requested tickers via the configured
+        market data provider (Tiingo by default when TIINGO_API_KEY is set, otherwise
+        yfinance as a legacy fallback). Returns annualised returns, a Ledoit-Wolf
+        covariance matrix, and optionally the raw daily return series.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tickers]
+              properties:
+                tickers:
+                  type: array
+                  items:
+                    type: string
+                  description: List of ticker symbols (max 50)
+                  example: ["AAPL", "MSFT", "GOOGL"]
+                start_date:
+                  type: string
+                  format: date
+                  description: Start date (YYYY-MM-DD). Defaults to 1 year before end_date.
+                  example: "2022-01-01"
+                end_date:
+                  type: string
+                  format: date
+                  description: End date (YYYY-MM-DD). Defaults to today.
+                  example: "2024-01-01"
+                include_daily_returns:
+                  type: boolean
+                  default: false
+                  description: >
+                    When true, include daily_dates (ISO strings) and daily_returns
+                    (T x n list of rows, capped at 504 rows) in the response.
+                    Use these to drive charts with real historical series instead of
+                    synthesized paths. Also aligns the primary returns and covariance
+                    fields to the same tail window (covariance_source="panel_aligned")
+                    so optimizer inputs, chart paths, and the correlation heatmap all
+                    derive from identical observations.
+      responses:
+        "200":
+          description: Market data wrapped in standard API envelope
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          assets:
+                            type: array
+                            items:
+                              type: string
+                            description: Ticker symbols (aligned with returns, covariance)
+                          names:
+                            type: array
+                            items:
+                              type: string
+                          sectors:
+                            type: array
+                            items:
+                              type: string
+                          returns:
+                            type: array
+                            items:
+                              type: number
+                            description: >
+                              Annualised expected returns. When include_daily_returns=true,
+                              computed from the tail window (same rows as daily_returns);
+                              otherwise from the full available window.
+                          covariance:
+                            type: array
+                            items:
+                              type: array
+                              items:
+                                type: number
+                            description: >
+                              Annualised Ledoit-Wolf covariance matrix (n x n). When
+                              include_daily_returns=true this is panel-aligned (tail window
+                              only) so it matches the plotted daily series exactly.
+                          covariance_source:
+                            type: string
+                            enum: [panel_aligned, full_window]
+                            description: >
+                              Indicates which observations underly the primary returns and
+                              covariance. "panel_aligned" when include_daily_returns=true
+                              (primary stats from the tail slice matching daily_returns);
+                              "full_window" otherwise.
+                          start_date:
+                            type: string
+                          end_date:
+                            type: string
+                          data_points:
+                            type: integer
+                            description: >
+                              Number of daily observations underlying the primary returns
+                              and covariance. Equals len(daily_returns) when
+                              include_daily_returns=true; full window size otherwise.
+                          provider:
+                            type: string
+                            description: Data provider used (tiingo, yfinance, etc.)
+                          daily_dates:
+                            type: array
+                            items:
+                              type: string
+                            description: >
+                              ISO date strings for each daily row (present only when
+                              include_daily_returns=true)
+                          daily_returns:
+                            type: array
+                            items:
+                              type: array
+                              items:
+                                type: number
+                            description: >
+                              T x n daily pct-change return matrix aligned with assets
+                              (present only when include_daily_returns=true, capped at 504 rows)
+                          returns_full_window:
+                            type: array
+                            items:
+                              type: number
+                            description: >
+                              Full-window annualised expected returns (present only when
+                              include_daily_returns=true). Useful for comparison with the
+                              panel-aligned primary returns.
+                          covariance_full_window:
+                            type: array
+                            items:
+                              type: array
+                              items:
+                                type: number
+                            description: >
+                              Full-window annualised Ledoit-Wolf covariance matrix (n x n)
+                              (present only when include_daily_returns=true).
+                          data_points_full_window:
+                            type: integer
+                            description: >
+                              Total trading days in the full window (present only when
+                              include_daily_returns=true).
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "429":
+          description: Rate limited
   /api/health:
     get:
       summary: Health check
@@ -187,7 +339,7 @@ paths:
       summary: Run portfolio optimization
       description: >
         Run quantum-inspired portfolio optimization. Provide either tickers + dates
-        (research mode, uses yfinance) or returns + covariance vectors directly (production mode).
+        (research mode, uses configured market data provider — Tiingo by default when TIINGO_API_KEY is set) or returns + covariance vectors directly (production mode).
       requestBody:
         required: true
         content:

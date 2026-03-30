@@ -94,9 +94,10 @@ class TestWeightsSumToOne:
 
     def test_vqe_weights(self, data):
         mu, Sigma = data
-        w = vqe_weights(mu, Sigma, n_restarts=3)
+        w, meta = vqe_weights(mu, Sigma, n_restarts=3)
         assert np.isclose(w.sum(), 1.0)
         assert len(w) == len(mu)
+        assert isinstance(meta, dict)
 
     def test_hybrid_pipeline_weights(self, data):
         mu, Sigma = data
@@ -155,7 +156,7 @@ class TestSmoke:
             lambda: min_variance(mu, Sigma),
             lambda: hrp_weights(mu, Sigma),
             lambda: qubo_sa_weights(mu, Sigma, K=6),
-            lambda: vqe_weights(mu, Sigma, n_restarts=2),
+            lambda: vqe_weights(mu, Sigma, n_restarts=2)[0],
             lambda: hybrid_pipeline_weights(mu, Sigma, K_screen=10, K_select=5)[0],
         ]
         for fn in methods:

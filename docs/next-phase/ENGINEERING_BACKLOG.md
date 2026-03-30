@@ -29,7 +29,7 @@ Migrated from [NEXT_STEPS.md § Remaining Tasks](../NEXT_STEPS.md). Actionable b
 
 | Task | Owner | Priority | Status | Notes |
 |------|-------|----------|--------|-------|
-| Unified multi-provider data service | — | Medium | ✅ Completed | Created `services/data_provider_v2.py` with yfinance/Alpaca/Polygon support |
+| Unified multi-provider data service | — | Medium | ✅ Completed | `services/data_provider_v2.py` — Tiingo (default), Alpaca, Polygon, yfinance (legacy/deprecated) |
 | Alpaca integration | — | Medium | ✅ Completed | Provider class ready, needs API keys |
 | Polygon integration | — | Medium | ✅ Completed | Provider class ready, needs API keys |
 | Automatic fallback between providers | — | Medium | ✅ Completed | Configurable via `DATA_PROVIDER_FALLBACK` |

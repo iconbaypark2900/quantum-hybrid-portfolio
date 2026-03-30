@@ -275,7 +275,7 @@ def vqe_weights(
     weight_max: float = 0.30,
     seed: int = 0,
     backend_name: Optional[str] = None,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, Dict[str, object]]:
     """
     VQE portfolio optimisation with PauliTwoDesign ansatz.
 
@@ -300,18 +300,29 @@ def vqe_weights(
     Returns
     -------
     weights : ndarray (n,), sum to 1.
+    quantum_metadata : dict with execution_kind, circuit summary, and IBM fields when used.
     """
     # ── Try IBM hardware path first ──────────────────────────────────────────
     try:
         from services import ibm_quantum
         if ibm_quantum.is_configured():
-            w, _meta = _vqe_weights_ibm(
+            w, meta = _vqe_weights_ibm(
                 np.asarray(mu, dtype=float),
                 np.asarray(Sigma, dtype=float),
                 n_layers, n_restarts, weight_min, weight_max, seed, backend_name,
                 "auto",
             )
-            return w
+            out = dict(meta)
+            out["execution_kind"] = "ibm_runtime"
+            out["objective"] = "vqe"
+            n = len(np.asarray(mu, dtype=float))
+            out["circuit"] = {
+                "ansatz": "EfficientSU2",
+                "n_layers": n_layers,
+                "n_qubits": n,
+                "entanglement": "linear",
+            }
+            return w, out
     except Exception as exc:
         logger.warning("IBM VQE path failed, using classical simulation: %s", exc)
 
@@ -349,4 +360,17 @@ def vqe_weights(
         if sr > best_sharpe:
             best_sharpe, best_w = sr, w.copy()
 
-    return best_w
+    classical_meta: Dict[str, object] = {
+        "execution_kind": "classical_simulation",
+        "objective": "vqe",
+        "n_layers": n_layers,
+        "n_restarts": n_restarts,
+        "n_assets": n,
+        "seed": seed,
+        "circuit": {
+            "ansatz": "PauliTwoDesign",
+            "n_layers": n_layers,
+            "n_qubits": n,
+        },
+    }
+    return best_w, classical_meta

@@ -93,6 +93,10 @@ class _ResultAdapter:
         return self._core.stage_info
 
     @property
+    def quantum_metadata(self):
+        return getattr(self._core, "quantum_metadata", None)
+
+    @property
     def asset_names(self):
         return self._core.asset_names
 

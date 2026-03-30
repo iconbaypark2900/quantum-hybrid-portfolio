@@ -6,16 +6,20 @@ import { useLedgerSession } from "@/context/LedgerSessionContext";
 import { optimizePortfolio } from "@/lib/api";
 import { DEFAULT_TICKERS, DEFAULT_WEIGHT_MAX, DEFAULT_WEIGHT_MIN } from "@/lib/defaultUniverse";
 import {
+  buildAnalystRunBundle,
   buildReportPayload,
+  downloadAnalystBundle,
+  downloadAnalystCsvFromBundle,
   downloadFile,
   mergeOptimizeResponse,
   reportToCsv,
+  type AnalystRunBundleV3,
   type ReportProvenance,
   type ReportType,
   type ReportContext,
 } from "@/lib/reportExport";
 
-export type ExportFormat = "json" | "csv";
+export type ExportFormat = "json" | "csv" | "bundle";
 
 function buildAndDownload(
   selectedType: ReportType,
@@ -24,15 +28,26 @@ function buildAndDownload(
   tickers: string[],
   reportCtx: ReportContext,
   provenance: ReportProvenance,
-): Record<string, unknown> {
-  const report = buildReportPayload(
-    selectedType,
-    data,
-    tickers,
-    reportCtx,
-    provenance
-  );
+  rawPayload?: unknown,
+): { report: Record<string, unknown>; bundle: AnalystRunBundleV3 | null } {
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  const runId = `session-${ts}`;
+
+  const bundle = buildAnalystRunBundle(data, {
+    runId,
+    runKind: "session",
+    tickers,
+    provenance,
+    rawPayload,
+  });
+
+  if (format === "bundle") {
+    downloadAnalystBundle(bundle, "analyst_session");
+    return { report: data, bundle };
+  }
+
+  const report = buildReportPayload(selectedType, data, tickers, reportCtx, provenance);
+
   if (format === "json") {
     downloadFile(
       JSON.stringify(report, null, 2),
@@ -46,7 +61,7 @@ function buildAndDownload(
       "text/csv"
     );
   }
-  return report;
+  return { report: report as Record<string, unknown>, bundle };
 }
 
 export function useReportGeneration() {
@@ -54,9 +69,8 @@ export function useReportGeneration() {
   const [selectedType, setSelectedType] = useState<ReportType>("full");
   const [format, setFormat] = useState<ExportFormat>("json");
   const [generating, setGenerating] = useState(false);
-  const [lastReport, setLastReport] = useState<Record<string, unknown> | null>(
-    null
-  );
+  const [lastReport, setLastReport] = useState<Record<string, unknown> | null>(null);
+  const [lastBundle, setLastBundle] = useState<AnalystRunBundleV3 | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const hasSnapshot = session.lastOptimize !== null;
@@ -78,9 +92,11 @@ export function useReportGeneration() {
       let data: Record<string, unknown>;
       let tickers: string[];
       let provenance: ReportProvenance;
+      let rawPayload: unknown;
 
       if (session.lastOptimize) {
-        data = session.lastOptimize.payload;
+        rawPayload = session.lastOptimize.payload;
+        data = mergeOptimizeResponse(rawPayload) as Record<string, unknown>;
         tickers = session.lastOptimize.tickers;
         provenance = {
           source: "snapshot",
@@ -89,29 +105,30 @@ export function useReportGeneration() {
       } else {
         const useTickers =
           session.tickers.length > 0 ? session.tickers : [...DEFAULT_TICKERS];
-        const resp = (await optimizePortfolio({
+        rawPayload = await optimizePortfolio({
           tickers: useTickers,
           objective: session.objective || "hybrid",
           weight_min: session.constraints.weightMin ?? DEFAULT_WEIGHT_MIN,
           maxWeight: session.constraints.weightMax ?? DEFAULT_WEIGHT_MAX,
-        })) as Record<string, unknown>;
-        data = mergeOptimizeResponse(resp);
+        }) as Record<string, unknown>;
+        data = mergeOptimizeResponse(rawPayload);
         tickers = useTickers;
         provenance = { source: "fresh", snapshot_at: null };
       }
 
-      const report = buildAndDownload(
+      const { report, bundle } = buildAndDownload(
         selectedType,
         format,
         data,
         tickers,
         reportCtx,
-        provenance
+        provenance,
+        rawPayload,
       );
       setLastReport(report);
+      setLastBundle(bundle);
     } catch (e) {
-      const msg =
-        e instanceof Error ? e.message : "Report generation failed";
+      const msg = e instanceof Error ? e.message : "Report generation failed";
       setError(msg);
     } finally {
       setGenerating(false);
@@ -124,35 +141,42 @@ export function useReportGeneration() {
     try {
       const useTickers =
         session.tickers.length > 0 ? session.tickers : [...DEFAULT_TICKERS];
-      const resp = (await optimizePortfolio({
+      const rawPayload = (await optimizePortfolio({
         tickers: useTickers,
         objective: session.objective || "hybrid",
         weight_min: session.constraints.weightMin ?? DEFAULT_WEIGHT_MIN,
         maxWeight: session.constraints.weightMax ?? DEFAULT_WEIGHT_MAX,
       })) as Record<string, unknown>;
-      const data = mergeOptimizeResponse(resp);
+      const data = mergeOptimizeResponse(rawPayload);
       const provenance: ReportProvenance = {
         source: "fresh",
         snapshot_at: null,
       };
 
-      const report = buildAndDownload(
+      const { report, bundle } = buildAndDownload(
         selectedType,
         format,
         data,
         useTickers,
         reportCtx,
-        provenance
+        provenance,
+        rawPayload,
       );
       setLastReport(report);
+      setLastBundle(bundle);
     } catch (e) {
-      const msg =
-        e instanceof Error ? e.message : "Report generation failed";
+      const msg = e instanceof Error ? e.message : "Report generation failed";
       setError(msg);
     } finally {
       setGenerating(false);
     }
   }, [selectedType, format, session, reportCtx]);
+
+  /** Download CSV from the last generated bundle (same merged data as JSON/bundle). */
+  const downloadBundleCsv = useCallback(() => {
+    if (!lastBundle) return;
+    downloadAnalystCsvFromBundle(lastBundle, reportCtx, "analyst_session");
+  }, [lastBundle, reportCtx]);
 
   return {
     selectedType,
@@ -161,10 +185,12 @@ export function useReportGeneration() {
     setFormat,
     generating,
     lastReport,
+    lastBundle,
     error,
     hasSnapshot,
     snapshotAt,
     generateReport,
     generateReportFresh,
+    downloadBundleCsv,
   };
 }

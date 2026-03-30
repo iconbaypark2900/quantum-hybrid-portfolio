@@ -13,9 +13,9 @@ A **flow** is a **primary user goal** end-to-end in the Next app (load UI → op
 | # | Route | Flow (short) | Notes |
 |---|--------|----------------|--------|
 | 1 | `/dashboard` | View health / KPIs / run sample optimization | Uses API for health + optimize |
-| 2 | `/portfolio` | Portfolio Lab: simulated or **live** tickers → load data → backend optimize → weights / charts | Live path needs network + yfinance |
+| 2 | `/portfolio` | Portfolio Lab: simulated or **live** tickers → load data → backend optimize → weights / charts | Live path needs network + configured provider (Tiingo / yfinance fallback) |
 | 3 | `/strategy` | Load objectives & presets from API → pick method → preset → constraints → copy manifest | Config endpoints only |
-| 4 | `/simulations` | Run **Scenario Comparison** → table of objectives vs API; stress cards (illustrative) | Needs API + yfinance for tickers |
+| 4 | `/simulations` | Run **Scenario Comparison** → table of objectives vs API; stress cards (illustrative) | Needs API + market data provider for live tickers |
 | 5 | `/quantum` | Telemetry + IBM token (server-stored) + async jobs via `api.ts` | API health; jobs need `X-API-Key` |
 | 6 | `/reports` | Select report type + format → **Generate & Download** (optimize → JSON/CSV) + preview | Error banner on failure; needs API |
 | 7 | `/settings` | Settings stub | Placeholder OK for Phase 5 |

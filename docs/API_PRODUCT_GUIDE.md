@@ -3,9 +3,9 @@
 ## Integration Modes
 
 - **Production mode (recommended):** send `returns` + `covariance` directly.
-- **Research/demo mode:** send `tickers` + dates (uses yfinance fallback).
+- **Research/demo mode:** send `tickers` + dates (fetched via the configured market data provider — Tiingo by default when `TIINGO_API_KEY` is set, otherwise yfinance as a legacy fallback). Set `DATA_PROVIDER=tiingo` and `TIINGO_API_KEY` in your environment to enable Tiingo.
 
-Set `REQUIRE_MATRIX_INPUT=true` in production to disable yfinance path.
+Set `REQUIRE_MATRIX_INPUT=true` in production to disable the tickers-based fetch path entirely.
 
 ## Core Endpoints
 

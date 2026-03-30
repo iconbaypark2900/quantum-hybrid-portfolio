@@ -143,3 +143,47 @@ html.light .app-shell-mobile-header,
 html.light .app-shell-mobile-nav {
   background-color: var(--ql-canvas);
 }
+
+/* ── Print / PDF ── */
+@media print {
+  @page {
+    margin: 1.5cm 2cm;
+    size: A4 portrait;
+  }
+
+  /* Preserve chart and background colors in PDF */
+  html, body, * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Sidebar + navigation: hide shell chrome */
+  aside, nav, header.app-shell-header {
+    display: none !important;
+  }
+
+  main.app-shell-main {
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Recharts: ResponsiveContainer measures 0 during print because layout is
+     deferred. Override to a stable A4-safe width so charts render. */
+  .recharts-responsive-container {
+    width: 680px !important;
+    min-width: 0 !important;
+  }
+
+  /* Avoid splitting chart cards across pages */
+  .print-chart-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Hide scrollbars and overflow that would clip chart labels */
+  .recharts-wrapper {
+    overflow: visible !important;
+  }
+}

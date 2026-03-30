@@ -2,9 +2,11 @@
 
 import { useCallback, useState } from "react";
 
+import AnalystRunCharts from "@/components/AnalystRunCharts";
 import { useReportGeneration } from "@/hooks/useReportGeneration";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
 import ReportsRunHistory from "@/components/ReportsRunHistory";
+import { mergeOptimizeResponse } from "@/lib/reportExport";
 import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 const REPORT_TYPES: {
@@ -224,12 +226,18 @@ export default function ReportsPage(props: NextClientPageProps) {
     setFormat,
     generating,
     lastReport,
+    lastBundle,
     error,
     hasSnapshot,
     snapshotAt,
     generateReport,
     generateReportFresh,
+    downloadBundleCsv,
   } = useReportGeneration();
+
+  const lastMerged =
+    lastBundle?.optimize ??
+    (lastReport ? (mergeOptimizeResponse(lastReport) as Record<string, unknown>) : null);
 
   const [copyState, setCopyState] = useState<"idle" | "copied" | "err">(
     "idle"
@@ -276,7 +284,7 @@ export default function ReportsPage(props: NextClientPageProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 print:hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 print:hidden" id="report-controls">
         <div className="lg:col-span-5 bg-ql-surface-low rounded-xl p-6">
           <h3 className="font-headline text-lg font-bold mb-4">Report Type</h3>
           <div className="space-y-2">
@@ -309,7 +317,7 @@ export default function ReportsPage(props: NextClientPageProps) {
               Export Format
             </h3>
             <div className="flex gap-3">
-              {(["json", "csv"] as const).map((f) => (
+              {(["json", "csv", "bundle"] as const).map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -320,15 +328,26 @@ export default function ReportsPage(props: NextClientPageProps) {
                       : "border-ql-outline-variant/20 text-ql-on-surface-variant hover:bg-ql-surface-container"
                   }`}
                 >
-                  {f}
+                  {f === "bundle" ? "Bundle" : f}
                 </button>
               ))}
             </div>
             <p className="text-[11px] text-ql-on-surface-variant mt-3 leading-relaxed">
-              CSV files stack a key/value summary plus separate tables
-              (benchmarks, assets, correlation pairs, compliance, holdings, etc.)
-              — open in Excel or any spreadsheet tool.
+              {format === "bundle"
+                ? "Analyst bundle: single JSON with run_id, inputs, merged optimize output, and provenance — source of truth for charts and CSV."
+                : format === "csv"
+                  ? "CSV: key/value summary + separate tables (benchmarks, assets, correlation, compliance, holdings) — open in Excel."
+                  : "JSON: structured report payload derived from the same merged optimize object."}
             </p>
+            {lastBundle && (
+              <button
+                type="button"
+                onClick={downloadBundleCsv}
+                className="mt-2 w-full py-2 rounded-lg text-xs font-bold border border-ql-outline-variant/20 text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
+              >
+                Also download CSV from last bundle
+              </button>
+            )}
           </div>
 
           <div
@@ -385,8 +404,9 @@ export default function ReportsPage(props: NextClientPageProps) {
                     type="button"
                     onClick={() => window.print()}
                     className="text-xs font-bold px-2 py-1 rounded border border-ql-outline-variant/30 text-ql-on-surface-variant hover:bg-ql-surface-container"
+                    title="Use your browser's 'Save as PDF' destination for a PDF file"
                   >
-                    Print
+                    Print / Save as PDF
                   </button>
                 </>
               ) : null}
@@ -403,6 +423,17 @@ export default function ReportsPage(props: NextClientPageProps) {
           )}
         </div>
       </div>
+
+      {/* Charts — rendered from the same merged optimize object used for downloads.
+          Included in print/PDF output; @media print CSS handles Recharts sizing. */}
+      {lastMerged && (
+        <div className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-6 print:border-0 print:bg-transparent print:p-0">
+          <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold mb-4 print:text-gray-600">
+            Charts
+          </h3>
+          <AnalystRunCharts merged={lastMerged} />
+        </div>
+      )}
     </div>
   );
 }
