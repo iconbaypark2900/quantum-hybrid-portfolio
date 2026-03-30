@@ -18,7 +18,8 @@ flask-limiter==4.1.1
 flask-jwt-extended>=4.6.0
 
 # Data/API
-yfinance==0.2.66
+requests>=2.31.0          # Required by TiingoProvider (HTTP REST)
+yfinance==0.2.66          # Legacy fallback — deprecated; use Tiingo instead
 
 # Alternative data providers (optional)
 # alpaca-py>=0.10.0  # Alpaca Markets (free tier)

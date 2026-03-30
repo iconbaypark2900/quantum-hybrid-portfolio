@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import AnalystRunCharts from "@/components/AnalystRunCharts";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
 import {
-  buildReportPayload,
-  downloadFile,
+  buildAnalystRunBundle,
+  downloadAnalystBundle,
+  downloadAnalystCsvFromBundle,
   mergeOptimizeResponse,
   type ReportContext,
 } from "@/lib/reportExport";
@@ -72,30 +74,26 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
     [run]
   );
 
-  const downloadPayloadJson = useCallback(() => {
-    if (!run) return;
-    downloadFile(
-      JSON.stringify(run.payload, null, 2),
-      `browser_run_${run.id.slice(0, 8)}_payload.json`,
-      "application/json"
-    );
-  }, [run]);
+  const bundle = useMemo(() => {
+    if (!run || !merged) return null;
+    return buildAnalystRunBundle(merged, {
+      runId: run.id,
+      runKind: "browser",
+      tickers: run.tickers,
+      provenance: { source: "snapshot", snapshot_at: run.at },
+      rawPayload: run.payload,
+    });
+  }, [run, merged]);
 
-  const downloadFullReportJson = useCallback(() => {
-    if (!run || !merged) return;
-    const report = buildReportPayload(
-      "full",
-      merged,
-      run.tickers,
-      reportCtx,
-      { source: "snapshot", snapshot_at: run.at }
-    );
-    downloadFile(
-      JSON.stringify(report, null, 2),
-      `quantum_ledger_full_${run.id.slice(0, 8)}.json`,
-      "application/json"
-    );
-  }, [run, merged, reportCtx]);
+  const handleDownloadBundle = useCallback(() => {
+    if (!bundle) return;
+    downloadAnalystBundle(bundle, "analyst_run");
+  }, [bundle]);
+
+  const handleDownloadCsv = useCallback(() => {
+    if (!bundle) return;
+    downloadAnalystCsvFromBundle(bundle, reportCtx, "analyst_run");
+  }, [bundle, reportCtx]);
 
   if (run === undefined) {
     return (
@@ -128,12 +126,29 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
   const qmeta = merged?.quantum_metadata;
 
   return (
-    <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-8 print:p-8">
-      <LedgerPageHeader
-        title="Optimization run (browser)"
-        subtitle={`${formatOptimizationSource(run.source)} · ${new Date(run.at).toLocaleString()}`}
-      />
+    <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-8 print:p-8 print:max-w-none">
+      {/* Print-only identity header — full self-contained metadata for PDF */}
+      <div className="hidden print:block text-black space-y-2 border-b border-gray-300 pb-4 mb-2">
+        <h1 className="text-xl font-bold">Quantum Ledger — Optimization Run</h1>
+        <p className="text-gray-600 text-sm">{formatOptimizationSource(run.source)} · {new Date(run.at).toLocaleString()}</p>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-sm mt-2">
+          <dt className="font-semibold">Objective</dt>
+          <dd className="font-mono">{run.objective}</dd>
+          <dt className="font-semibold">Weight bounds</dt>
+          <dd className="font-mono">{run.constraints.weightMin} … {run.constraints.weightMax}</dd>
+          <dt className="font-semibold">Tickers</dt>
+          <dd className="font-mono col-span-2 break-all text-xs">{run.tickers.join(", ")}</dd>
+        </dl>
+      </div>
 
+      <div className="print:hidden">
+        <LedgerPageHeader
+          title="Optimization run (browser)"
+          subtitle={`${formatOptimizationSource(run.source)} · ${new Date(run.at).toLocaleString()}`}
+        />
+      </div>
+
+      {/* Run identity */}
       <section className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 space-y-4">
         <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold">
           Run identity
@@ -163,7 +178,9 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
             <dt className="text-ql-on-surface-variant text-[10px] uppercase mb-0.5">
               Tickers
             </dt>
-            <dd className="break-all text-ql-on-surface">{run.tickers.join(", ")}</dd>
+            <dd className="break-all text-ql-on-surface">
+              {run.tickers.join(", ")}
+            </dd>
           </div>
           <div>
             <dt className="text-ql-on-surface-variant text-[10px] uppercase mb-0.5">
@@ -176,6 +193,7 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
         </dl>
       </section>
 
+      {/* Key metrics */}
       {metrics && (
         <section className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 space-y-4">
           <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold">
@@ -208,6 +226,17 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
         </section>
       )}
 
+      {/* Charts — single source: bundle.optimize (same object as metrics above) */}
+      {merged && (
+        <section className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 space-y-2">
+          <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold mb-4">
+            Charts
+          </h3>
+          <AnalystRunCharts merged={merged} />
+        </section>
+      )}
+
+      {/* Pipeline / quantum diagnostics */}
       {stageInfo != null && (
         <details className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 text-sm">
           <summary className="cursor-pointer font-bold text-ql-on-surface">
@@ -230,20 +259,31 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
         </details>
       )}
 
-      <div className="flex flex-wrap gap-3">
+      {/* Downloads — all from the same bundle object */}
+      <div className="flex flex-wrap gap-3 print:hidden">
         <button
           type="button"
-          onClick={downloadPayloadJson}
-          className="px-4 py-2 rounded-lg text-sm font-bold bg-ql-primary/20 text-ql-primary border border-ql-primary/30 hover:bg-ql-primary/30 transition-colors"
+          onClick={handleDownloadBundle}
+          disabled={!bundle}
+          className="px-4 py-2 rounded-lg text-sm font-bold primary-gradient text-[#001D33] shadow-md shadow-ql-primary/15 hover:opacity-95 transition-opacity disabled:opacity-40"
         >
-          Download raw API payload (JSON)
+          Download analyst bundle (JSON)
         </button>
         <button
           type="button"
-          onClick={downloadFullReportJson}
-          className="px-4 py-2 rounded-lg text-sm font-bold primary-gradient text-[#001D33] shadow-md shadow-ql-primary/15 hover:opacity-95 transition-opacity"
+          onClick={handleDownloadCsv}
+          disabled={!bundle}
+          className="px-4 py-2 rounded-lg text-sm font-bold bg-ql-primary/20 text-ql-primary border border-ql-primary/30 hover:bg-ql-primary/30 transition-colors disabled:opacity-40"
         >
-          Download full report bundle (JSON)
+          Download CSV (Excel)
+        </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="px-4 py-2 rounded-lg text-sm font-bold border border-ql-outline-variant/30 text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
+          title="Use your browser's 'Save as PDF' destination for a PDF file"
+        >
+          Print / Save as PDF
         </button>
         <Link
           href="/reports"

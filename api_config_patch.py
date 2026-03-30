@@ -238,6 +238,47 @@ OBJECTIVES_CONFIG = {
         ],
     },
 
+    "qaoa": {
+        "label": "QAOA — Quantum Approximate Optimization",
+        "description": (
+            "Binary asset selection via QAOA: the same QUBO as qubo_sa is mapped to an "
+            "Ising Hamiltonian and minimised with a parameterised gate-model circuit. "
+            "Classical path: numpy statevector simulation (≤12 assets). "
+            "IBM Quantum path: p-layer QAOA circuit on Qiskit Runtime — EstimatorV2 "
+            "optimises circuit angles (COBYLA), SamplerV2 extracts the final bitstring "
+            "(requires configured IBM token + execution_kind: ibm_runtime)."
+        ),
+        "family": "quantum",
+        "fast": False,
+        "papers": [
+            {
+                "role": "foundational",
+                "title": "A Quantum Approximate Optimization Algorithm",
+                "citation": "Farhi, Goldstone & Gutmann (2014) — arXiv:1411.4028",
+                "url": "https://arxiv.org/abs/1411.4028",
+                "download_path": "https://arxiv.org/pdf/1411.4028",
+            },
+            {
+                "role": "modern",
+                "title": "QAOA: Performance, Mechanism, and Implementation on NISQ Devices",
+                "citation": "Zhou et al. (2020) — Physical Review X",
+                "url": "https://arxiv.org/abs/1812.01041",
+                "download_path": "https://arxiv.org/pdf/1812.01041",
+            },
+        ],
+        "notebooks": [
+            {
+                "path": "notebooks/objectives/09-qaoa.ipynb",
+                "title": "QAOA — binary selection via gate-model circuit",
+                "download_path": "/downloads/notebooks/09-qaoa.ipynb",
+            },
+        ],
+        "code_refs": [
+            {"path": "methods/qaoa.py", "label": "qaoa_weights / qaoa_weights_ibm_strict"},
+            {"path": "core/optimizers/qaoa.py", "label": "optimizer wrapper"},
+        ],
+    },
+
     "vqe": {
         "label": "VQE — Variational Quantum Eigensolver",
         "description": (
@@ -274,6 +315,59 @@ OBJECTIVES_CONFIG = {
         "code_refs": [
             {"path": "methods/vqe.py", "label": "vqe_weights / vqe_weights_ibm_strict"},
             {"path": "core/optimizers/vqe.py", "label": "optimizer wrapper"},
+        ],
+    },
+
+    "hybrid_qaoa": {
+        "label": "Hybrid Pipeline — QAOA Stage (IBM Runtime / classical)",
+        "description": (
+            "Updated 3-stage Quantum Ledger pipeline where the combinatorial selection stage "
+            "uses QAOA instead of simulated annealing: "
+            "(1) IC Screening — rank assets by μ/σ, keep top K_screen; "
+            "(2) QAOA Selection — gate-model QAOA circuit minimises the same QUBO, "
+            "extracting the highest-probability K_select-hot bitstring; "
+            "(3) Markowitz Allocation — convex Max-Sharpe on chosen assets. "
+            "Classical path: numpy statevector (K_screen ≤ 12). "
+            "IBM Quantum path: EstimatorV2 + SamplerV2 on Qiskit Runtime (K_screen ≤ 20)."
+        ),
+        "family": "hybrid",
+        "fast": False,
+        "papers": [
+            {
+                "role": "foundational",
+                "title": "Portfolio Selection — Markowitz allocation (stage 3)",
+                "citation": "Markowitz (1952) — Journal of Finance",
+                "url": "https://doi.org/10.1111/j.1540-6261.1952.tb01525.x",
+            },
+            {
+                "role": "foundational",
+                "title": "A Quantum Approximate Optimization Algorithm — QAOA selection (stage 2)",
+                "citation": "Farhi, Goldstone & Gutmann (2014) — arXiv:1411.4028",
+                "url": "https://arxiv.org/abs/1411.4028",
+                "download_path": "https://arxiv.org/pdf/1411.4028",
+            },
+            {
+                "role": "modern",
+                "title": "QAOA: Performance, Mechanism, and Implementation on NISQ Devices",
+                "citation": "Zhou et al. (2020) — Physical Review X",
+                "url": "https://arxiv.org/abs/1812.01041",
+                "download_path": "https://arxiv.org/pdf/1812.01041",
+                "note": (
+                    "Related reading for the QAOA stage. "
+                    "The 3-stage hybrid design is an original Quantum Ledger synthesis."
+                ),
+            },
+        ],
+        "notebooks": [
+            {
+                "path": "notebooks/objectives/10-hybrid-qaoa.ipynb",
+                "title": "Hybrid-QAOA — IC screen → QAOA select → Markowitz allocate",
+                "download_path": "/downloads/notebooks/10-hybrid-qaoa.ipynb",
+            },
+        ],
+        "code_refs": [
+            {"path": "methods/hybrid_pipeline.py", "label": "hybrid_qaoa_weights"},
+            {"path": "core/optimizers/hybrid_qaoa.py", "label": "optimizer wrapper"},
         ],
     },
 

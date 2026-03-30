@@ -77,7 +77,7 @@ function empiricalPercentiles(arr) {
   return { p5: q(0.05), p25: q(0.25), p50: q(0.5), p75: q(0.75), p95: q(0.95) };
 }
 
-/** Six heuristic spokes from portfolio stats — not Fama–French. Used for current vs equal-weight benchmark. */
+/** Six heuristic spokes from portfolio stats — not Fama–French. Sharpe used here is excess vs 0 (rf=0). */
 function computeStyleProxySpokes(sharpe, portReturn, portVol, nActive, wMax, nAssets) {
   const n = Math.max(nAssets, 1);
   const na = Math.max(0, nActive ?? 0);
@@ -490,13 +490,25 @@ function UniverseLabFacts({ snap }) {
     endDate,
     dataSeed,
     regimeLabel,
+    returnsSource,
+    covarianceSource,
   } = snap;
 
+  const returnsNote =
+    returnsSource === "historical"
+      ? "Charts use real daily pct-change series for the loaded window."
+      : "Charts use correlated paths drawn from Σ (multivariate normal, rf = 0). Headlines match the API covariance; time-series detail is illustrative.";
+
+  const covSourceNote =
+    covarianceSource === "panel_aligned"
+      ? "Σ aligned with plotted window (panel-aligned)."
+      : "Σ from full available window (may differ from plotted dailies).";
+
   const ctxLine = liveStandIn
-    ? `Showing synthetic stand-in until you load history (${startDate} → ${endDate}).`
+    ? `Showing synthetic stand-in — click Load to fetch historical prices (${startDate} → ${endDate}).`
     : marketMode === "synthetic"
       ? `Regime ${regimeLabel} · seed ${dataSeed} · ${days}d return paths drive covariance.`
-      : `Window ${startDate} → ${endDate} · ${days}d series · API covariance.`;
+      : `Window ${startDate} → ${endDate} · ${days}d series · ${covSourceNote} ${returnsNote}`;
 
   const cell = (label, val) => (
     <div style={{ padding: "6px 8px", background: t.surface, borderRadius: 4, border: `1px solid ${t.border}` }}>
@@ -898,6 +910,8 @@ export default function QuantumPortfolioDashboard() {
   const [weightMax, setWeightMax] = useState(0.20);
   const [turnoverLimit, setTurnoverLimit] = useState(0.20);
   const [dataSeed, setDataSeed] = useState(42);
+  /** Annualized portfolio return target for API `target_return` objective (same units as annReturn). */
+  const [targetReturn, setTargetReturn] = useState(0.1);
   const [notional, setNotional] = useState(100000);
   const [activeTab, setActiveTab] = useState("portfolio");
 
@@ -1048,8 +1062,6 @@ export default function QuantumPortfolioDashboard() {
   const {
     marketMode,
     setMarketMode,
-    tickerInput: _tickerInput,
-    setTickerInput,
     startDate,
     setStartDate,
     endDate,
@@ -1059,18 +1071,23 @@ export default function QuantumPortfolioDashboard() {
     loadLiveMarketData,
     data,
     isLiveLoaded,
-  } = usePortfolioLabMarketData(nAssets, setNAssets, regime, dataSeed);
-  void _tickerInput;
+    returnsSource,
+    covarianceSource,
+  } = usePortfolioLabMarketData(nAssets, setNAssets, regime, dataSeed, selectedTickers);
 
+  // Suggested target return = cross-sectional mean when using target_return objective (matches backend tests).
+  useEffect(() => {
+    if (objective !== "target_return" || !data?.assets?.length) return;
+    const m = data.assets.reduce((s, a) => s + a.annReturn, 0) / data.assets.length;
+    setTargetReturn(m);
+  }, [objective, data]);
+
+  // Clamp universe size to the selection length when a selection is active.
   useEffect(() => {
     if (selectedTickers.length > 0 && nAssets > selectedTickers.length) {
       setNAssets(selectedTickers.length);
     }
   }, [selectedTickers, nAssets, setNAssets]);
-
-  useEffect(() => {
-    setTickerInput(selectedTickers.join(","));
-  }, [selectedTickers, setTickerInput]);
 
   const handleRunOptimize = useCallback(async () => {
     if (!data?.assets?.length) return;
@@ -1097,6 +1114,7 @@ export default function QuantumPortfolioDashboard() {
       if (cardinality != null) payload.K = cardinality;
       if (kScreen != null) payload.K_screen = kScreen;
       if (kSelect != null) payload.K_select = kSelect;
+      if (objective === "target_return") payload.target_return = targetReturn;
 
       const resp = await optimizePortfolio(payload);
       const qsw = resp.qsw_result || resp;
@@ -1131,7 +1149,7 @@ export default function QuantumPortfolioDashboard() {
     } finally {
       setOptimizeLoading(false);
     }
-  }, [data, objective, cardinality, kScreen, kSelect, weightMin, weightMax, dataSeed, setLastOptimize, setUniverse]);
+  }, [data, objective, cardinality, kScreen, kSelect, weightMin, weightMax, dataSeed, targetReturn, setLastOptimize, setUniverse]);
 
   const buildLabRunPayload = useCallback(() => {
     if (!data?.assets?.length) return null;
@@ -1158,8 +1176,9 @@ export default function QuantumPortfolioDashboard() {
     if (cardinality != null) payload.K = cardinality;
     if (kScreen != null) payload.K_screen = kScreen;
     if (kSelect != null) payload.K_select = kSelect;
+    if (objective === "target_return") payload.target_return = targetReturn;
     return payload;
-  }, [data, objective, cardinality, kScreen, kSelect, weightMin, weightMax, dataSeed, isLiveLoaded, regime]);
+  }, [data, objective, cardinality, kScreen, kSelect, weightMin, weightMax, dataSeed, isLiveLoaded, regime, targetReturn]);
 
   const handleSaveRun = useCallback(async () => {
     const payload = buildLabRunPayload();
@@ -1242,8 +1261,10 @@ export default function QuantumPortfolioDashboard() {
       endDate,
       dataSeed,
       regimeLabel,
+      returnsSource,
+      covarianceSource,
     };
-  }, [data, marketMode, isLiveLoaded, startDate, endDate, dataSeed, regime]);
+  }, [data, marketMode, isLiveLoaded, startDate, endDate, dataSeed, regime, returnsSource, covarianceSource]);
 
   const benchmarks = useMemo(() => {
     if (!data?.assets) return { equalWeight: { sharpe: 0, portReturn: 0, portVol: 0, weights: [] }, minVariance: { sharpe: 0, portReturn: 0, portVol: 0, weights: [] }, riskParity: { sharpe: 0, portReturn: 0, portVol: 0, weights: [] }, maxSharpe: { sharpe: 0, portReturn: 0, portVol: 0, weights: [] } };
@@ -1766,7 +1787,7 @@ export default function QuantumPortfolioDashboard() {
                   color: marketMode === "live" ? t.accent : t.textMuted, cursor: "pointer",
                 }}
               >
-                Live tickers
+                Live tickers (historical)
               </button>
             </div>
             <ControlLabel>Universe tickers</ControlLabel>
@@ -1835,6 +1856,23 @@ export default function QuantumPortfolioDashboard() {
                 {isLiveLoaded && (
                   <div style={{ marginTop: 6, fontSize: 10, color: t.green, fontFamily: FONT.mono }}>
                     {data.assets.length} assets loaded — ready for Backend API below
+                  </div>
+                )}
+                {isLiveLoaded && returnsSource === "mvn_synthetic" && (
+                  <div style={{ marginTop: 4, fontSize: 9, color: t.textMuted, fontFamily: FONT.sans, lineHeight: 1.4 }}>
+                    Chart paths are MVN-synthetic (correlated, drawn from Σ). Headline return / vol / Sharpe match the API covariance exactly.
+                  </div>
+                )}
+                {isLiveLoaded && returnsSource === "historical" && (
+                  <div style={{ marginTop: 4, fontSize: 9, color: t.textMuted, fontFamily: FONT.sans, lineHeight: 1.4 }}>
+                    Chart paths use real daily returns for the loaded window.
+                  </div>
+                )}
+                {isLiveLoaded && (
+                  <div style={{ marginTop: 4, fontSize: 9, color: covarianceSource === "panel_aligned" ? t.green : t.textMuted, fontFamily: FONT.sans, lineHeight: 1.4 }}>
+                    {covarianceSource === "panel_aligned"
+                      ? "Σ panel-aligned: optimizer, charts, and heatmap share the same daily observations."
+                      : "Σ full-window: optimizer uses the full history; plotted dailies may cover a shorter span."}
                   </div>
                 )}
               </div>
@@ -1954,6 +1992,20 @@ export default function QuantumPortfolioDashboard() {
               <div style={{ marginTop: 6, paddingTop: 10, borderTop: `1px solid ${t.border}` }}>
                 <KChipRow label="K_screen (screen)" value={kScreen} presets={K_SCREEN_PRESETS} onChange={setKScreen} />
                 <KChipRow label="K_select (select)" value={kSelect} presets={K_SELECT_PRESETS} onChange={setKSelect} />
+              </div>
+            )}
+            {objective === "target_return" && (
+              <div style={{ marginTop: 6, paddingTop: 10, borderTop: `1px solid ${t.border}` }}>
+                <SliderControl
+                  label="Target return (annual)"
+                  value={targetReturn}
+                  onChange={setTargetReturn}
+                  min={0.02}
+                  max={0.45}
+                  step={0.0025}
+                  unit="%"
+                  info="Sent as target_return to the API — minimum-variance portfolio near this expected return on the lab Σ."
+                />
               </div>
             )}
           </SidebarSection>
@@ -2504,18 +2556,18 @@ export default function QuantumPortfolioDashboard() {
             <div role="tabpanel" id="panel-performance" aria-labelledby="tab-performance" style={{ display: "grid", gap: 16 }}>
               <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
                 <MetricCard
-                  label="Sharpe Ratio"
+                  label="Sharpe Ratio (rf = 0)"
                   value={result.sharpe.toFixed(3)}
                   color={result.sharpe > bestBenchSharpe ? t.green : t.accent}
                   delta={sharpeImprovement}
-                  description="Risk-adjusted return (μ/σ)"
+                  description="Excess return per unit of risk (rf = 0)"
                   tag={kpiBenchmarks.sharpeTag}
                   tagTone={kpiBenchmarks.sharpeTagTone}
                   progress={Math.min(1, result.sharpe / 2.5)}
                   progressCaption="Scale vs 2.5 reference Sharpe (illustrative)"
                   insight={`Benchmarks on this Σ: equal-weight ${kpiBenchmarks.ewSharpe.toFixed(2)} · heuristic max-Sharpe ${kpiBenchmarks.msSharpe.toFixed(2)} · best of four rule-based ${bestBenchSharpe.toFixed(2)}.`}
-                  formula="Sharpe ≈ (annualized portfolio return) / (annualized portfolio volatility)"
-                  detail="Higher is better for the same risk budget; not comparable across different return horizons without adjustment."
+                  formula="Sharpe = (μ′w) / (√w′Σw) — risk-free rate set to 0; adjust comparisons accordingly."
+                  detail="Excess return over zero per unit of annualised portfolio volatility. Not comparable to Sharpe ratios computed with a non-zero risk-free rate."
                   benchmarkNote={`Best benchmark Sharpe in this run: ${bestBenchSharpe.toFixed(3)}`}
                 />
                 <MetricCard
@@ -2790,7 +2842,7 @@ export default function QuantumPortfolioDashboard() {
                           reversed
                         />
                         <Tooltip content={<ChartTooltip />} />
-                        <Bar dataKey="sharpe" name="Sharpe" fill={t.accent} maxBarSize={14} radius={[0, 3, 3, 0]} />
+                        <Bar dataKey="sharpe" name="Sharpe (rf=0)" fill={t.accent} maxBarSize={14} radius={[0, 3, 3, 0]} />
                         <Bar dataKey="ret" name="Return %" fill={t.green} maxBarSize={14} radius={[0, 3, 3, 0]} />
                         <Bar dataKey="vol" name="Vol %" fill={t.accentWarm} maxBarSize={14} radius={[0, 3, 3, 0]} />
                       </BarChart>
@@ -2799,7 +2851,7 @@ export default function QuantumPortfolioDashboard() {
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: FONT.mono }}>
                         <thead>
                           <tr>
-                            {["Strategy", "Profile", "Sharpe", "Return", "Volatility", "Positions"].map((h) => (
+                            {["Strategy", "Profile", "Sharpe (rf=0)", "Return", "Volatility", "Positions"].map((h) => (
                               <th
                                 key={h}
                                 style={{
@@ -2989,7 +3041,7 @@ export default function QuantumPortfolioDashboard() {
                         <strong style={{ color: t.text }}>KPI VaR/CVaR</strong> above: {isApiMode ? (
                           <>values come from the last optimize response (<code style={{ fontFamily: FONT.mono }}>risk_metrics.var_95</code>, <code style={{ fontFamily: FONT.mono }}>risk_metrics.cvar</code>), scaled to % for display.</>
                         ) : (
-                          <>computed in the lab by <code style={{ fontFamily: FONT.mono }}>computeVaR</code>: 2,000 Monte Carlo draws that bootstrap random days from each asset&apos;s return path, sort losses, take the 95% quantile for VaR and the tail mean for CVaR (see <code style={{ fontFamily: FONT.mono }}>web/src/lib/simulationEngine.js</code>).</>
+                          <>computed in the lab by <code style={{ fontFamily: FONT.mono }}>computeVaR</code>: analytic multivariate-normal model — one-day portfolio P&amp;L ~ N(μ<sub>p</sub>/252, w<sup>T</sup>Σw/252), where Σ is the same Ledoit–Wolf covariance used by the optimizer. VaR = z<sub>c</sub>·σ<sub>p,daily</sub> − μ<sub>p,daily</sub>; CVaR = σ<sub>p,daily</sub>·φ(z<sub>c</sub>)/(1−c) − μ<sub>p,daily</sub> (see <code style={{ fontFamily: FONT.mono }}>web/src/lib/simulationEngine.js</code>).</>
                         )}
                       </p>
                       <p style={{ margin: "0 0 8px" }}>Not investment advice. Does not include transaction costs, liquidity, or model risk. Horizon is <strong style={{ color: t.text }}>one trading day</strong> on the loaded return series.</p>
@@ -3308,6 +3360,7 @@ export default function QuantumPortfolioDashboard() {
                   cardinality,
                   kScreen: kScreen,
                   kSelect: kSelect,
+                  targetReturn,
                 }}
                 labContext={{
                   marketMode,
@@ -3458,7 +3511,7 @@ export default function QuantumPortfolioDashboard() {
                     <YAxis tick={axisStyle} tickFormatter={fmtAxis2} axisLine={{ stroke: t.border }} tickLine={false} />
                     <Tooltip content={<ChartTooltip />} />
                     <ReferenceLine x={`${(weightMax * 100).toFixed(0)}%`} stroke={t.accent} strokeDasharray="3 3" label={{ value: "Current", fill: t.accent, fontSize: 10 }} />
-                    <Area type="monotone" dataKey="sharpe" stroke={t.accent} fill="url(#wGrad)" strokeWidth={2} name="Sharpe" />
+                    <Area type="monotone" dataKey="sharpe" stroke={t.accent} fill="url(#wGrad)" strokeWidth={2} name="Sharpe (rf=0)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </Panel>

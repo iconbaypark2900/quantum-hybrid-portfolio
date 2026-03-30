@@ -3,8 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
+import AnalystRunCharts from "@/components/AnalystRunCharts";
 import { getLabRun, type LabRun } from "@/lib/api";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
+import {
+  buildAnalystRunBundle,
+  downloadAnalystBundle,
+  downloadAnalystCsvFromBundle,
+  mergeOptimizeResponse,
+} from "@/lib/reportExport";
 import {
   useNextPageProps,
   type NextClientPagePropsWithId,
@@ -44,6 +51,9 @@ function SpecTable({ spec }: { spec: LabRun["spec"] }) {
   if (spec.K != null) rows.push(["K (cardinality)", String(spec.K)]);
   if (spec.K_screen != null) rows.push(["K_screen", String(spec.K_screen)]);
   if (spec.K_select != null) rows.push(["K_select", String(spec.K_select)]);
+  if (spec.target_return != null) {
+    rows.push(["Target return", String(spec.target_return)]);
+  }
   if (spec.ibm_backend_mode) rows.push(["IBM backend mode", String(spec.ibm_backend_mode)]);
   if (spec.backend_name) rows.push(["IBM backend (requested)", String(spec.backend_name)]);
   return (
@@ -184,25 +194,76 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
     };
   }, [fetchRun]);
 
-  const downloadJson = useCallback(() => {
-    if (!run) return;
-    const blob = new Blob([JSON.stringify(run, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `run_${run.id.slice(0, 8)}_${run.status}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [run]);
+  const merged = run?.result
+    ? (mergeOptimizeResponse(run.result) as Record<string, unknown>)
+    : null;
+
+  const tickers =
+    run?.spec?.tickers ??
+    (Array.isArray(merged?.tickers) ? (merged?.tickers as string[]) : []);
+
+  const bundle = merged
+    ? buildAnalystRunBundle(merged, {
+        runId: run?.id ?? id,
+        runKind: "lab_run",
+        tickers,
+        provenance: {
+          source: "snapshot",
+          snapshot_at: run?.finished_at ?? null,
+        },
+        rawPayload: run?.payload ?? undefined,
+      })
+    : null;
+
+  const handleDownloadBundle = useCallback(() => {
+    if (!bundle) return;
+    downloadAnalystBundle(bundle, "lab_run");
+  }, [bundle]);
+
+  const handleDownloadCsv = useCallback(() => {
+    if (!bundle) return;
+    const ctx = run?.spec
+      ? { objective: run.spec.objective, weightMin: run.spec.weight_min, weightMax: run.spec.weight_max }
+      : undefined;
+    downloadAnalystCsvFromBundle(bundle, ctx, "lab_run");
+  }, [bundle, run]);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <LedgerPageHeader
-        title="Lab Run Report"
-        subtitle={id ? `Run ${id.slice(0, 8)}…` : "Loading…"}
-      />
+    <div className="max-w-3xl mx-auto space-y-6 print:max-w-none print:p-8">
+      {/* Print-only identity header */}
+      {run && (
+        <div className="hidden print:block text-black space-y-2 border-b border-gray-300 pb-4 mb-2">
+          <h1 className="text-xl font-bold">Quantum Ledger — Lab Run Report</h1>
+          <p className="text-gray-600 text-sm font-mono">Run {run.id} · {new Date(run.created_at).toLocaleString()}</p>
+          {run.spec && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-sm mt-2">
+              <dt className="font-semibold">Objective</dt>
+              <dd className="font-mono">{run.spec.objective}</dd>
+              <dt className="font-semibold">Weight bounds</dt>
+              <dd className="font-mono">{run.spec.weight_min} … {run.spec.weight_max}</dd>
+              {run.spec.data_mode && (
+                <>
+                  <dt className="font-semibold">Data mode</dt>
+                  <dd className="font-mono">{run.spec.data_mode}</dd>
+                </>
+              )}
+              {tickers.length > 0 && (
+                <>
+                  <dt className="font-semibold">Tickers</dt>
+                  <dd className="font-mono col-span-2 break-all text-xs">{tickers.join(", ")}</dd>
+                </>
+              )}
+            </dl>
+          )}
+        </div>
+      )}
+
+      <div className="print:hidden">
+        <LedgerPageHeader
+          title="Lab Run Report"
+          subtitle={id ? `Run ${id.slice(0, 8)}…` : "Loading…"}
+        />
+      </div>
 
       {loading && !run && (
         <p className="text-ql-muted text-sm animate-pulse">
@@ -242,6 +303,41 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
               </h3>
               <SpecTable spec={run.spec} />
             </div>
+
+            {/* Stored request inputs (returns, covariance) when persisted */}
+            {run.payload && (() => {
+              const p = run.payload;
+              const tickers = Array.isArray(p.tickers) ? (p.tickers as string[]) : null;
+              const returns = Array.isArray(p.returns) ? (p.returns as number[]) : null;
+              const cov = Array.isArray(p.covariance) ? (p.covariance as number[][]) : null;
+              return (
+                <details className="text-sm">
+                  <summary className="cursor-pointer font-semibold text-ql-muted">
+                    Request inputs (stored)
+                  </summary>
+                  <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
+                    {tickers && (
+                      <>
+                        <dt className="text-ql-muted">tickers</dt>
+                        <dd className="break-all">{tickers.join(", ")}</dd>
+                      </>
+                    )}
+                    {returns && (
+                      <>
+                        <dt className="text-ql-muted">returns (n)</dt>
+                        <dd>{String(returns.length)}</dd>
+                      </>
+                    )}
+                    {cov && (
+                      <>
+                        <dt className="text-ql-muted">covariance (n×n)</dt>
+                        <dd>{String(cov.length)} × {String(cov[0]?.length ?? 0)}</dd>
+                      </>
+                    )}
+                  </dl>
+                </details>
+              );
+            })()}
           </section>
 
           {run.status === "queued" || run.status === "running" ? (
@@ -266,13 +362,38 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
             </section>
           )}
 
-          <div className="flex items-center gap-3">
+          {/* Charts — all driven from the same merged optimize object */}
+          {merged && (
+            <section className="rounded-lg border border-ql-border bg-ql-surface p-5 space-y-2">
+              <h3 className="text-xs uppercase tracking-wider text-ql-muted font-semibold mb-3">
+                Charts
+              </h3>
+              <AnalystRunCharts merged={merged} />
+            </section>
+          )}
+
+          <div className="flex items-center gap-3 flex-wrap print:hidden">
             <button
-              onClick={downloadJson}
-              disabled={!run.result && run.status !== "failed"}
-              className="rounded px-4 py-2 text-sm font-mono bg-ql-accent text-ql-bg disabled:opacity-40 hover:opacity-90 transition-opacity"
+              onClick={handleDownloadBundle}
+              disabled={!bundle}
+              className="rounded px-4 py-2 text-sm font-mono primary-gradient text-ql-bg disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
-              Download JSON
+              Download analyst bundle (JSON)
+            </button>
+            <button
+              onClick={handleDownloadCsv}
+              disabled={!bundle}
+              className="rounded px-4 py-2 text-sm font-mono bg-ql-surface-light border border-ql-border text-ql-on-surface disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              Download CSV (Excel)
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="rounded px-4 py-2 text-sm font-mono border border-ql-border text-ql-muted hover:text-ql-on-surface transition-colors"
+              title="Use your browser's 'Save as PDF' destination for a PDF file"
+            >
+              Print / Save as PDF
             </button>
             <Link
               href="/reports"
