@@ -5,15 +5,25 @@
 
 export type ObjectiveFamily = "classical" | "hybrid" | "quantum";
 
+export type PaperRole = "foundational" | "modern";
+
 export interface PaperRef {
   title?: string;
   citation?: string;
   url?: string;
+  /** Groups papers by tier in the Strategy UI. Defaults to "foundational". */
+  role?: PaperRole;
+  /** Direct download URL (arXiv PDF) or local Next.js static path (/downloads/...). */
+  downloadPath?: string;
+  /** Short explanatory note shown beneath the citation (e.g. "related reading only"). */
+  note?: string;
 }
 
 export interface NotebookRef {
   path: string;
   title?: string;
+  /** Local Next.js static path for one-click download (/downloads/notebooks/...). */
+  downloadPath?: string;
 }
 
 export interface CodeRef {
@@ -61,8 +71,13 @@ function parsePapers(raw: unknown, legacyPaper: string | undefined): PaperRef[] 
       const title = typeof p.title === "string" ? p.title : undefined;
       const citation = typeof p.citation === "string" ? p.citation : undefined;
       const url = typeof p.url === "string" ? p.url : undefined;
+      const role: PaperRole | undefined =
+        p.role === "foundational" || p.role === "modern" ? p.role : undefined;
+      const downloadPath =
+        typeof p.download_path === "string" ? p.download_path : undefined;
+      const note = typeof p.note === "string" ? p.note : undefined;
       if (title || citation || url) {
-        out.push({ title, citation, url });
+        out.push({ title, citation, url, role, downloadPath, note });
       }
     }
   }
@@ -83,6 +98,8 @@ function parseNotebooks(raw: unknown): NotebookRef[] {
     out.push({
       path,
       title: typeof n.title === "string" ? n.title : undefined,
+      downloadPath:
+        typeof n.download_path === "string" ? n.download_path : undefined,
     });
   }
   return out;

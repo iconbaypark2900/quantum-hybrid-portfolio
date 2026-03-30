@@ -982,7 +982,34 @@ export default function QuantumPortfolioDashboard() {
 
   // Fetch IBM Quantum status on mount
   useEffect(() => {
-    getIbmQuantumStatus().then(setIbmStatus).catch(() => {});
+    getIbmQuantumStatus()
+      .then((status) => {
+        // #region agent log
+        fetch("http://127.0.0.1:7244/ingest/95c51df7-ec29-4361-bdff-fbb656f6881f", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "c1bc30",
+          },
+          body: JSON.stringify({
+            sessionId: "c1bc30",
+            hypothesisId: "H5",
+            location: "CustomizableQuantumDashboard.js:getIbmQuantumStatus",
+            message: "portfolio ibm status response",
+            data: {
+              configured: Boolean(status?.configured),
+              tenant_id: status?.tenant_id ?? null,
+              hasError: Boolean(status?.error),
+              errorPrefix:
+                typeof status?.error === "string" ? status.error.slice(0, 120) : null,
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+        setIbmStatus(status);
+      })
+      .catch(() => {});
   }, []);
 
   // Clear API result when optimization-relevant params change

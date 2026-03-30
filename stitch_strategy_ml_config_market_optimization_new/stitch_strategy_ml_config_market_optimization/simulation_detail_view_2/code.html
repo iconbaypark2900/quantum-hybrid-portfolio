@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Simulation Detail | Quantum Ledger</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-variant": "#333538",
+                        "surface-container-lowest": "#0c0e11",
+                        "on-primary-container": "#00375a",
+                        "primary-fixed-dim": "#98cbff",
+                        "on-primary-fixed": "#001d33",
+                        "on-surface": "#e2e2e6",
+                        "surface-container-high": "#282a2d",
+                        "outline-variant": "#3f4852",
+                        "tertiary-fixed-dim": "#00e475",
+                        "on-primary": "#003354",
+                        "surface-container": "#1e2023",
+                        "primary-container": "#00a3ff",
+                        "on-tertiary-fixed-variant": "#005226",
+                        "primary": "#98cbff",
+                        "on-secondary-fixed": "#001d33",
+                        "error-container": "#93000a",
+                        "background": "#111316",
+                        "on-surface-variant": "#bec7d4",
+                        "on-secondary-fixed-variant": "#22496b",
+                        "surface": "#111316",
+                        "on-tertiary-fixed": "#00210b",
+                        "outline": "#88919d",
+                        "on-secondary": "#023353",
+                        "on-error-container": "#ffdad6",
+                        "inverse-on-surface": "#2f3034",
+                        "tertiary-fixed": "#62ff96",
+                        "secondary": "#a5caf2",
+                        "primary-fixed": "#cfe5ff",
+                        "surface-bright": "#37393d",
+                        "surface-tint": "#98cbff",
+                        "surface-container-low": "#1a1c1f",
+                        "on-tertiary": "#003918",
+                        "secondary-container": "#22496b",
+                        "on-primary-fixed-variant": "#004a77",
+                        "inverse-surface": "#e2e2e6",
+                        "tertiary": "#00e475",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "secondary-fixed": "#cfe5ff",
+                        "secondary-fixed-dim": "#a5caf2",
+                        "on-background": "#e2e2e6",
+                        "inverse-primary": "#00629d",
+                        "on-tertiary-container": "#003d1b",
+                        "on-secondary-container": "#94b9e0",
+                        "surface-container-highest": "#333538",
+                        "surface-dim": "#111316",
+                        "tertiary-container": "#00b45b"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(51, 53, 56, 0.6);
+            backdrop-filter: blur(24px);
+        }
+        .quantum-gradient {
+            background: linear-gradient(135deg, #98cbff 0%, #00a3ff 100%);
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111316;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3f4852;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body overflow-x-hidden">
+<!-- Side Navigation Shell -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-[#111316] flex flex-col py-6 border-r border-[#3f4852]/15 z-50">
+<div class="px-6 mb-10">
+<h1 class="font-['Space_Grotesk'] text-[#98cbff] text-lg font-black tracking-tighter">Quantum Ledger</h1>
+<p class="text-[10px] text-slate-500 font-label tracking-widest uppercase mt-1">V1.0.4 Active</p>
+</div>
+<nav class="flex-1 px-4 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="dashboard">dashboard</span>
+<span class="font-['Inter'] text-sm font-medium">Executive Dashboard</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="architecture">architecture</span>
+<span class="font-['Inter'] text-sm font-medium">Strategy Builder</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="memory">memory</span>
+<span class="font-['Inter'] text-sm font-medium">Quantum Engine</span>
+</a>
+<a class="flex items-center gap-3 bg-[#1e2023] text-[#98cbff] rounded-lg px-4 py-3 border-l-4 border-[#00a3ff] scale-[0.99] duration-150" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="query_stats" style="font-variation-settings: 'FILL' 1;">query_stats</span>
+<span class="font-['Inter'] text-sm font-medium">Simulations</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg group" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="settings">settings</span>
+<span class="font-['Inter'] text-sm font-medium">Settings</span>
+</a>
+</nav>
+<div class="px-4 mt-auto pt-6 space-y-1">
+<button class="w-full quantum-gradient text-on-primary-fixed font-bold py-3 px-4 rounded-xl text-sm mb-6 flex items-center justify-center gap-2 shadow-lg shadow-primary/10">
+                Optimize Portfolio
+            </button>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-2 hover:text-white transition-all" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="help">help</span>
+<span class="font-['Inter'] text-xs font-medium">Help Center</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-2 hover:text-white transition-all" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="code">code</span>
+<span class="font-['Inter'] text-xs font-medium">API Docs</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen bg-background">
+<!-- Header Section -->
+<header class="h-20 flex items-center justify-between px-8 bg-surface border-b border-outline-variant/10 sticky top-0 z-40">
+<div class="flex items-center gap-4">
+<button class="text-slate-400 hover:text-white">
+<span class="material-symbols-outlined" data-icon="arrow_back">arrow_back</span>
+</button>
+<div>
+<h2 class="font-headline font-bold text-xl tracking-tight text-on-surface">RUN_045 <span class="text-primary/60 font-light ml-2">Monte Carlo Stress Test</span></h2>
+<p class="text-[10px] font-label text-slate-500 uppercase tracking-widest">Executed: Oct 24, 2023 • 14:22:10 UTC</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/5">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse mr-2"></span>
+<span class="text-xs font-medium text-tertiary">Engine Optimized</span>
+</div>
+<button class="bg-surface-container-high p-2 rounded-lg text-on-surface-variant hover:text-white transition-colors">
+<span class="material-symbols-outlined" data-icon="ios_share">ios_share</span>
+</button>
+<button class="bg-surface-container-high p-2 rounded-lg text-on-surface-variant hover:text-white transition-colors">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</header>
+<div class="p-8 max-w-[1600px] mx-auto">
+<!-- Key Metrics Grid -->
+<section class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+<div class="bg-surface-container-low p-6 rounded-xl border-l-4 border-primary shadow-sm">
+<p class="text-[10px] font-label text-slate-500 uppercase tracking-wider mb-2">Projected Alpha</p>
+<h3 class="font-headline text-3xl font-bold text-on-surface">+14.82%</h3>
+<div class="mt-4 h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[72%]"></div>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl border-l-4 border-tertiary shadow-sm">
+<p class="text-[10px] font-label text-slate-500 uppercase tracking-wider mb-2">Win Probability</p>
+<h3 class="font-headline text-3xl font-bold text-on-surface">68.4%</h3>
+<p class="text-[10px] text-tertiary mt-2">Within 2 Standard Deviations</p>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl border-l-4 border-error shadow-sm">
+<p class="text-[10px] font-label text-slate-500 uppercase tracking-wider mb-2">Max Drawdown</p>
+<h3 class="font-headline text-3xl font-bold text-on-surface">-4.12%</h3>
+<p class="text-[10px] text-error mt-2">95% Var Confidence Level</p>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl border-l-4 border-outline shadow-sm">
+<p class="text-[10px] font-label text-slate-500 uppercase tracking-wider mb-2">Sharpe Ratio</p>
+<h3 class="font-headline text-3xl font-bold text-on-surface">3.21</h3>
+<div class="mt-4 flex gap-1">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="w-2 h-2 rounded-full bg-surface-container-highest"></span>
+</div>
+</div>
+</section>
+<!-- Main Analysis Layout (Asymmetric 60/40) -->
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+<!-- Left Column: Charts and Performance -->
+<div class="lg:col-span-3 space-y-8">
+<!-- Variance Chart -->
+<div class="bg-surface-container-low p-8 rounded-2xl relative overflow-hidden group">
+<div class="flex justify-between items-end mb-8">
+<div>
+<h4 class="font-headline text-lg font-bold mb-1">Performance Variance</h4>
+<p class="text-xs text-slate-500">1,000 Iteration Convergence Path</p>
+</div>
+<div class="flex gap-2">
+<span class="px-2 py-1 text-[10px] font-label bg-primary/10 text-primary border border-primary/20 rounded">ITER_CONV</span>
+<span class="px-2 py-1 text-[10px] font-label bg-surface-container-highest text-slate-400 rounded">LINEAR_REG</span>
+</div>
+</div>
+<!-- Visualizing the Sparkline/Chart -->
+<div class="h-64 relative">
+<svg class="w-full h-full" viewbox="0 0 1000 300">
+<defs>
+<lineargradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#98cbff" stop-opacity="0.2"></stop>
+<stop offset="100%" stop-color="#98cbff" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+<path d="M0,200 Q50,180 100,190 T200,150 T300,160 T400,120 T500,130 T600,80 T700,90 T800,40 T900,50 T1000,20" fill="none" stroke="#98cbff" stroke-width="2"></path>
+<path d="M0,200 Q50,180 100,190 T200,150 T300,160 T400,120 T500,130 T600,80 T700,90 T800,40 T900,50 T1000,20 L1000,300 L0,300 Z" fill="url(#chartGradient)"></path>
+<!-- Noise paths for Monte Carlo feel -->
+<path d="M0,200 L100,210 L200,180 L300,220 L400,160 L500,190 L600,140 L700,170 L800,110 L900,140 L1000,80" fill="none" stroke="#98cbff" stroke-opacity="0.1" stroke-width="1"></path>
+<path d="M0,200 L100,170 L200,210 L300,150 L400,190 L500,140 L600,170 L700,110 L800,140 L900,80 L1000,110" fill="none" stroke="#98cbff" stroke-opacity="0.1" stroke-width="1"></path>
+</svg>
+<div class="absolute inset-0 grid grid-cols-5 pointer-events-none">
+<div class="border-r border-outline-variant/10"></div>
+<div class="border-r border-outline-variant/10"></div>
+<div class="border-r border-outline-variant/10"></div>
+<div class="border-r border-outline-variant/10"></div>
+<div></div>
+</div>
+</div>
+</div>
+<!-- Asset Performance Table -->
+<div class="bg-surface-container-low rounded-2xl overflow-hidden border border-outline-variant/5">
+<div class="px-8 py-6 flex justify-between items-center bg-surface-container">
+<h4 class="font-headline font-bold">Asset-Level Performance</h4>
+<button class="text-xs font-label text-primary hover:underline">Download CSV</button>
+</div>
+<table class="w-full text-left">
+<thead class="bg-surface-container/50 border-b border-outline-variant/10">
+<tr>
+<th class="px-8 py-4 text-[10px] font-label text-slate-500 uppercase tracking-widest">Asset Identifier</th>
+<th class="px-6 py-4 text-[10px] font-label text-slate-500 uppercase tracking-widest text-right">Allocation</th>
+<th class="px-6 py-4 text-[10px] font-label text-slate-500 uppercase tracking-widest text-right">Simulated P/L</th>
+<th class="px-6 py-4 text-[10px] font-label text-slate-500 uppercase tracking-widest text-right">Volatility Impact</th>
+<th class="px-8 py-4"></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/5">
+<tr class="hover:bg-surface-container-high transition-colors">
+<td class="px-8 py-5">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-primary" data-icon="currency_bitcoin">currency_bitcoin</span>
+</div>
+<div>
+<p class="font-medium text-sm">BTC-PERP</p>
+<p class="text-[10px] text-slate-500">Tier 1 Liquidity</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5 text-sm font-label text-right">42.50%</td>
+<td class="px-6 py-5 text-sm text-tertiary text-right font-medium">+8.12%</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant text-right">High</td>
+<td class="px-8 py-5 text-right">
+<span class="material-symbols-outlined text-slate-600 text-sm" data-icon="analytics">analytics</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-high transition-colors">
+<td class="px-8 py-5">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-primary" data-icon="token">token</span>
+</div>
+<div>
+<p class="font-medium text-sm">ETH-STAKED</p>
+<p class="text-[10px] text-slate-500">Yield Optimized</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5 text-sm font-label text-right">28.00%</td>
+<td class="px-6 py-5 text-sm text-tertiary text-right font-medium">+4.45%</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant text-right">Moderate</td>
+<td class="px-8 py-5 text-right">
+<span class="material-symbols-outlined text-slate-600 text-sm" data-icon="analytics">analytics</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-high transition-colors">
+<td class="px-8 py-5">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-primary" data-icon="account_balance">account_balance</span>
+</div>
+<div>
+<p class="font-medium text-sm">SOL-ALPHA</p>
+<p class="text-[10px] text-slate-500">Growth Portfolio</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5 text-sm font-label text-right">15.20%</td>
+<td class="px-6 py-5 text-sm text-error text-right font-medium">-1.20%</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant text-right">Extreme</td>
+<td class="px-8 py-5 text-right">
+<span class="material-symbols-outlined text-slate-600 text-sm" data-icon="analytics">analytics</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Right Column: Risk and Logs -->
+<div class="lg:col-span-2 space-y-8">
+<!-- Risk Contribution Heatmap Component -->
+<div class="bg-surface-container-low p-8 rounded-2xl border border-outline-variant/5">
+<h4 class="font-headline font-bold mb-6">Risk Contribution Breakdown</h4>
+<div class="space-y-6">
+<div class="relative">
+<div class="flex justify-between mb-2">
+<span class="text-xs font-medium">Market Volatility</span>
+<span class="text-xs font-medium">54%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full quantum-gradient w-[54%]"></div>
+</div>
+</div>
+<div class="relative">
+<div class="flex justify-between mb-2">
+<span class="text-xs font-medium">Liquidity Risk</span>
+<span class="text-xs font-medium">22%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-tertiary-container w-[22%]"></div>
+</div>
+</div>
+<div class="relative">
+<div class="flex justify-between mb-2">
+<span class="text-xs font-medium">Smart Contract Risk</span>
+<span class="text-xs font-medium">18%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary/40 w-[18%]"></div>
+</div>
+</div>
+<div class="relative">
+<div class="flex justify-between mb-2">
+<span class="text-xs font-medium">Counterparty Risk</span>
+<span class="text-xs font-medium">6%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-outline-variant w-[6%]"></div>
+</div>
+</div>
+</div>
+<div class="mt-8 p-4 bg-surface-container rounded-xl flex items-start gap-4 border border-outline-variant/10">
+<span class="material-symbols-outlined text-primary mt-1" data-icon="info" style="font-variation-settings: 'FILL' 1;">info</span>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+                                Portfolio exposure is heavily skewed towards <span class="text-white font-medium underline decoration-primary/30">Systemic Market Volatility</span>. Recommend hedging 15% with stablecoin yields.
+                            </p>
+</div>
+</div>
+<!-- Execution Logs -->
+<div class="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10 h-96 flex flex-col">
+<div class="flex items-center justify-between mb-4">
+<h4 class="font-headline font-bold text-sm uppercase tracking-widest text-slate-500">Execution Logs</h4>
+<span class="material-symbols-outlined text-slate-600 text-sm" data-icon="terminal">terminal</span>
+</div>
+<div class="flex-1 overflow-y-auto font-mono text-[10px] space-y-3 pr-2 scrollbar-thin">
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:10</span>
+<span class="text-tertiary">[SYSTEM]</span>
+<span class="text-on-surface-variant">Initializing Monte Carlo Engine v2.4.1</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:11</span>
+<span class="text-tertiary">[DATA]</span>
+<span class="text-on-surface-variant">Fetching real-time spot prices for BTC/USD, ETH/USD...</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:11</span>
+<span class="text-primary">[MODEL]</span>
+<span class="text-on-surface-variant">Running 1,000 parallel iterations on Quantum Core...</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:13</span>
+<span class="text-primary">[MODEL]</span>
+<span class="text-on-surface-variant">Iteration 250/1000: Convergence achieved (0.0024 variance)</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:15</span>
+<span class="text-primary">[MODEL]</span>
+<span class="text-on-surface-variant">Iteration 500/1000: Stabilizing tail risk parameters...</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:18</span>
+<span class="text-primary">[MODEL]</span>
+<span class="text-on-surface-variant">Iteration 1000/1000: Final results synthesized.</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:20</span>
+<span class="text-tertiary">[SYSTEM]</span>
+<span class="text-on-surface-variant">Writing results to database: RUN_ID_045_EXPORTED</span>
+</div>
+<div class="flex gap-4">
+<span class="text-slate-600">14:22:20</span>
+<span class="text-tertiary">[SYSTEM]</span>
+<span class="text-on-surface-variant">Simulation successfully completed in 10.4s</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Strategy Suggestions (Bento Style) -->
+<section class="mt-10">
+<h4 class="font-headline font-bold text-lg mb-6">Optimization Pathways</h4>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-primary" data-icon="balance">balance</span>
+</div>
+<h5 class="font-bold mb-2">Rebalance Allocation</h5>
+<p class="text-xs text-on-surface-variant leading-relaxed">Shift 5% from BTC-PERP to USDC-Yield to decrease max drawdown potential by 1.2%.</p>
+</div>
+<div class="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-primary" data-icon="security">security</span>
+</div>
+<h5 class="font-bold mb-2">Hedge Exposure</h5>
+<p class="text-xs text-on-surface-variant leading-relaxed">Implement a delta-neutral strategy on SOL exposure to mitigate the identified tail risk.</p>
+</div>
+<div class="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-primary" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<h5 class="font-bold mb-2">Deploy AI Agent</h5>
+<p class="text-xs text-on-surface-variant leading-relaxed">Set RUN_045 as the baseline for automated execution in the Alpha Stream.</p>
+</div>
+</div>
+</section>
+</div>
+<!-- Floating Glassmorphism Alert -->
+<div class="fixed bottom-8 right-8 glass-panel border border-outline-variant/20 p-6 rounded-2xl flex items-center gap-6 shadow-2xl z-50 max-w-sm">
+<div class="flex-shrink-0 relative">
+<div class="w-12 h-12 rounded-full quantum-gradient flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-fixed" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<div class="absolute -top-1 -right-1 w-4 h-4 bg-tertiary rounded-full border-2 border-background flex items-center justify-center">
+<span class="material-symbols-outlined text-[8px] font-black" data-icon="check">check</span>
+</div>
+</div>
+<div>
+<h6 class="font-bold text-sm mb-1">Execution Ready</h6>
+<p class="text-[11px] text-on-surface-variant">The simulation shows 14% improvement over current strategy. Apply now?</p>
+<div class="mt-3 flex gap-4">
+<button class="text-[11px] font-bold text-primary">EXECUTE RUN_045</button>
+<button class="text-[11px] font-bold text-slate-500">DISMISS</button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

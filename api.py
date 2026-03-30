@@ -1727,7 +1727,7 @@ def set_ibm_quantum_token():
     """
     Store an IBM Quantum API token and verify connectivity.
 
-    Body: {"token": "<IBM Quantum API token>"}
+    Body: {"token": "<IBM Quantum API token>", "instance": "<optional CRN>"} (alias: crn)
     Tenant: integration_effective_tenant_id() (X-Tenant-Id when using static API_KEY).
 
     On success returns {"ok": true, "backends": ["ibm_kyiv", ...]}
@@ -1737,9 +1737,10 @@ def set_ibm_quantum_token():
     token = body.get('token', '')
     if not token:
         return error_response('token field is required', 400)
+    instance_crn = (body.get('instance') or body.get('crn') or '').strip() or None
 
     tid = integration_effective_tenant_id()
-    result = ibm_quantum_service.set_token(tid, token)
+    result = ibm_quantum_service.set_token(tid, token, instance_crn)
     if not result.get('ok'):
         return error_response(result.get('error', 'IBM Quantum connection failed'), 400)
 
@@ -1753,6 +1754,32 @@ def set_ibm_quantum_token():
     except Exception:
         pass
     return success_response({**result, "tenant_id": tid})
+
+
+@app.route('/api/config/ibm-quantum/verify', methods=['POST'])
+@require_api_key
+def verify_ibm_quantum_token():
+    """
+    Validate an IBM Quantum API token without persisting (dry-run).
+
+    Body: {"token": "<IBM Quantum API token>", "instance": "<optional CRN>"} (alias: crn)
+    Tenant: integration_effective_tenant_id() (X-Tenant-Id when using static API_KEY).
+
+    On success returns ok, backends, ibm_instances, ibm_active_instance, tenant_id.
+    On failure returns 400 with error message (same shape as connect failure).
+    """
+    body = request.get_json(silent=True) or {}
+    token = body.get('token', '')
+    if not token:
+        return error_response('token field is required', 400)
+    instance_crn = (body.get('instance') or body.get('crn') or '').strip() or None
+
+    tid = integration_effective_tenant_id()
+    result = ibm_quantum_service.verify_token(tid, token, instance_crn)
+    if not result.get('ok'):
+        return error_response(result.get('error', 'IBM Quantum verification failed'), 400)
+
+    return success_response(result)
 
 
 @app.route('/api/config/ibm-quantum', methods=['DELETE'])
@@ -1773,7 +1800,13 @@ def clear_ibm_quantum_token():
 def get_ibm_quantum_status():
     """Return IBM Quantum connection status for the effective tenant."""
     tid = integration_effective_tenant_id()
-    return success_response(ibm_quantum_service.get_status(tid))
+    status = ibm_quantum_service.get_status(tid)
+    status['integration_context'] = {
+        'tenant_id': tid,
+        'secrets_persistence': ibm_quantum_service.secrets_persistence_enabled(),
+        'api_db_basename': os.path.basename(API_DB_PATH),
+    }
+    return success_response(status)
 
 
 @app.route('/api/config/ibm-quantum/workloads', methods=['GET'])
@@ -1808,6 +1841,79 @@ def get_ibm_quantum_workloads():
             'ibm_quantum_workloads_list',
             {'tenant_id': tid},
             {'count': len(result.get('workloads') or [])},
+            200,
+        )
+    except Exception:
+        pass
+    return success_response(result)
+
+
+@app.route('/api/config/ibm-quantum/smoke-test', methods=['POST'])
+@require_api_key
+def post_ibm_quantum_smoke_test():
+    """
+    VQE-shaped IBM Runtime smoke: market data (tickers or returns/covariance) + one EfficientSU2 sample.
+
+    Body:
+      mode: "hardware" | "simulator" (default hardware)
+      tickers: optional list of symbols (default Mag 7 + JPM when omitted)
+      start_date / end_date: optional yfinance window (or startDate / endDate)
+      returns / covariance: optional matrix path (same as portfolio optimize)
+      asset_names: optional with matrix path
+    Tenant: integration_effective_tenant_id().
+    """
+    body = request.get_json(silent=True) or {}
+    mode = (body.get('mode') or 'hardware').strip().lower()
+    if mode not in ('hardware', 'simulator'):
+        return error_response("mode must be 'hardware' or 'simulator'", 400)
+
+    market_payload = {}
+    if body.get('returns') is not None and body.get('covariance') is not None:
+        market_payload['returns'] = body.get('returns')
+        market_payload['covariance'] = body.get('covariance')
+        if body.get('asset_names') is not None:
+            market_payload['asset_names'] = body.get('asset_names')
+    else:
+        if body.get('tickers') is not None:
+            market_payload['tickers'] = body.get('tickers')
+        sd = body.get('start_date') or body.get('startDate')
+        ed = body.get('end_date') or body.get('endDate')
+        if sd:
+            market_payload['start_date'] = sd
+        if ed:
+            market_payload['end_date'] = ed
+
+    tid = integration_effective_tenant_id()
+    result = ibm_quantum_service.hardware_smoke_test(
+        tid, mode=mode, market_payload=market_payload or None
+    )
+    if not result.get('ok'):
+        err = result.get('error') or 'IBM Quantum smoke test failed'
+        err_l = err.lower()
+        if 'not installed' in err_l:
+            http_status = 503
+        elif result.get('configured') is False:
+            http_status = 400
+        else:
+            http_status = 502
+        return error_response(
+            err,
+            code='IBM_SMOKE_TEST_FAILED',
+            status=http_status,
+        )
+    try:
+        log_business_audit(
+            'ibm_quantum_smoke_test',
+            {'tenant_id': tid},
+            {
+                'backend': result.get('backend'),
+                'mode': result.get('mode'),
+                'simulator': result.get('simulator'),
+                'elapsed_ms': result.get('elapsed_ms'),
+                'n_assets': result.get('n_assets'),
+                'market_source': result.get('market_source'),
+                'smoke_profile': result.get('smoke_profile'),
+            },
             200,
         )
     except Exception:

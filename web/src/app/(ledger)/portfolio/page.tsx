@@ -5,6 +5,7 @@ import { Suspense, useEffect, useRef } from "react";
 
 import QuantumPortfolioDashboard from "@/components/CustomizableQuantumDashboard";
 import { useLedgerSession } from "@/context/LedgerSessionContext";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
 
 function PortfolioHydrator() {
   const searchParams = useSearchParams();
@@ -49,7 +50,8 @@ function PortfolioHydrator() {
   return null;
 }
 
-export default function PortfolioPage() {
+export default function PortfolioPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   return (
     <Suspense fallback={null}>
       <PortfolioHydrator />

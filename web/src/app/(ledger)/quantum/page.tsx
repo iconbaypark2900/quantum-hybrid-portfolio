@@ -8,12 +8,23 @@ import {
 import { apiHealthPresentation } from "@/lib/quantumHealth";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
 import SessionBanner from "@/components/SessionBanner";
+import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
+import {
+  IBM_SMOKE_TEST_PRESETS,
+  SMOKE_PRESET_MAG7_FIN_TILT,
+  formatSmokePresetTickers,
+  isCoreEtfInput,
+  isMag7FinTiltInput,
+} from "@/lib/quantumSmokePresets";
 
-export default function QuantumPage() {
+export default function QuantumPage(props: NextClientPageProps) {
+  useNextPageProps(props);
   const {
     ibm,
     token,
     setToken,
+    instanceCrn,
+    setInstanceCrn,
     connecting,
     bootstrapLoading,
     apiHealth,
@@ -31,6 +42,16 @@ export default function QuantumPage() {
     integrations,
     handleConnect,
     handleDisconnect,
+    handleVerify,
+    verifying,
+    verifyPreview,
+    smokeMode,
+    setSmokeMode,
+    smokeTickersInput,
+    setSmokeTickersInput,
+    smokeRunning,
+    smokeResult,
+    handleSmokeTest,
     submitJob,
   } = useQuantumEngine();
 
@@ -105,6 +126,23 @@ export default function QuantumPage() {
         — use the same enterprise selection so the token applies to the same{" "}
         <code className="font-mono text-[10px]">tenant_id</code>.
       </div>
+
+      {ibm.integration_context ? (
+        <div className="rounded-lg border border-ql-outline-variant/15 bg-ql-surface-low/50 px-4 py-2 text-[11px] text-ql-on-surface-variant font-mono">
+          <span className="text-ql-on-surface-variant font-sans font-bold uppercase tracking-wider text-[10px] mr-2">
+            Server context
+          </span>
+          tenant{" "}
+          <span className="text-ql-primary">{ibm.integration_context.tenant_id}</span>
+          {" · "}
+          DB <span className="text-ql-secondary">{ibm.integration_context.api_db_basename}</span>
+          {" · "}
+          secrets persist:{" "}
+          <span className={ibm.integration_context.secrets_persistence ? "text-ql-tertiary" : "text-amber-400"}>
+            {ibm.integration_context.secrets_persistence ? "yes" : "no"}
+          </span>
+        </div>
+      ) : null}
 
       {bannerError && (
         <div
@@ -210,6 +248,33 @@ export default function QuantumPage() {
               {ibm.error}
             </p>
           ) : null}
+
+          {ibm.configured &&
+          (ibm.ibm_instances?.length || ibm.ibm_active_instance || ibm.ibm_instances_error) ? (
+            <div className="mt-4 rounded-lg border border-ql-outline-variant/15 bg-ql-surface-container/40 px-3 py-2 text-[11px] text-ql-on-surface-variant">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-ql-on-surface-variant mb-1">
+                IBM account (runtime)
+              </p>
+              {ibm.ibm_active_instance ? (
+                <p className="font-mono text-[10px] break-all mb-1">
+                  Active: {ibm.ibm_active_instance}
+                </p>
+              ) : null}
+              {ibm.ibm_instances?.length ? (
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {ibm.ibm_instances.map((row, i) => (
+                    <li key={i}>
+                      {[row.name, row.plan].filter(Boolean).join(" · ") || "instance"}
+                      {row.crn_suffix ? ` · …${row.crn_suffix}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {ibm.ibm_instances_error ? (
+                <p className="text-amber-300 text-[10px] mt-1">{ibm.ibm_instances_error}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="md:col-span-4 bg-ql-surface-container rounded-xl p-6">
@@ -224,8 +289,11 @@ export default function QuantumPage() {
             >
               quantum.ibm.com
             </a>
-            . Sent to <code className="text-[10px] font-mono">POST /api/config/ibm-quantum</code>{" "}
-            for the <strong className="text-ql-on-surface">selected enterprise</strong>, persisted
+            . Optional <strong className="text-ql-on-surface">instance CRN</strong> (from IBM
+            Instances) is sent as <code className="text-[10px] font-mono">instance</code> and
+            stored in integration metadata. Sent to{" "}
+            <code className="text-[10px] font-mono">POST /api/config/ibm-quantum</code> for the{" "}
+            <strong className="text-ql-on-surface">selected enterprise</strong>, persisted
             server-side (not in the Next.js bundle).
           </p>
           <div
@@ -251,6 +319,12 @@ export default function QuantumPage() {
               {ibm.configured ? "Connected" : "Simulator Mode"}
             </span>
           </div>
+          {ibm.configured && ibm.ibm_saved_instance_crn_suffix ? (
+            <p className="text-[10px] text-ql-on-surface-variant font-mono mb-4">
+              Saved instance (hint):{" "}
+              <span className="text-ql-secondary">{ibm.ibm_saved_instance_crn_suffix}</span>
+            </p>
+          ) : null}
 
           {!ibm.configured ? (
             <div className="space-y-3">
@@ -264,17 +338,102 @@ export default function QuantumPage() {
                 placeholder="IBM Quantum API token"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void handleConnect()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleConnect();
+                  }
+                }}
                 className="w-full bg-ql-surface-lowest border border-ql-outline-variant/20 rounded-lg px-3 py-2.5 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
               />
-              <button
-                type="button"
-                onClick={() => void handleConnect()}
-                disabled={connecting || !token.trim()}
-                className="w-full py-2.5 bg-ql-surface-high border border-ql-outline-variant/20 rounded-lg text-sm font-bold text-ql-primary hover:bg-ql-surface-highest transition-colors disabled:opacity-50"
-              >
-                {connecting ? "Connecting..." : "Connect"}
-              </button>
+              <div>
+                <label
+                  htmlFor="ibm-instance-crn"
+                  className="text-[10px] font-bold uppercase tracking-widest text-ql-on-surface-variant block mb-1.5"
+                >
+                  Instance CRN (optional)
+                </label>
+                <input
+                  id="ibm-instance-crn"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="crn:v1:quantum:… (Open Plan / specific instance)"
+                  value={instanceCrn}
+                  onChange={(e) => setInstanceCrn(e.target.value)}
+                  className="w-full bg-ql-surface-lowest border border-ql-outline-variant/20 rounded-lg px-3 py-2.5 text-xs font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleVerify()}
+                  disabled={verifying || connecting || !token.trim()}
+                  className="flex-1 py-2.5 border border-ql-outline-variant/30 rounded-lg text-sm font-bold text-ql-on-surface hover:bg-ql-surface-high transition-colors disabled:opacity-50"
+                >
+                  {verifying ? "Verifying…" : "Verify token"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleConnect()}
+                  disabled={connecting || verifying || !token.trim()}
+                  className="flex-1 py-2.5 bg-ql-surface-high border border-ql-outline-variant/20 rounded-lg text-sm font-bold text-ql-primary hover:bg-ql-surface-highest transition-colors disabled:opacity-50"
+                >
+                  {connecting ? "Connecting..." : "Connect"}
+                </button>
+              </div>
+              <p className="text-[10px] text-ql-on-surface-variant leading-relaxed">
+                <strong className="text-ql-on-surface">Verify</strong> checks IBM Runtime (backends
+                + instances) for the selected enterprise without saving the token. Add a CRN if IBM
+                requires a specific instance.{" "}
+                <strong className="text-ql-on-surface">Connect</strong> saves token (and optional
+                CRN) for this server’s DB and tenant.
+              </p>
+              {verifyPreview ? (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-xs font-mono ${
+                    verifyPreview.ok
+                      ? "border-ql-tertiary/40 bg-ql-tertiary/10 text-ql-on-surface"
+                      : "border-ql-error/40 bg-ql-error/10 text-ql-error"
+                  }`}
+                  role="status"
+                >
+                  {verifyPreview.ok ? (
+                    <div className="space-y-1">
+                      <p>
+                        OK — {verifyPreview.backends?.length ?? 0} backend
+                        {(verifyPreview.backends?.length ?? 0) === 1 ? "" : "s"} visible
+                      </p>
+                      {verifyPreview.ibm_active_instance ? (
+                        <p className="text-[10px] opacity-90 break-all">
+                          Active instance: {verifyPreview.ibm_active_instance}
+                        </p>
+                      ) : null}
+                      {verifyPreview.ibm_instances?.length ? (
+                        <ul className="text-[10px] list-disc pl-4 space-y-0.5 opacity-95">
+                          {verifyPreview.ibm_instances.map((row, i) => (
+                            <li key={i}>
+                              {[row.name, row.plan].filter(Boolean).join(" · ") || "instance"}
+                              {row.crn_suffix ? ` · …${row.crn_suffix}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {verifyPreview.ibm_instances_error ? (
+                        <p className="text-[10px] text-amber-300">
+                          Instances: {verifyPreview.ibm_instances_error}
+                        </p>
+                      ) : null}
+                      {verifyPreview.ibm_saved_instance_crn_suffix ? (
+                        <p className="text-[10px] opacity-90">
+                          Request CRN hint: {verifyPreview.ibm_saved_instance_crn_suffix}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p>{verifyPreview.error ?? "Verification failed"}</p>
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : (
             <button
@@ -432,6 +591,172 @@ export default function QuantumPage() {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+
+        <div className="md:col-span-12 bg-ql-surface-container rounded-xl p-6 border border-ql-outline-variant/10">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+            <div>
+              <h3 className="font-headline text-lg font-bold">
+                IBM Runtime smoke test
+              </h3>
+              <p className="text-[11px] text-ql-on-surface-variant mt-1 max-w-2xl">
+                Loads annualized returns and covariance (same pipeline as portfolio optimize),
+                then runs one <strong className="text-ql-on-surface">EfficientSU2</strong> sample on
+                IBM Runtime (fixed parameters — same ansatz family as VQE on hardware). Reports
+                weights from counts and a single-eval Sharpe-style ratio. Choose a preset below (or
+                custom tickers).{" "}
+                <code className="font-mono text-[10px]">
+                  POST /api/config/ibm-quantum/smoke-test
+                </code>
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 shrink-0 w-full sm:w-auto sm:min-w-[280px]">
+              <div className="flex flex-wrap gap-2 justify-end sm:justify-start">
+                {IBM_SMOKE_TEST_PRESETS.map((preset) => {
+                  const selected =
+                    preset.id === SMOKE_PRESET_MAG7_FIN_TILT.id
+                      ? isMag7FinTiltInput(smokeTickersInput)
+                      : isCoreEtfInput(smokeTickersInput);
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      title={preset.description}
+                      disabled={!ibm.configured || smokeRunning}
+                      onClick={() =>
+                        setSmokeTickersInput(
+                          preset.id === SMOKE_PRESET_MAG7_FIN_TILT.id
+                            ? ""
+                            : formatSmokePresetTickers(preset.tickers)
+                        )
+                      }
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        selected
+                          ? "border-ql-primary bg-ql-primary/15 text-ql-primary"
+                          : "border-ql-outline-variant/30 bg-ql-surface-low text-ql-on-surface-variant hover:border-ql-outline-variant/50 hover:text-ql-on-surface"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-end">
+                <label className="text-[10px] font-bold uppercase text-ql-on-surface-variant sr-only">
+                  Smoke target
+                </label>
+                <select
+                  value={smokeMode}
+                  onChange={(e) =>
+                    setSmokeMode(e.target.value as "hardware" | "simulator")
+                  }
+                  disabled={!ibm.configured || smokeRunning}
+                  className="bg-ql-surface-low border border-ql-outline-variant/20 rounded-lg px-3 py-2 text-xs font-mono focus:border-ql-primary outline-none disabled:opacity-50 w-full sm:w-auto"
+                >
+                  <option value="hardware">Hardware (QPU)</option>
+                  <option value="simulator">Cloud simulator</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void handleSmokeTest()}
+                  disabled={!ibm.configured || smokeRunning}
+                  className="px-4 py-2 bg-ql-tertiary/20 text-ql-tertiary text-xs font-bold rounded-lg hover:bg-ql-tertiary/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-ql-tertiary/25 whitespace-nowrap"
+                >
+                  {smokeRunning ? "Running smoke test…" : "Run smoke test"}
+                </button>
+              </div>
+            </div>
+          </div>
+          <details className="mt-4 group border border-ql-outline-variant/15 rounded-lg px-3 py-2 bg-ql-surface-low/50">
+            <summary className="text-[11px] font-bold text-ql-on-surface-variant cursor-pointer list-none flex items-center gap-2 [&::-webkit-details-marker]:hidden">
+              <span className="text-ql-on-surface-variant group-open:rotate-90 transition-transform inline-block">
+                ▸
+              </span>
+              Custom tickers (optional override)
+            </summary>
+            <p className="text-[10px] text-ql-on-surface-variant mt-2 mb-2 pl-5">
+              Comma-separated symbols. Leave empty for Mag 7 + JPM (same as the first preset).
+            </p>
+            <input
+              type="text"
+              value={smokeTickersInput}
+              onChange={(e) => setSmokeTickersInput(e.target.value)}
+              disabled={!ibm.configured || smokeRunning}
+              placeholder="e.g. AAPL, MSFT, …"
+              className="w-full max-w-2xl ml-5 mb-1 bg-ql-surface-low border border-ql-outline-variant/20 rounded-lg px-3 py-2 text-xs font-mono focus:border-ql-primary outline-none disabled:opacity-50"
+              aria-label="Custom smoke test tickers"
+            />
+          </details>
+          {!ibm.configured ? (
+            <p className="text-ql-on-surface-variant text-sm py-4 border border-dashed border-ql-outline-variant/30 rounded-lg text-center">
+              Connect IBM Quantum above to run a Runtime smoke test.
+            </p>
+          ) : smokeResult ? (
+            <div
+              className={`rounded-lg p-4 text-sm font-mono text-xs ${
+                smokeResult.ok
+                  ? "bg-ql-surface-low border border-ql-tertiary/30 text-ql-on-surface"
+                  : "bg-ql-surface-low border border-ql-error/40 text-ql-error"
+              }`}
+              role="status"
+            >
+              {smokeResult.ok ? (
+                <ul className="space-y-1 text-ql-on-surface">
+                  <li>
+                    <span className="text-ql-on-surface-variant">Market:</span>{" "}
+                    {smokeResult.market_source ?? "—"} —{" "}
+                    {(smokeResult.tickers ?? []).join(", ") || "—"}
+                  </li>
+                  <li>
+                    <span className="text-ql-on-surface-variant">Backend:</span>{" "}
+                    {smokeResult.backend ?? "—"}
+                    {smokeResult.simulator != null ? (
+                      <span className="text-ql-on-surface-variant">
+                        {" "}
+                        ({smokeResult.simulator ? "simulator" : "QPU"})
+                      </span>
+                    ) : null}
+                  </li>
+                  <li>
+                    <span className="text-ql-on-surface-variant">Sharpe (single sample):</span>{" "}
+                    {smokeResult.sharpe_ratio != null && smokeResult.sharpe_ratio !== undefined
+                      ? smokeResult.sharpe_ratio.toFixed(4)
+                      : "—"}
+                  </li>
+                  <li>
+                    <span className="text-ql-on-surface-variant">Weights:</span>{" "}
+                    {smokeResult.weights?.length
+                      ? smokeResult.weights.map((w) => w.toFixed(4)).join(", ")
+                      : "—"}
+                  </li>
+                  <li>
+                    <span className="text-ql-on-surface-variant">Elapsed:</span>{" "}
+                    {smokeResult.elapsed_ms != null
+                      ? `${smokeResult.elapsed_ms} ms`
+                      : "—"}
+                  </li>
+                  <li>
+                    <span className="text-ql-on-surface-variant">Counts:</span>{" "}
+                    {smokeResult.counts && Object.keys(smokeResult.counts).length
+                      ? JSON.stringify(smokeResult.counts)
+                      : "—"}
+                  </li>
+                  {smokeResult.job_id ? (
+                    <li>
+                      <span className="text-ql-on-surface-variant">Job ID:</span>{" "}
+                      {smokeResult.job_id}
+                    </li>
+                  ) : null}
+                </ul>
+              ) : (
+                <p>{smokeResult.error ?? "Smoke test failed"}</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-ql-on-surface-variant">
+              No smoke run yet for this session. Hardware runs may take several minutes in queue.
+            </p>
           )}
         </div>
 

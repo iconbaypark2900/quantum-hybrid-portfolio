@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quantum Ledger | Quantum Engine Status</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-variant": "#333538",
+              "surface-container-lowest": "#0c0e11",
+              "on-primary-container": "#00375a",
+              "primary-fixed-dim": "#98cbff",
+              "on-primary-fixed": "#001d33",
+              "on-surface": "#e2e2e6",
+              "surface-container-high": "#282a2d",
+              "outline-variant": "#3f4852",
+              "tertiary-fixed-dim": "#00e475",
+              "on-primary": "#003354",
+              "surface-container": "#1e2023",
+              "primary-container": "#00a3ff",
+              "on-tertiary-fixed-variant": "#005226",
+              "primary": "#98cbff",
+              "on-secondary-fixed": "#001d33",
+              "error-container": "#93000a",
+              "background": "#111316",
+              "on-surface-variant": "#bec7d4",
+              "on-secondary-fixed-variant": "#22496b",
+              "surface": "#111316",
+              "on-tertiary-fixed": "#00210b",
+              "outline": "#88919d",
+              "on-secondary": "#023353",
+              "on-error-container": "#ffdad6",
+              "inverse-on-surface": "#2f3034",
+              "tertiary-fixed": "#62ff96",
+              "secondary": "#a5caf2",
+              "primary-fixed": "#cfe5ff",
+              "surface-bright": "#37393d",
+              "surface-tint": "#98cbff",
+              "surface-container-low": "#1a1c1f",
+              "on-tertiary": "#003918",
+              "secondary-container": "#22496b",
+              "on-primary-fixed-variant": "#004a77",
+              "inverse-surface": "#e2e2e6",
+              "tertiary": "#00e475",
+              "on-error": "#690005",
+              "error": "#ffb4ab",
+              "secondary-fixed": "#cfe5ff",
+              "secondary-fixed-dim": "#a5caf2",
+              "on-background": "#e2e2e6",
+              "inverse-primary": "#00629d",
+              "on-tertiary-container": "#003d1b",
+              "on-secondary-container": "#94b9e0",
+              "surface-container-highest": "#333538",
+              "surface-dim": "#111316",
+              "tertiary-container": "#00b45b"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(40, 42, 45, 0.6);
+            backdrop-filter: blur(24px);
+        }
+        .quantum-gradient {
+            background: linear-gradient(135deg, #98cbff 0%, #00a3ff 100%);
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #111316; }
+        ::-webkit-scrollbar-thumb { background: #3f4852; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body overflow-hidden">
+<!-- SideNavBar -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-[#111316] border-r border-[#3f4852]/15 flex flex-col py-6 z-50">
+<div class="px-6 mb-10">
+<h1 class="font-headline text-[#98cbff] text-lg font-black tracking-tighter">Quantum Ledger</h1>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<p class="text-[10px] text-slate-500 font-medium uppercase tracking-widest">V1.0.4 Active</p>
+</div>
+</div>
+<nav class="flex-1 px-3 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all font-label text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Executive Dashboard</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all font-label text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="architecture">architecture</span>
+<span>Strategy Builder</span>
+</a>
+<!-- Active State -->
+<a class="flex items-center gap-3 bg-[#1e2023] text-[#98cbff] rounded-lg px-4 py-3 border-l-4 border-[#00a3ff] scale-[0.99] duration-150 font-label text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="memory">memory</span>
+<span>Quantum Engine</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all font-label text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="query_stats">query_stats</span>
+<span>Simulations</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all font-label text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="mt-auto px-3 space-y-1">
+<button class="w-full mb-6 quantum-gradient text-on-primary-fixed py-3 rounded-lg font-headline font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="bolt">bolt</span>
+                Optimize Portfolio
+            </button>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-2 hover:text-white transition-all text-xs font-medium" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="help">help</span>
+<span>Help Center</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-2 hover:text-white transition-all text-xs font-medium" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="code">code</span>
+<span>API Docs</span>
+</a>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-64 min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-8 h-16 bg-[#111316] z-40 sticky top-0">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-2">
+<span class="text-slate-400 font-label text-xs uppercase tracking-[0.2em]">Current Node</span>
+<span class="font-headline font-bold text-primary tracking-tight">Q-Cluster-04</span>
+</div>
+<div class="h-4 w-[1px] bg-outline-variant/20"></div>
+<div class="flex gap-6">
+<a class="text-slate-400 hover:text-white transition-colors font-headline font-bold text-sm tracking-tight" href="#">Market Live</a>
+<a class="text-slate-400 hover:text-white transition-colors font-headline font-bold text-sm tracking-tight" href="#">Alpha Stream</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative">
+<span class="material-symbols-outlined text-slate-400 p-2 hover:text-primary transition-colors cursor-pointer" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-background"></span>
+</div>
+<span class="material-symbols-outlined text-slate-400 p-2 hover:text-primary transition-colors cursor-pointer" data-icon="account_balance_wallet">account_balance_wallet</span>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant/30 ml-2">
+<img alt="User Profile" data-alt="Close up portrait of a professional trader in a dimly lit office with cool blue ambient lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8fGo2zyULhfR9PUrX3ck-rj1A8072-wrmvRxzt6MH9UyU9UUewsQ-1C_fKaSh7U2bpeqY4V4jMkqDsGcVq3hFp5lyaE2b7tHL8hcTbQicG72IhWeUk3LrJ33n4vMYCV27iGLAYhibUTQuPiPKtJ4bcSAAhj-9obGLkLFA5O8Bg8bqSUp-dDWzCx-eTawo5ise8tsC5bPNaxYtFV3BMSmY_DAbGaZIExvPPtXlAXk5DgwHJcy8YClU8KMwLLxGN0asN7lGqDmkT0jK"/>
+</div>
+</div>
+</header>
+<!-- Dashboard Content -->
+<div class="flex-1 p-8 overflow-y-auto space-y-8 max-w-[1600px] mx-auto w-full">
+<!-- Hero Stats: Asymmetrical Bento Layout -->
+<div class="grid grid-cols-12 gap-6">
+<!-- Primary Status Card -->
+<div class="col-span-12 lg:col-span-8 bg-surface-container-low rounded-xl p-8 flex flex-col justify-between relative overflow-hidden">
+<div class="absolute top-0 right-0 w-64 h-64 quantum-gradient opacity-5 blur-[100px] -mr-32 -mt-32"></div>
+<div class="flex justify-between items-start z-10">
+<div>
+<p class="text-slate-500 font-label text-[10px] uppercase tracking-[0.2em] mb-2">System Health</p>
+<h2 class="font-headline text-5xl font-bold tracking-tighter text-on-surface mb-1">99.98%</h2>
+<p class="text-tertiary font-medium text-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="link">link</span>
+                                Entanglement Sync Nominal
+                            </p>
+</div>
+<div class="text-right">
+<p class="text-slate-500 font-label text-[10px] uppercase tracking-[0.2em] mb-2">Gate Fidelity</p>
+<h3 class="font-headline text-2xl font-bold text-primary tracking-tight">0.99994</h3>
+<p class="text-slate-400 text-xs">2-Qubit Operations</p>
+</div>
+</div>
+<div class="mt-12 z-10">
+<p class="text-slate-500 font-label text-[10px] uppercase tracking-[0.2em] mb-4">Quantum Noise Pulse</p>
+<div class="h-24 w-full flex items-end gap-[2px]">
+<!-- Mock Sparkline/Pulse -->
+<div class="w-1 bg-primary/20 h-1/2"></div>
+<div class="w-1 bg-primary/30 h-2/3"></div>
+<div class="w-1 bg-primary/40 h-1/2"></div>
+<div class="w-1 bg-primary/60 h-3/4"></div>
+<div class="w-1 bg-primary h-full"></div>
+<div class="w-1 bg-primary/70 h-1/2"></div>
+<div class="w-1 bg-primary/40 h-2/3"></div>
+<div class="w-1 bg-primary/20 h-1/4"></div>
+<div class="w-1 bg-primary/30 h-1/2"></div>
+<div class="w-1 bg-primary/40 h-3/4"></div>
+<div class="w-1 bg-primary/20 h-1/2"></div>
+<div class="w-1 bg-primary/30 h-1/4"></div>
+<div class="w-1 bg-primary/60 h-2/3"></div>
+<div class="w-1 bg-primary/40 h-1/2"></div>
+<div class="w-1 bg-primary/20 h-1/3"></div>
+<div class="w-1 bg-primary/40 h-1/2"></div>
+<div class="w-1 bg-primary/30 h-3/4"></div>
+<div class="w-1 bg-primary/60 h-2/3"></div>
+<div class="w-1 bg-primary/80 h-full"></div>
+<div class="w-1 bg-primary/40 h-2/3"></div>
+<div class="w-1 bg-primary/20 h-1/2"></div>
+<div class="w-1 bg-primary/30 h-3/4"></div>
+<div class="w-1 bg-primary/40 h-1/2"></div>
+<div class="w-1 bg-primary/20 h-1/4"></div>
+<div class="w-1 bg-primary/60 h-2/3"></div>
+<div class="w-1 bg-primary/40 h-1/2"></div>
+</div>
+</div>
+</div>
+<!-- Secondary Metric Card -->
+<div class="col-span-12 lg:col-span-4 bg-surface-container rounded-xl p-8 border border-outline-variant/10 flex flex-col justify-between">
+<div>
+<p class="text-slate-500 font-label text-[10px] uppercase tracking-[0.2em] mb-2">Quantum Advantage</p>
+<h3 class="font-headline text-4xl font-bold text-white tracking-tighter">1.42<span class="text-xl text-primary font-normal">PFLOPS</span></h3>
+<p class="text-slate-400 text-sm mt-2 leading-relaxed">System performance is exceeding classical simulation baseline by 42x for current risk-parity models.</p>
+</div>
+<div class="pt-8 border-t border-outline-variant/10 mt-8 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary" data-icon="ac_unit">ac_unit</span>
+<span class="text-xs text-slate-300 font-medium">Core: 14mK</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="waves">waves</span>
+<span class="text-xs text-slate-300 font-medium">Coherence: 142µs</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Lower Grid: Queue and Detailed Monitoring -->
+<div class="grid grid-cols-12 gap-8">
+<!-- Active Task Queue -->
+<div class="col-span-12 md:col-span-5 space-y-6">
+<div class="flex items-center justify-between">
+<h4 class="font-headline text-lg font-bold">Active Task Queue</h4>
+<span class="bg-surface-container px-2 py-1 rounded text-[10px] font-bold text-primary uppercase tracking-widest">4 Tasks Pending</span>
+</div>
+<div class="space-y-4">
+<!-- Task Item -->
+<div class="bg-surface-container-low p-4 rounded-lg flex items-center justify-between group cursor-pointer hover:bg-surface-container transition-all">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="monitoring">monitoring</span>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Monte Carlo: Volatility-X</p>
+<p class="text-[10px] text-slate-500 uppercase tracking-wider">Priority: Critical • Job #4829</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-xs font-headline font-bold text-tertiary">74%</p>
+<div class="w-16 h-1 bg-outline-variant/20 rounded-full mt-1 overflow-hidden">
+<div class="w-3/4 h-full bg-tertiary"></div>
+</div>
+</div>
+</div>
+<!-- Task Item -->
+<div class="bg-surface-container-low p-4 rounded-lg flex items-center justify-between group cursor-pointer hover:bg-surface-container transition-all">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-outline-variant/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-slate-500" data-icon="hub">hub</span>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Arbitrage Matrix Expansion</p>
+<p class="text-[10px] text-slate-500 uppercase tracking-wider">Priority: High • Job #4831</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-xs font-headline font-bold text-slate-400">Waiting</p>
+</div>
+</div>
+<!-- Task Item -->
+<div class="bg-surface-container-low p-4 rounded-lg flex items-center justify-between group cursor-pointer hover:bg-surface-container transition-all">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-outline-variant/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-slate-500" data-icon="account_tree">account_tree</span>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Portfolio De-correlation</p>
+<p class="text-[10px] text-slate-500 uppercase tracking-wider">Priority: Med • Job #4832</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-xs font-headline font-bold text-slate-400">Queued</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Live Telemetry Visualizer -->
+<div class="col-span-12 md:col-span-7 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/5 relative group">
+<div class="flex items-center justify-between mb-8">
+<div>
+<h4 class="font-headline text-lg font-bold">Quantum Advantage Vector</h4>
+<p class="text-xs text-slate-500">Real-time qubit stability vs. environmental decoherence</p>
+</div>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-surface-container text-[10px] font-bold text-slate-400 rounded hover:text-white transition-colors uppercase tracking-widest">1M</button>
+<button class="px-3 py-1 bg-primary text-[10px] font-bold text-on-primary-container rounded uppercase tracking-widest">Live</button>
+</div>
+</div>
+<!-- Schematic Visualizer Background -->
+<div class="aspect-video relative w-full overflow-hidden rounded-lg bg-[#0c0e11]">
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-3/4 h-3/4 rounded-full border border-primary/10 animate-pulse"></div>
+<div class="absolute w-1/2 h-1/2 rounded-full border border-primary/20"></div>
+<div class="absolute w-1/4 h-1/4 rounded-full border border-primary/40"></div>
+</div>
+<!-- Telemetry Grid -->
+<div class="absolute inset-0 grid grid-cols-6 grid-rows-4">
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-r border-b border-outline-variant/5"></div>
+<div class="border-b border-outline-variant/5"></div>
+</div>
+<!-- Plot Image -->
+<div class="absolute inset-0 opacity-40 mix-blend-screen pointer-events-none">
+<img alt="Live Telemetry Graph" class="w-full h-full object-cover" data-alt="Abstract digital visualization of complex data lines and particles flowing in a dark 3D space with blue and green glows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7oBSaT2JB-OdYQF_OdmuLwO3k0qUnHMbqe88PvQGzj763tnLQfOLrns-SLHHcDCVBUlT4cmzLKVpydY5jVXHeJ9GJ26rnk3bwghcasaGH1CLh08PMPl2CmMYkFgFWlwYoFXamqsdZU7e-wszOhenVJhROr1dVODM-Hz733WUO5mmJSZcNDzzNp2TpslIm7Iqgrf-6kNV6l144BqVF7EfFOiI0j-eS6fxQT8vGaZVIpvu2QQopbCTr-2j_BxJ9qMIsd7MvcdhWw06g"/>
+</div>
+<!-- Live Indicators -->
+<div class="absolute bottom-4 left-4 flex gap-4">
+<div class="bg-surface-container-high/80 backdrop-blur-md px-3 py-2 rounded-lg border border-outline-variant/20">
+<p class="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Stability</p>
+<p class="text-sm font-headline font-bold text-tertiary">94.2%</p>
+</div>
+<div class="bg-surface-container-high/80 backdrop-blur-md px-3 py-2 rounded-lg border border-outline-variant/20">
+<p class="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Thermal</p>
+<p class="text-sm font-headline font-bold text-on-surface">0.012K</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer / Global Context Bar -->
+<footer class="mt-auto bg-surface-container-low h-12 flex items-center px-8 border-t border-outline-variant/10">
+<div class="flex items-center gap-6 w-full">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>
+<span class="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Quantum State Locked</span>
+</div>
+<div class="h-3 w-[1px] bg-outline-variant/20"></div>
+<div class="flex items-center gap-4 text-[10px] text-slate-500 font-medium uppercase tracking-widest">
+<span>Active Qubits: 4,096</span>
+<span>Error Correction: Enabled</span>
+<span>Uptime: 14,292h</span>
+</div>
+<div class="ml-auto flex items-center gap-4">
+<span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">System Load</span>
+<div class="w-32 h-1 bg-outline-variant/20 rounded-full">
+<div class="w-1/3 h-full bg-primary"></div>
+</div>
+</div>
+</div>
+</footer>
+</main>
+</body></html>

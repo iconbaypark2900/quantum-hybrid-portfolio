@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quantum Ledger | Simulations Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-background": "#e2e2e6",
+              "tertiary-container": "#00b45b",
+              "on-secondary": "#023353",
+              "on-tertiary-fixed": "#00210b",
+              "on-secondary-fixed": "#001d33",
+              "on-surface": "#e2e2e6",
+              "surface-variant": "#333538",
+              "secondary-fixed": "#cfe5ff",
+              "on-tertiary-fixed-variant": "#005226",
+              "outline-variant": "#3f4852",
+              "surface-bright": "#37393d",
+              "on-tertiary": "#003918",
+              "on-secondary-fixed-variant": "#22496b",
+              "on-tertiary-container": "#003d1b",
+              "inverse-surface": "#e2e2e6",
+              "primary-fixed-dim": "#98cbff",
+              "outline": "#88919d",
+              "surface-container-lowest": "#0c0e11",
+              "surface-tint": "#98cbff",
+              "tertiary-fixed": "#62ff96",
+              "surface": "#111316",
+              "surface-container-low": "#1a1c1f",
+              "primary-fixed": "#cfe5ff",
+              "inverse-on-surface": "#2f3034",
+              "secondary-container": "#22496b",
+              "on-primary-fixed": "#001d33",
+              "surface-dim": "#111316",
+              "on-error-container": "#ffdad6",
+              "surface-container": "#1e2023",
+              "on-primary-fixed-variant": "#004a77",
+              "error-container": "#93000a",
+              "tertiary-fixed-dim": "#00e475",
+              "on-primary": "#003354",
+              "on-secondary-container": "#94b9e0",
+              "background": "#111316",
+              "on-primary-container": "#00375a",
+              "error": "#ffb4ab",
+              "inverse-primary": "#00629d",
+              "secondary-fixed-dim": "#a5caf2",
+              "on-error": "#690005",
+              "on-surface-variant": "#bec7d4",
+              "tertiary": "#00e475",
+              "secondary": "#a5caf2",
+              "primary": "#98cbff",
+              "surface-container-highest": "#333538",
+              "primary-container": "#00a3ff",
+              "surface-container-high": "#282a2d"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-card {
+        background: rgba(40, 42, 45, 0.6);
+        backdrop-filter: blur(24px);
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #111316;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #3f4852;
+        border-radius: 10px;
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body overflow-hidden">
+<!-- Sidebar Navigation -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-[#111316] flex flex-col py-6 border-r border-[#3f4852]/15 z-50">
+<div class="px-6 mb-10">
+<h1 class="font-['Space_Grotesk'] text-[#98cbff] text-lg font-black tracking-tighter">Quantum Ledger</h1>
+<p class="text-slate-500 text-[10px] tracking-widest uppercase mt-1">V1.0.4 Active</p>
+</div>
+<nav class="flex-1 px-3 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-['Inter'] text-sm font-medium">Executive Dashboard</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">architecture</span>
+<span class="font-['Inter'] text-sm font-medium">Strategy Builder</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">memory</span>
+<span class="font-['Inter'] text-sm font-medium">Quantum Engine</span>
+</a>
+<a class="flex items-center gap-3 bg-[#1e2023] text-[#98cbff] rounded-lg px-4 py-3 border-l-4 border-[#00a3ff]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">query_stats</span>
+<span class="font-['Inter'] text-sm font-medium">Simulations</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:bg-[#1a1c1f] transition-all rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-['Inter'] text-sm font-medium">Settings</span>
+</a>
+</nav>
+<div class="px-4 mt-auto space-y-4">
+<button class="w-full py-3 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-bold rounded-lg text-sm shadow-lg shadow-primary/10 hover:opacity-90 transition-all">
+                Optimize Portfolio
+            </button>
+<div class="pt-4 border-t border-outline-variant/15">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-2 hover:text-white transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">help</span>
+<span class="text-xs">Help Center</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-2 hover:text-white transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">code</span>
+<span class="text-xs">API Docs</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 min-h-screen bg-surface flex flex-col">
+<!-- Top Bar -->
+<header class="h-16 flex justify-between items-center w-full px-8 bg-[#1a1c1f] border-b border-outline-variant/5">
+<div class="flex items-center gap-6">
+<div class="relative">
+<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 material-symbols-outlined text-lg">search</span>
+<input class="bg-surface-container-lowest border-none rounded-full pl-10 pr-4 py-1.5 text-xs w-64 focus:ring-1 focus:ring-primary/50 text-on-surface" placeholder="Search simulations..." type="text"/>
+</div>
+<div class="flex items-center gap-4 border-l border-outline-variant/20 pl-6">
+<a class="text-slate-400 font-['Space_Grotesk'] font-bold text-sm tracking-tight hover:text-white transition-colors" href="#">Market Live</a>
+<a class="text-slate-400 font-['Space_Grotesk'] font-bold text-sm tracking-tight hover:text-white transition-colors" href="#">Alpha Stream</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-primary/20 bg-surface-container">
+<img alt="User Profile" data-alt="professional portrait of a financial technology executive with a clean minimalist background and soft cinematic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDolGe7Jd4iYYvWeHXwRZ6AnUiJUp650bworbtky5AGH2gi3DddIUT040SGzNGQx4LPgR4HvEoZh83d7lWVSbgn40KV3zxv3kKudlL_bov8FR4xYv4emuUpnH8rymR1JGqpysZfGBvbrS6k-uVdgKoj9PvR8IZDlKgBz_hYrp5nuDzcdMNpaNQnXnNa8S4L-DGZJGjTvRK3tuA-uVgkt0YG3Z4Htp4CHx0xkQzoIsiYgrMu1HEAWbT-JEwpJx2QnSVN6yyQZ6HsiHTd"/>
+</div>
+</div>
+</header>
+<!-- Workspace Canvas -->
+<div class="p-8 flex-1 overflow-y-auto custom-scrollbar">
+<!-- Header Section -->
+<div class="flex justify-between items-end mb-8">
+<div>
+<span class="text-[10px] font-bold tracking-[0.2em] text-primary uppercase">Workspace / Rapid Test</span>
+<h2 class="text-4xl font-headline font-bold text-on-surface mt-1">Simulation Engine</h2>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-container text-on-surface border border-outline-variant/15 hover:bg-surface-container-high transition-all text-sm font-medium">
+<span class="material-symbols-outlined text-lg">upload_file</span>
+                        Export Data
+                    </button>
+<button class="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary-fixed font-bold hover:opacity-90 transition-all text-sm">
+<span class="material-symbols-outlined text-lg">play_arrow</span>
+                        Run New Simulation
+                    </button>
+</div>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-12 gap-6">
+<!-- Left Column: Scenario Input -->
+<div class="col-span-12 lg:col-span-4 space-y-6">
+<section class="bg-surface-container-low p-6 rounded-xl border border-outline-variant/10">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline font-bold text-lg text-primary">Scenario Parameters</h3>
+<span class="material-symbols-outlined text-slate-500">settings_input_component</span>
+</div>
+<div class="space-y-5">
+<div>
+<label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Macro Trigger</label>
+<select class="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-lg p-3 text-sm text-on-surface focus:border-primary/50 outline-none">
+<option>Geopolitical Shift: APAC Region</option>
+<option>Federal Reserve Rate Hike (+50bps)</option>
+<option>Global Supply Chain Contraction</option>
+<option>Tech Sector Liquidity Event</option>
+</select>
+</div>
+<div class="pt-2">
+<div class="flex justify-between mb-2">
+<label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Volatility Multiplier</label>
+<span class="text-xs text-primary font-mono">2.4x</span>
+</div>
+<div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 65%;"></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4 pt-2">
+<div>
+<label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Sector Rotation</label>
+<div class="flex items-center gap-2 bg-surface-container-lowest p-2 rounded border border-outline-variant/10">
+<span class="material-symbols-outlined text-tertiary text-sm">check_circle</span>
+<span class="text-xs">Energy -&gt; Tech</span>
+</div>
+</div>
+<div>
+<label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Leverage Cap</label>
+<div class="flex items-center gap-2 bg-surface-container-lowest p-2 rounded border border-outline-variant/10">
+<span class="material-symbols-outlined text-primary text-sm">shutter_speed</span>
+<span class="text-xs">1.5x Margin</span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8 p-4 bg-tertiary/5 rounded-lg border border-tertiary/20 flex items-start gap-3">
+<span class="material-symbols-outlined text-tertiary">bolt</span>
+<div>
+<p class="text-xs font-bold text-tertiary">Engine Ready</p>
+<p class="text-[10px] text-on-surface-variant mt-1 leading-relaxed">System has pre-cached historical data for the APAC 2022 crisis comparison.</p>
+</div>
+</div>
+</section>
+<section class="glass-card p-6 rounded-xl border border-outline-variant/10">
+<h3 class="font-headline font-bold text-lg mb-4 text-on-surface">SLM Sentiment Analysis</h3>
+<div class="space-y-4">
+<div class="p-3 bg-surface-container rounded-lg">
+<div class="flex justify-between items-center mb-2">
+<span class="text-[10px] font-mono text-slate-500">SOURCE: REUTERS LIVE</span>
+<span class="px-1.5 py-0.5 rounded bg-error-container text-[9px] font-bold text-white uppercase">Bearish</span>
+</div>
+<p class="text-xs italic text-on-surface-variant leading-relaxed">"Heightened tensions in the South China Sea suggest a 12% increase in shipping insurance premiums..."</p>
+</div>
+<div class="flex items-center justify-between text-[10px] font-bold text-slate-500 pt-2">
+<span>MODEL CONFIDENCE</span>
+<span class="text-tertiary">94.2%</span>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column: Comparative Analysis -->
+<div class="col-span-12 lg:col-span-8">
+<div class="bg-surface-container-low rounded-xl border border-outline-variant/10 overflow-hidden">
+<div class="flex items-center justify-between p-6 border-b border-outline-variant/5">
+<div class="flex items-center gap-4">
+<h3 class="font-headline font-bold text-xl">Comparison View</h3>
+<div class="flex bg-surface-container rounded-lg p-1">
+<button class="px-3 py-1 text-[10px] font-bold bg-primary text-on-primary-fixed rounded">SIDE-BY-SIDE</button>
+<button class="px-3 py-1 text-[10px] font-bold text-slate-500 hover:text-on-surface transition-colors">OVERLAY</button>
+</div>
+</div>
+<span class="text-[10px] font-mono text-slate-500">COMPARING: RUN_042 vs RUN_045</span>
+</div>
+<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+<!-- Divider Decoration -->
+<div class="hidden md:block absolute left-1/2 top-10 bottom-10 w-px bg-outline-variant/10"></div>
+<!-- Run 042 -->
+<div class="space-y-6">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="text-slate-400 text-xs font-bold uppercase tracking-widest">Baseline Scenario</h4>
+<p class="text-2xl font-headline font-bold mt-1 text-on-surface">$24,102,500</p>
+</div>
+<span class="px-2 py-1 bg-surface-container text-[10px] font-mono text-slate-300 rounded border border-outline-variant/20">RUN_042</span>
+</div>
+<div class="h-40 w-full relative group">
+<!-- Simplified Sparkline Representation -->
+<svg class="w-full h-full drop-shadow-[0_0_8px_rgba(152,203,255,0.2)]" viewbox="0 0 400 100">
+<path d="M0 80 Q 50 20, 100 60 T 200 40 T 300 70 T 400 20" fill="none" stroke="#98cbff" stroke-width="2.5"></path>
+<path d="M0 80 Q 50 20, 100 60 T 200 40 T 300 70 T 400 20 V 100 H 0 Z" fill="url(#grad1)" opacity="0.1"></path>
+<defs>
+<lineargradient id="grad1" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#98cbff;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#98cbff;stop-opacity:0"></stop>
+</lineargradient>
+</defs>
+</svg>
+<div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-surface-container/40 backdrop-blur-sm rounded-lg">
+<button class="text-[10px] font-bold bg-white text-black px-3 py-1 rounded">VIEW REPLAY</button>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-lowest p-3 rounded-lg">
+<p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Max Drawdown</p>
+<p class="text-sm font-headline font-bold text-on-surface">-4.2%</p>
+</div>
+<div class="bg-surface-container-lowest p-3 rounded-lg">
+<p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Sharpe Ratio</p>
+<p class="text-sm font-headline font-bold text-on-surface">1.82</p>
+</div>
+</div>
+</div>
+<!-- Run 045 -->
+<div class="space-y-6">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="text-slate-400 text-xs font-bold uppercase tracking-widest">Optimized Delta</h4>
+<p class="text-2xl font-headline font-bold mt-1 text-tertiary">$26,894,200</p>
+</div>
+<span class="px-2 py-1 bg-surface-container text-[10px] font-mono text-tertiary rounded border border-tertiary/20">RUN_045</span>
+</div>
+<div class="h-40 w-full relative group">
+<!-- Simplified Sparkline Representation -->
+<svg class="w-full h-full drop-shadow-[0_0_8px_rgba(0,228,117,0.2)]" viewbox="0 0 400 100">
+<path d="M0 90 Q 50 40, 100 30 T 200 20 T 300 10 T 400 5" fill="none" stroke="#00e475" stroke-width="2.5"></path>
+<path d="M0 90 Q 50 40, 100 30 T 200 20 T 300 10 T 400 5 V 100 H 0 Z" fill="url(#grad2)" opacity="0.1"></path>
+<defs>
+<lineargradient id="grad2" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#00e475;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#00e475;stop-opacity:0"></stop>
+</lineargradient>
+</defs>
+</svg>
+<div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-surface-container/40 backdrop-blur-sm rounded-lg">
+<button class="text-[10px] font-bold bg-white text-black px-3 py-1 rounded">VIEW REPLAY</button>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-lowest p-3 rounded-lg border-l-2 border-tertiary/50">
+<p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Alpha Yield</p>
+<p class="text-sm font-headline font-bold text-tertiary">+12.4%</p>
+</div>
+<div class="bg-surface-container-lowest p-3 rounded-lg border-l-2 border-tertiary/50">
+<p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Resiliency</p>
+<p class="text-sm font-headline font-bold text-tertiary">98.1/100</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Performance Delta Section -->
+<div class="bg-surface-container p-6 border-t border-outline-variant/10">
+<div class="flex items-center justify-between">
+<div>
+<h4 class="text-sm font-headline font-bold mb-1">Performance Variance Analysis</h4>
+<p class="text-[10px] text-slate-500">The optimized run yields an additional $2.7M through targeted sector rotations.</p>
+</div>
+<div class="flex items-center gap-2 text-tertiary bg-tertiary/10 px-3 py-1 rounded-full">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span class="text-xs font-bold font-mono">+11.58% Delta</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Risk Heatmap Table -->
+<div class="mt-8">
+<h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Portfolio Exposure Heatmap (RUN_045)</h4>
+<div class="grid grid-cols-4 md:grid-cols-8 gap-1">
+<!-- Loop simulation of risk blocks -->
+<div class="aspect-square bg-tertiary/20 rounded-sm flex items-center justify-center group relative cursor-help">
+<span class="text-[8px] font-bold text-tertiary opacity-0 group-hover:opacity-100">TSLA</span>
+<div class="hidden group-hover:block absolute bottom-full mb-2 w-24 bg-surface-container-high p-2 rounded text-[10px] shadow-xl z-10 border border-outline-variant/20">Risk: 0.12 (Low)</div>
+</div>
+<div class="aspect-square bg-tertiary/40 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/10 rounded-sm"></div>
+<div class="aspect-square bg-error-container/20 rounded-sm group relative cursor-help">
+<div class="hidden group-hover:block absolute bottom-full mb-2 w-24 bg-surface-container-high p-2 rounded text-[10px] shadow-xl z-10 border border-outline-variant/20">Risk: 0.78 (High)</div>
+</div>
+<div class="aspect-square bg-tertiary/60 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/20 rounded-sm"></div>
+<div class="aspect-square bg-error-container/40 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/30 rounded-sm"></div>
+<!-- More blocks -->
+<div class="aspect-square bg-tertiary/10 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/50 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/80 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/20 rounded-sm"></div>
+<div class="aspect-square bg-error-container/10 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/20 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/10 rounded-sm"></div>
+<div class="aspect-square bg-tertiary/40 rounded-sm"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating Action Button - Contextual for Simulation page -->
+<div class="fixed bottom-8 right-8 z-[100]">
+<button class="w-14 h-14 bg-primary rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group">
+<span class="material-symbols-outlined text-on-primary-fixed text-2xl group-hover:rotate-90 transition-transform">add</span>
+<!-- Tooltip -->
+<span class="absolute right-full mr-4 px-3 py-1 bg-surface-container-high text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-outline-variant/10">Quick Run</span>
+</button>
+</div>
+</body></html>

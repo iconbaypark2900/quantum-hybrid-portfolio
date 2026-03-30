@@ -1,142 +1,235 @@
 """
-api_config_patch.py — drop-in replacements for the /api/config/* endpoints.
+api_config_patch.py — objectives and presets catalog for /api/config/* endpoints.
 
-Replace the existing /api/config/objectives and /api/config/presets route
-handlers in api.py with these functions.
+Paper schema per entry in papers[]:
+  role          : "foundational" | "modern"  (optional; frontend defaults to "foundational")
+  title         : display title
+  citation      : author/year/venue string
+  url           : canonical page (publisher, arXiv abstract, SSRN)
+  download_path : arXiv PDF URL or local /downloads/... path  (optional; OA only)
+  note          : explanatory note shown beneath citation  (optional)
+
+Notebook schema per entry in notebooks[]:
+  path          : repo-relative path to the .ipynb source
+  title         : short label
+  download_path : URL path served by Next.js static (/downloads/notebooks/...)
+
+IBM Quantum scope (gate-model Runtime):
+  VQE is the only objective with an IBM Quantum path (execution_kind: ibm_runtime).
+  All other objectives run on CPU.  QAOA over the same QUBO is a planned follow-up.
 """
 
-# Heuristic scalars only; not historical realized returns.
 OBJECTIVES_CONFIG = {
     "equal_weight": {
         "label": "Equal Weight",
-        "description": "1/N — equal allocation across all assets",
-        "paper": "Benchmark baseline",
+        "description": (
+            "1/N — equal allocation across all assets. "
+            "Benchmark baseline; surprisingly hard to beat out-of-sample "
+            "on a risk-adjusted basis."
+        ),
         "family": "classical",
         "fast": True,
         "papers": [
-            {"citation": "Benchmark baseline (no single canonical paper)"},
+            {
+                "role": "foundational",
+                "title": "Optimal Versus Naive Diversification: How Inefficient is the 1/N Portfolio Strategy?",
+                "citation": "DeMiguel, Garlappi & Uppal (2009) — Review of Financial Studies",
+                "url": "https://doi.org/10.1093/rfs/hhm075",
+            },
+            {
+                "role": "modern",
+                "title": "60 Years of Portfolio Optimization: Practical Challenges and Current Trends",
+                "citation": "Kolm, Tütüncü & Fabozzi (2014) — European Journal of Operational Research",
+                "url": "https://doi.org/10.1016/j.ejor.2013.08.011",
+            },
         ],
-        "notebooks": [],
+        "notebooks": [
+            {
+                "path": "notebooks/objectives/01-equal-weight.ipynb",
+                "title": "Equal Weight — benchmark and comparison",
+                "download_path": "/downloads/notebooks/01-equal-weight.ipynb",
+            },
+        ],
         "code_refs": [
             {"path": "methods/equal_weight.py", "label": "equal_weight"},
             {"path": "core/optimizers/equal_weight.py", "label": "optimizer wrapper"},
         ],
     },
+
     "markowitz": {
         "label": "Markowitz Max-Sharpe",
-        "description": "Maximum Sharpe Ratio via SLSQP with multi-start",
-        "paper": "Markowitz (1952)",
+        "description": (
+            "Maximum Sharpe Ratio via SLSQP with multi-start restarts. "
+            "Solves the mean–variance efficient frontier as a quadratic program."
+        ),
         "family": "classical",
         "fast": True,
         "papers": [
             {
+                "role": "foundational",
                 "title": "Portfolio Selection",
-                "citation": "Markowitz (1952)",
-                "url": "https://www.jstor.org/stable/2975974",
+                "citation": "Markowitz (1952) — Journal of Finance",
+                "url": "https://doi.org/10.1111/j.1540-6261.1952.tb01525.x",
+            },
+            {
+                "role": "modern",
+                "title": "Convex Optimization — Ch. 4: Convex Optimization Problems (§4.4 Efficient Frontier as QP)",
+                "citation": "Boyd & Vandenberghe (2004) — Cambridge University Press (free online)",
+                "url": "https://web.stanford.edu/~boyd/cvxbook/",
+                "download_path": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
             },
         ],
-        "notebooks": [],
+        "notebooks": [
+            {
+                "path": "notebooks/objectives/02-markowitz.ipynb",
+                "title": "Markowitz Max-Sharpe — mean–variance optimization",
+                "download_path": "/downloads/notebooks/02-markowitz.ipynb",
+            },
+        ],
         "code_refs": [
             {"path": "methods/markowitz.py", "label": "markowitz_max_sharpe"},
             {"path": "core/optimizers/markowitz.py", "label": "optimizer wrapper"},
         ],
     },
+
     "min_variance": {
         "label": "Minimum Variance",
-        "description": "Global minimum-variance portfolio",
-        "paper": "Markowitz (1952)",
+        "description": (
+            "Global minimum-variance portfolio — minimizes portfolio risk "
+            "without specifying a return target."
+        ),
         "family": "classical",
         "fast": True,
         "papers": [
             {
+                "role": "foundational",
                 "title": "Portfolio Selection",
-                "citation": "Markowitz (1952)",
-                "url": "https://www.jstor.org/stable/2975974",
+                "citation": "Markowitz (1952) — Journal of Finance",
+                "url": "https://doi.org/10.1111/j.1540-6261.1952.tb01525.x",
+            },
+            {
+                "role": "modern",
+                "title": "Analytical Nonlinear Shrinkage of Large-Dimensional Covariance Matrices",
+                "citation": "Ledoit & Wolf (2020) — Annals of Statistics",
+                "url": "https://arxiv.org/abs/1910.13597",
+                "download_path": "https://arxiv.org/pdf/1910.13597",
             },
         ],
-        "notebooks": [],
+        "notebooks": [
+            {
+                "path": "notebooks/objectives/03-min-variance.ipynb",
+                "title": "Minimum Variance — global min-var portfolio",
+                "download_path": "/downloads/notebooks/03-min-variance.ipynb",
+            },
+        ],
         "code_refs": [
             {"path": "methods/markowitz.py", "label": "min_variance"},
             {"path": "core/optimizers/markowitz.py", "label": "optimizer wrapper"},
         ],
     },
-    "hrp": {
-        "label": "HRP",
-        "description": "Hierarchical Risk Parity via recursive bisection",
-        "paper": "López de Prado (2016)",
-        "family": "classical",
-        "fast": True,
-        "papers": [
-            {
-                "title": "Building diversified portfolios that outperform out of sample",
-                "citation": "López de Prado (2016)",
-                "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2708678",
-            },
-        ],
-        "notebooks": [],
-        "code_refs": [
-            {"path": "methods/hrp.py", "label": "hrp_weights"},
-            {"path": "core/optimizers/hrp.py", "label": "optimizer wrapper"},
-        ],
-    },
+
     "target_return": {
         "label": "Target Return",
-        "description": "Minimum-variance portfolio achieving a specified return",
-        "paper": "Markowitz (1952)",
+        "description": (
+            "Minimum-variance portfolio constrained to achieve a specified return target — "
+            "one point on the efficient frontier."
+        ),
         "family": "classical",
         "fast": True,
         "papers": [
             {
+                "role": "foundational",
                 "title": "Portfolio Selection",
-                "citation": "Markowitz (1952)",
-                "url": "https://www.jstor.org/stable/2975974",
+                "citation": "Markowitz (1952) — Journal of Finance",
+                "url": "https://doi.org/10.1111/j.1540-6261.1952.tb01525.x",
+            },
+            {
+                "role": "modern",
+                "title": "Convex Optimization — §4.4 Efficient Frontier as a Parametric QP",
+                "citation": "Boyd & Vandenberghe (2004) — Cambridge University Press (free online)",
+                "url": "https://web.stanford.edu/~boyd/cvxbook/",
+                "download_path": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
             },
         ],
-        "notebooks": [],
+        "notebooks": [
+            {
+                "path": "notebooks/objectives/04-target-return.ipynb",
+                "title": "Target Return — efficient frontier point",
+                "download_path": "/downloads/notebooks/04-target-return.ipynb",
+            },
+        ],
         "code_refs": [
             {"path": "methods/markowitz.py", "label": "target_return_frontier"},
             {"path": "core/optimizers/markowitz.py", "label": "optimizer wrapper"},
         ],
     },
-    "hybrid": {
-        "label": "Hybrid Pipeline",
-        "description": "3-stage: IC screening → QUBO-SA selection → Markowitz allocation",
-        "paper": "Buonaiuto/Springer 2025, Herman/arXiv 2025",
-        "family": "hybrid",
-        "fast": False,
+
+    "hrp": {
+        "label": "HRP",
+        "description": (
+            "Hierarchical Risk Parity — clusters assets by correlation, then allocates "
+            "risk via recursive bisection. Robust when the covariance matrix is noisy "
+            "or nearly singular."
+        ),
+        "family": "classical",
+        "fast": True,
         "papers": [
             {
-                "citation": "Buonaiuto et al., Springer (2025); Herman et al. arXiv (2025)",
+                "role": "foundational",
+                "title": "Building Diversified Portfolios that Outperform Out-of-Sample",
+                "citation": "López de Prado (2016) — Journal of Portfolio Management",
+                "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2708678",
+            },
+            {
+                "role": "modern",
+                "title": "Advances in Financial Machine Learning — Ch. 16: Machine Learning Asset Allocation",
+                "citation": "López de Prado (2018) — Wiley",
+                "url": "https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086",
             },
         ],
         "notebooks": [
             {
-                "path": "notebooks/05_hybrid_pipeline_grand_comparison.ipynb",
-                "title": "Hybrid pipeline — grand comparison",
+                "path": "notebooks/objectives/05-hrp.ipynb",
+                "title": "HRP — hierarchical risk parity",
+                "download_path": "/downloads/notebooks/05-hrp.ipynb",
             },
         ],
         "code_refs": [
-            {"path": "methods/hybrid_pipeline.py", "label": "hybrid_pipeline_weights"},
-            {"path": "core/optimizers/hybrid_pipeline.py", "label": "optimizer wrapper"},
+            {"path": "methods/hrp.py", "label": "hrp_weights"},
+            {"path": "core/optimizers/hrp.py", "label": "optimizer wrapper"},
         ],
     },
+
     "qubo_sa": {
         "label": "QUBO + Simulated Annealing",
-        "description": "Binary asset selection via QUBO solved with SA (D-Wave proxy)",
-        "paper": "Orús et al. (2019) arXiv:1811.03975",
+        "description": (
+            "Binary asset selection encoded as a QUBO / Ising problem, solved with "
+            "simulated annealing on CPU. The QUBO structure is identical to the "
+            "formulation used in quantum annealers; SA is the classical solver used here."
+        ),
         "family": "quantum",
         "fast": False,
         "papers": [
             {
-                "title": "Quantum computing for finance: Overview and prospects",
-                "citation": "Orús et al. (2019)",
+                "role": "foundational",
+                "title": "Quantum Computing for Finance: Overview and Prospects",
+                "citation": "Orús, Mugel & Lizaso (2019) — Reviews in Physics",
                 "url": "https://arxiv.org/abs/1811.03975",
+                "download_path": "https://arxiv.org/pdf/1811.03975",
+            },
+            {
+                "role": "modern",
+                "title": "Ising Formulations of Many NP Problems",
+                "citation": "Lucas (2014) — Frontiers in Physics",
+                "url": "https://arxiv.org/abs/1302.5843",
+                "download_path": "https://arxiv.org/pdf/1302.5843",
             },
         ],
         "notebooks": [
             {
-                "path": "notebooks/04_qubo_vqe_portfolio.ipynb",
-                "title": "QUBO & VQE portfolio",
+                "path": "notebooks/objectives/06-qubo-sa.ipynb",
+                "title": "QUBO + SA — binary asset selection via Ising/QUBO",
+                "download_path": "/downloads/notebooks/06-qubo-sa.ipynb",
             },
         ],
         "code_refs": [
@@ -144,31 +237,98 @@ OBJECTIVES_CONFIG = {
             {"path": "core/optimizers/qubo_sa.py", "label": "optimizer wrapper"},
         ],
     },
+
     "vqe": {
-        "label": "VQE (PauliTwoDesign)",
-        "description": "Variational Quantum Eigensolver with noise-robust ansatz",
-        "paper": "Scientific Reports (2023)",
+        "label": "VQE — Variational Quantum Eigensolver",
+        "description": (
+            "Parameterised quantum circuit optimised with COBYLA (gradient-free). "
+            "Classical path: PauliTwoDesign ansatz simulated in numpy. "
+            "IBM Quantum path: EfficientSU2 circuit on Qiskit Runtime SamplerV2 "
+            "(requires configured IBM token and execution_kind: ibm_runtime in the run payload)."
+        ),
         "family": "quantum",
         "fast": False,
         "papers": [
-            {"citation": "See implementation notes in methods/vqe.py"},
+            {
+                "role": "foundational",
+                "title": "A Variational Eigenvalue Solver on a Photonic Chip",
+                "citation": "Peruzzo et al. (2014) — Nature Communications",
+                "url": "https://arxiv.org/abs/1304.3061",
+                "download_path": "https://arxiv.org/pdf/1304.3061",
+            },
+            {
+                "role": "modern",
+                "title": "The Variational Quantum Eigensolver: A Review of Methods and Best Practices",
+                "citation": "Tilly et al. (2022) — Physics Reports",
+                "url": "https://arxiv.org/abs/2111.05176",
+                "download_path": "https://arxiv.org/pdf/2111.05176",
+            },
         ],
         "notebooks": [
             {
-                "path": "notebooks/04_qubo_vqe_portfolio.ipynb",
-                "title": "QUBO & VQE portfolio",
-            },
-            {
-                "path": "notebooks/03_quantum_risk_option_pricing.ipynb",
-                "title": "Quantum risk / option pricing (related)",
+                "path": "notebooks/objectives/07-vqe.ipynb",
+                "title": "VQE — variational quantum portfolio optimization",
+                "download_path": "/downloads/notebooks/07-vqe.ipynb",
             },
         ],
         "code_refs": [
-            {"path": "methods/vqe.py", "label": "vqe_weights"},
+            {"path": "methods/vqe.py", "label": "vqe_weights / vqe_weights_ibm_strict"},
             {"path": "core/optimizers/vqe.py", "label": "optimizer wrapper"},
         ],
     },
+
+    "hybrid": {
+        "label": "Hybrid Pipeline — Quantum Ledger",
+        "description": (
+            "Original Quantum Ledger 3-stage pipeline (runs entirely on CPU): "
+            "(1) IC Screening — rank all N assets by Information Coefficient (μ/σ), keep top K_screen; "
+            "(2) QUBO Selection — binary asset selection via simulated annealing on screened sub-universe; "
+            "(3) Markowitz Allocation — convex Max-Sharpe on the K_select chosen assets. "
+            "Created for this project; combines classical and quantum-inspired stages."
+        ),
+        "family": "hybrid",
+        "fast": False,
+        "papers": [
+            {
+                "role": "foundational",
+                "title": "Portfolio Selection — Markowitz allocation (stage 3)",
+                "citation": "Markowitz (1952) — Journal of Finance",
+                "url": "https://doi.org/10.1111/j.1540-6261.1952.tb01525.x",
+            },
+            {
+                "role": "foundational",
+                "title": "Quantum Computing for Finance — QUBO selection basis (stage 2)",
+                "citation": "Orús, Mugel & Lizaso (2019) — Reviews in Physics",
+                "url": "https://arxiv.org/abs/1811.03975",
+                "download_path": "https://arxiv.org/pdf/1811.03975",
+            },
+            {
+                "role": "modern",
+                "title": "Variational Quantum Algorithms — hybrid QC landscape (related reading)",
+                "citation": "Cerezo et al. (2021) — Nature Reviews Physics",
+                "url": "https://arxiv.org/abs/2012.09265",
+                "download_path": "https://arxiv.org/pdf/2012.09265",
+                "note": (
+                    "Related reading only. "
+                    "This repo's 3-stage pipeline is an implementation synthesis; "
+                    "it does not reproduce any single published system."
+                ),
+            },
+        ],
+        "notebooks": [
+            {
+                "path": "notebooks/objectives/08-hybrid-pipeline.ipynb",
+                "title": "Hybrid Pipeline — IC screen → QUBO select → Markowitz allocate",
+                "download_path": "/downloads/notebooks/08-hybrid-pipeline.ipynb",
+            },
+        ],
+        "code_refs": [
+            {"path": "methods/hybrid_pipeline.py", "label": "hybrid_pipeline_weights"},
+            {"path": "core/optimizers/hybrid_pipeline.py", "label": "optimizer wrapper"},
+        ],
+    },
 }
+
 
 PRESETS_CONFIG = {
     "default": {
@@ -209,7 +369,6 @@ PRESETS_CONFIG = {
         "weight_max": 1.0,
         "K": None,  # auto
     },
-    # Align with Simulations → Stress Scenarios (same narrative, not a live shock engine).
     "sim_crash_day": {
         "label": "Stress · Crash day",
         "description": "For single-day crash narrative (cf. Simulations: Black Monday 1987): min-var, tight 10% cap.",
