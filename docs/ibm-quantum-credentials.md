@@ -43,7 +43,7 @@ IBM’s documentation: if you use an HTTP proxy, use **Qiskit Runtime v0.44.0+**
 
 ## Vercel (API serverless)
 
-The API deploy uses **`requirements-vercel.txt`**, which includes **`qiskit`** / **`qiskit-ibm-runtime`** with the same pins as **`requirements-ibm-quantum.txt`**. Redeploy the API project after dependency changes. If the install exceeds Vercel size/time limits, use a full Docker/VM deployment for IBM-heavy paths or relax pins only after testing compatibility.
+The API deploy uses **`requirements-vercel.txt`**, which includes **`qiskit`** / **`qiskit-ibm-runtime`** with the same pins as **`requirements-ibm-quantum.txt`**. **`vercel.json`** sets **`installCommand`** so Vercel runs **`pip install -r requirements-vercel.txt`** (the root **`requirements.txt`** alone does not install IBM packages). Redeploy the API project after dependency changes. If the install exceeds Vercel size/time limits, use a full Docker/VM deployment for IBM-heavy paths or relax pins only after testing compatibility.
 
 ## Troubleshooting
 

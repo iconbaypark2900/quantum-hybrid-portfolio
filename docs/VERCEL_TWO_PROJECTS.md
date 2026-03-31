@@ -12,7 +12,7 @@ Use **two Vercel projects** from the same GitHub repo: one for the **Flask API**
 |--------|--------|
 | **Root Directory** | Repository root (`.`) |
 | **Framework** | Vercel Python / auto-detect from `pyproject.toml` |
-| **Install** | Uses `pyproject.toml` + `requirements-vercel.txt` (slim deps) |
+| **Install** | `vercel.json` → `pip install -r requirements-vercel.txt && pip install .` (IBM/Qiskit included); root `requirements.txt` is for CI/local, not Vercel’s default pip step |
 
 **Environment variables (Production / Preview as needed)**
 
