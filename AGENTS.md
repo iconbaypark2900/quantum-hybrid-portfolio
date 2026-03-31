@@ -4,7 +4,7 @@
 
 ## Learned Workspace Facts
 
-- Flask API: `python -m api` — documented default **http://localhost:5000** (health and OpenAPI under `/api/`). Package layout: **`api/app.py`** (Vercel: `pyproject.toml` **`app = "api.app:app"`**).
+- Flask API: `python -m api` — documented default **http://localhost:5000** (health and OpenAPI under `/api/`). Package layout: **`api/app.py`** (Vercel: `pyproject.toml` **`app = "api.app:app"`**; **`requires-python >=3.11`** so Vercel’s `uv lock` resolves dependencies such as **networkx 3.5**).
 - CORS: Flask uses **`CORS_ORIGINS`** (default **`http://localhost:3000`**). Browsers on other origins (e.g. Next on **3042** or **3001**) must list that origin in **`CORS_ORIGINS`**, or call the API same-origin via Next rewrites / empty **`NEXT_PUBLIC_API_URL`** so CORS does not apply.
 - CRA dashboard: `cd frontend && npm install && npm start` — **http://localhost:3000**; `frontend/package.json` proxies API requests to the Flask port.
 - Hugging Face Space / Docker HF path: **`Dockerfile.hf`** builds **`frontend/`** and runs **`serve_hf.py`**; README frontmatter **`app_port: 7860`**. This path is **not** the Next.js **`web/`** app.
