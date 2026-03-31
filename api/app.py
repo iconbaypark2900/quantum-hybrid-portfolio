@@ -106,6 +106,13 @@ MARKET_DATA_LATENCY = Histogram(
 _market_data_cache = {}
 CACHE_TTL = int(os.getenv('CACHE_TTL', 3600))  # 1 hour default
 # Vercel serverless: only /tmp is writable; repo data/ is not. Override with API_DB_PATH if needed.
+def _env_api_db_path() -> str | None:
+    v = os.getenv("API_DB_PATH")
+    if v is not None and str(v).strip() != "":
+        return v
+    return None
+
+
 def _default_api_db_path() -> str:
     # Vercel sets VERCEL=1 and VERCEL_ENV (production|preview|development).
     if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
@@ -113,7 +120,15 @@ def _default_api_db_path() -> str:
     return os.path.join(_REPO_ROOT, "data", "api.sqlite3")
 
 
-API_DB_PATH = os.getenv("API_DB_PATH", _default_api_db_path())
+def _is_vercel_runtime() -> bool:
+    return bool(
+        os.getenv("VERCEL")
+        or os.getenv("VERCEL_ENV")
+        or _REPO_ROOT.startswith("/var/task")
+    )
+
+
+API_DB_PATH = _env_api_db_path() or _default_api_db_path()
 
 # ─── Async Job Runtime ───
 _executor = ThreadPoolExecutor(max_workers=int(os.getenv("JOB_WORKERS", "4")))
@@ -201,9 +216,16 @@ def _ensure_runtime_tables() -> None:
         finally:
             conn.close()
 
-    candidates = [API_DB_PATH]
-    if API_DB_PATH != "/tmp/api.sqlite3":
-        candidates.append("/tmp/api.sqlite3")
+    tmp_default = "/tmp/api.sqlite3"
+    # On Vercel, try /tmp first even if API_DB_PATH was set to e.g. data/... in the dashboard.
+    if _is_vercel_runtime():
+        candidates = [tmp_default]
+        if API_DB_PATH != tmp_default:
+            candidates.append(API_DB_PATH)
+    else:
+        candidates = [API_DB_PATH]
+        if API_DB_PATH != tmp_default:
+            candidates.append(tmp_default)
     last_err: Exception | None = None
     for db_path in candidates:
         try:
