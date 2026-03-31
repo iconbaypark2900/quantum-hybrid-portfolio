@@ -1,4 +1,4 @@
-# Full local development, CI, and Docker/HF images; Vercel uses requirements-vercel.txt via pyproject.toml.
+# Full local development, CI, and Docker/HF images; Vercel installs from requirements-vercel.txt (see vercel.json installCommand).
 #
 # Core scientific computing
 numpy==2.3.3
