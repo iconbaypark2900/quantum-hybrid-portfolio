@@ -4,7 +4,7 @@ This guide walks you through installing and running the Quantum Hybrid Portfolio
 
 ## Prerequisites
 
-- **Python 3.9+**
+- **Python 3.11+**
 - **Node.js 16+** and npm (for the dashboard)
 - **Git**
 
@@ -148,7 +148,7 @@ Alternatively, from the repo root: `./scripts/dev.sh` (starts Flask then Next; s
 **API fails to start**
 
 - Ensure port 5000 is free
-- Check Python version: `python --version` (3.9+)
+- Check Python version: `python --version` (3.11+)
 - Verify dependencies: `pip list | grep -E "flask|numpy"`
 
 **Dashboard cannot reach API**
