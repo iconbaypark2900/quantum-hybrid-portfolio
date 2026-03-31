@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Vercel: Deploy API (prod)",
+      "type": "shell",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/vercel-deploy-api.sh"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Vercel: Deploy Web (prod)",
+      "type": "shell",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/vercel-deploy-web.sh"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Vercel: Login",
+      "type": "shell",
+      "command": "npx --yes vercel@latest login",
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}

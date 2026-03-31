@@ -38,7 +38,8 @@ htmlcov/
 .hypothesis/
 
 # IDEs
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 .idea/
 # Cursor — local hook/session state (machine-specific)
 .cursor/hooks/state/
