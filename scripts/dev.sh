@@ -9,7 +9,7 @@
 #   ./scripts/dev.sh --next-only  # Next only — run API separately
 #
 # Env:
-#   PORT          API port (default 5000) — same as api.py
+#   PORT          API port (default 5000) — same as `python -m api`
 #   NEXT_PORT     Next / CRA dev port (default 3000)
 #   VENV          Path to venv (default .venv in repo root)
 
@@ -62,7 +62,7 @@ trap cleanup EXIT INT TERM
 
 if [[ "$UI_ONLY" != true ]]; then
   echo "[dev] Starting Flask API on 0.0.0.0:${API_PORT}..."
-  python api.py &
+  python -m api &
   API_PID=$!
 
   echo "[dev] Waiting for /api/health..."

@@ -558,7 +558,7 @@ def main():
         print(f"\n❌ Failed to connect to API at {args.base_url}")
         print(f"   Error: {e}")
         print("\n   Make sure the API server is running:")
-        print("   python api.py")
+        print("   python -m api")
         return 1
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")

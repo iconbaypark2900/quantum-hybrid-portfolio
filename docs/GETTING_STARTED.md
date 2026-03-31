@@ -72,7 +72,7 @@ print(f"Volatility: {result.volatility*100:.2f}%")
 
 ```bash
 source .venv/bin/activate
-python api.py
+python -m api
 ```
 
 The API runs at **http://localhost:5000**.
@@ -86,7 +86,7 @@ The API runs at **http://localhost:5000**.
 
 ```bash
 source .venv/bin/activate
-python api.py
+python -m api
 ```
 
 **Terminal 2 — Frontend:**
@@ -104,7 +104,7 @@ The dashboard opens at **http://localhost:3000** and proxies API requests to por
 
 ```bash
 source .venv/bin/activate
-python api.py
+python -m api
 ```
 
 **Terminal 2 — Next.js:**
@@ -159,7 +159,7 @@ Alternatively, from the repo root: `./scripts/dev.sh` (starts Flask then Next; s
 **CORS errors**
 
 - The API enables CORS for all origins in development
-- For production, configure allowed origins in `api.py`
+- For production, configure allowed origins in `api/app.py`
 
 ---
 

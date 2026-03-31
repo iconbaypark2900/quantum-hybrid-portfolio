@@ -7,7 +7,7 @@
 #   NEXT_WEB_PORT=3080 ./scripts/run-next-web.sh
 #
 # Typical parallel setup:
-#   Terminal 1: python api.py              # :5000
+#   Terminal 1: python -m api              # :5000
 #   Terminal 2: cd frontend && npm start       # :3000
 #   Terminal 3: ./scripts/run-next-web.sh      # :3042 (this script)
 
