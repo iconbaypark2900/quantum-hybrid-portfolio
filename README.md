@@ -51,7 +51,7 @@ python quick_test.py
 ### 4. Start the API
 
 ```bash
-python api.py
+python -m api
 ```
 
 The API runs at **http://localhost:5000**
@@ -145,7 +145,7 @@ curl -X POST http://localhost:5000/api/portfolio/optimize \
 
 ```
 quantum-hybrid-portfolio/
-├── api.py                      # Flask REST API
+├── api/                        # Flask REST API (see api/app.py)
 ├── core/
 │   ├── portfolio_optimizer.py  # Unified run_optimization (hybrid, qubo_sa, vqe, etc.)
 │   ├── optimizers/             # equal_weight, markowitz, hrp, qubo_sa, vqe, hybrid_pipeline

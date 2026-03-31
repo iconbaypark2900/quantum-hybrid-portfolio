@@ -25,6 +25,9 @@ import logging
 from pythonjsonlogger.json import JsonFormatter as jsonlogger_JsonFormatter
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
+# Repo root (this file lives in api/; data/ and docs/ are at project root)
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 # Import portfolio optimization (unified service routes to methods)
 from core.portfolio_optimizer import (
     run_optimization,
@@ -102,7 +105,7 @@ MARKET_DATA_LATENCY = Histogram(
 # ─── In-Memory Cache for Market Data ───
 _market_data_cache = {}
 CACHE_TTL = int(os.getenv('CACHE_TTL', 3600))  # 1 hour default
-API_DB_PATH = os.getenv('API_DB_PATH', os.path.join(os.path.dirname(__file__), 'data', 'api.sqlite3'))
+API_DB_PATH = os.getenv('API_DB_PATH', os.path.join(_REPO_ROOT, 'data', 'api.sqlite3'))
 
 # ─── Async Job Runtime ───
 _executor = ThreadPoolExecutor(max_workers=int(os.getenv("JOB_WORKERS", "4")))
@@ -2489,7 +2492,7 @@ def prometheus_metrics():
 @limiter.exempt
 def openapi_spec():
     """Serve OpenAPI specification document."""
-    spec_path = os.path.join(os.path.dirname(__file__), "docs", "openapi.yaml")
+    spec_path = os.path.join(_REPO_ROOT, "docs", "openapi.yaml")
     if not os.path.exists(spec_path):
         return error_response("OpenAPI spec not found", code='NOT_FOUND', status=404)
     with open(spec_path, "r", encoding="utf-8") as f:
@@ -2508,7 +2511,7 @@ def export_audit_log():
     try:
         limit = min(int(request.args.get('limit', 100)), 1000)
         offset = int(request.args.get('offset', 0))
-        db_path = os.path.join(os.path.dirname(__file__), "data", "api.sqlite3")
+        db_path = os.path.join(_REPO_ROOT, "data", "api.sqlite3")
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -2530,7 +2533,7 @@ def export_audit_log_csv():
     import io
     try:
         limit = min(int(request.args.get('limit', 500)), 5000)
-        db_path = os.path.join(os.path.dirname(__file__), "data", "api.sqlite3")
+        db_path = os.path.join(_REPO_ROOT, "data", "api.sqlite3")
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -2566,7 +2569,3 @@ def export_config_manifest():
         "engine": "quantum_ledger",
     })
 
-
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)

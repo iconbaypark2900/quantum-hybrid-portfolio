@@ -93,7 +93,7 @@ export default function HealthCheckPage(props: NextClientPageProps) {
         <p className="text-slate-400 font-sans text-sm">
           Migration Phase 2 proof page. Calls <code className="text-ql-tertiary">GET /api/health</code>{" "}
           via <code className="text-ql-tertiary">web/src/lib/api.ts</code>. Use when Flask is running
-          (e.g. <code className="text-ql-tertiary">python api.py</code> on port 5000) and{" "}
+          (e.g. <code className="text-ql-tertiary">python -m api</code> on port 5000) and{" "}
           <code className="text-ql-tertiary">NEXT_PUBLIC_API_URL</code> points at the API if not
           using a dev proxy.
         </p>

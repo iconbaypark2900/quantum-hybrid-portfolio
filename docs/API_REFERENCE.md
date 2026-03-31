@@ -17,13 +17,13 @@ X-API-Key: <your-api-key>
 
 Set `API_KEY` environment variable on the server for static key validation.
 
-When `API_KEY_REQUIRED=true`, clients must send `X-API-Key` on protected routes. `GET /api/health` and `GET /metrics` remain usable for probes without a key (see route decorators in `api.py`).
+When `API_KEY_REQUIRED=true`, clients must send `X-API-Key` on protected routes. `GET /api/health` and `GET /metrics` remain usable for probes without a key (see route decorators in `api/app.py`).
 
 ---
 
 ## Response envelope
 
-Most JSON routes wrap payloads in a **standard envelope** (`success_response` / `error_response` in `api.py`):
+Most JSON routes wrap payloads in a **standard envelope** (`success_response` / `error_response` in `api/app.py`):
 
 **Success (2xx)**
 

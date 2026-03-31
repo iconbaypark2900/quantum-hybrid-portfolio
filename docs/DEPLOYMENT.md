@@ -8,7 +8,7 @@ This document describes how to run and deploy the Quantum Ledger stack: the Flas
 
 | Component | Path | Default port |
 |-----------|------|-------------|
-| Flask API | `api.py` | 5000 |
+| Flask API | `api/app.py` (`python -m api`) | 5000 |
 | Next.js dashboard (primary) | `web/` | 3042 |
 | CRA dashboard (legacy) | `frontend/` | 3000 |
 
@@ -36,7 +36,7 @@ Create `.env` by copying `.env.example` and filling in values.
 
 ```bash
 source .venv/bin/activate
-python api.py
+python -m api
 # API available at http://localhost:5000
 ```
 
