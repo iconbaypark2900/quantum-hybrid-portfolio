@@ -2,6 +2,8 @@
 
 Use **two Vercel projects** from the same GitHub repo: one for the **Flask API** (Python) and one for the **Next.js dashboard** (`web/`). Wire the dashboard to the API with **either** **`NEXT_PUBLIC_API_URL`** (direct calls + **`CORS_ORIGINS`** on Flask) **or** an empty public URL + **`API_PROXY_TARGET`** (same-origin `/api/*` proxied by Next; no CORS for browser→API).
 
+**Step-by-step wiring (dashboard 404 / API Unknown):** **[VERCEL_WIRE_NEXT_API.md](VERCEL_WIRE_NEXT_API.md)** — set env on Project A and B, redeploy, verify `/api/health` from the Next origin.
+
 ---
 
 ## Project A — Python API only
@@ -20,6 +22,9 @@ Use **two Vercel projects** from the same GitHub repo: one for the **Flask API**
 | `TIINGO_API_KEY` | Live market data (optional; can use `DATA_PROVIDER=yfinance` for smoke) |
 | `API_DB_PATH` | Optional; serverless defaults to `/tmp/api.sqlite3` when `VERCEL` / `VERCEL_ENV` apply (see `api/app.py`) |
 | `CORS_ORIGINS` | **Required** if the dashboard is on a **different origin** than this API. Comma-separated list of allowed UI origins, e.g. `https://your-dashboard.vercel.app` |
+| `DASHBOARD_PUBLIC_URL` | Optional. If set (e.g. `https://<project-b>.vercel.app`), included in **`GET /`** JSON so humans opening the **API** URL see where the Next UI lives. |
+
+**Humans vs API URL:** Share the **Next** project URL (Project B) for the dashboard. Project A is the REST API; **`GET https://<project-a>.vercel.app/`** returns a small JSON discovery document (not the React UI).
 
 **Smoke test**
 

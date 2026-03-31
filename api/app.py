@@ -2429,6 +2429,30 @@ def get_efficient_frontier():
         return error_response(f'Internal server error: {str(e)}', code='INTERNAL_ERROR', status=500)
 
 
+@app.route("/", methods=["GET"])
+@limiter.exempt
+def api_root():
+    """Discovery for the API host; browser UI is the Next.js app (separate deployment)."""
+    payload = {
+        "service": "quantum-hybrid-portfolio-api",
+        "health": "/api/health",
+        "openapi": "/api/docs/openapi",
+        "note": "Operator dashboard: deploy `web/` as a separate Vercel project (see docs/VERCEL_TWO_PROJECTS.md).",
+    }
+    dash = os.getenv("DASHBOARD_PUBLIC_URL", "").strip()
+    if dash:
+        payload["dashboard"] = dash.rstrip("/")
+    return jsonify(payload), 200
+
+
+@app.route("/favicon.ico", methods=["GET"])
+@app.route("/favicon.png", methods=["GET"])
+@limiter.exempt
+def favicon_placeholder():
+    """Avoid noisy 404s when browsers request a favicon on the API-only host."""
+    return "", 204
+
+
 @app.route('/api/health', methods=['GET'])
 @limiter.exempt
 def health_check():

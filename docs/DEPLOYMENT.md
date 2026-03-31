@@ -12,6 +12,8 @@ This document describes how to run and deploy the Quantum Ledger stack: the Flas
 | Next.js dashboard (primary) | `web/` | 3042 |
 | CRA dashboard (legacy) | `frontend/` | 3000 |
 
+On Vercel, use **two projects** (API at repo root + Next in `web/`): see **[VERCEL_TWO_PROJECTS.md](VERCEL_TWO_PROJECTS.md)**. **Send users to the Next deployment URL** for the UI; the API host serves **`GET /`** as JSON discovery and **`/api/*`** for data—not a browser app.
+
 ---
 
 ## Required environment variables
