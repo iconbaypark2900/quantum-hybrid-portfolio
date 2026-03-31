@@ -154,6 +154,7 @@ Use **Terminal → Run Task** → *Vercel: Deploy API (prod)*, *Vercel: Deploy W
 ## Related
 
 - [VERCEL_TWO_PROJECTS.md](VERCEL_TWO_PROJECTS.md) — architecture and env meanings
+- [VERCEL_WIRE_NEXT_API.md](VERCEL_WIRE_NEXT_API.md) — **order-of-operations** env for Project A + B (fixes `/api/*` 404 on the dashboard); recovery: **`scripts/vercel-option2-env.sh`**
 - [DEPLOYMENT.md](DEPLOYMENT.md) — general deployment notes
 
 **Local Python tests / CI:** Full **`pytest`** needs a virtualenv and `pip install -r requirements.txt` (PEP 668 systems should not install into the system Python). Disposable dirs like **`.venv-ci/`** are gitignored alongside **`.venv/`**. On push to **`main`**, **`.github/workflows/ci.yml`** runs backend tests, **`web/`** lint/build, and the legacy CRA job—use that as the reference for green CI.

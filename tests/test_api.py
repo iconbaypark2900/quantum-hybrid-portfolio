@@ -94,6 +94,22 @@ def test_health_returns_200_and_json(client):
     assert 'Quantum' in payload.get('message', '')
 
 
+def test_api_root_returns_200_discovery_json(client):
+    """GET / is a small discovery document (API-only host; UI is Next.js elsewhere)."""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body.get("service") == "quantum-hybrid-portfolio-api"
+    assert body.get("health") == "/api/health"
+    assert body.get("openapi") == "/api/docs/openapi"
+
+
+def test_favicon_routes_return_204(client):
+    """Browsers request favicons on the API host; respond without 404 noise."""
+    assert client.get("/favicon.ico").status_code == 204
+    assert client.get("/favicon.png").status_code == 204
+
+
 def test_config_objectives_returns_200(client):
     """Test GET /api/config/objectives returns 200."""
     resp = client.get('/api/config/objectives')
