@@ -1,3 +1,5 @@
+# Full local development, CI, and Docker/HF images; Vercel uses requirements-vercel.txt via pyproject.toml.
+#
 # Core scientific computing
 numpy==2.3.3
 pandas==2.3.3
