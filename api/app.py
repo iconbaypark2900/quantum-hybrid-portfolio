@@ -107,7 +107,8 @@ _market_data_cache = {}
 CACHE_TTL = int(os.getenv('CACHE_TTL', 3600))  # 1 hour default
 # Vercel serverless: only /tmp is writable; repo data/ is not. Override with API_DB_PATH if needed.
 def _default_api_db_path() -> str:
-    if os.getenv("VERCEL"):
+    # Vercel sets VERCEL=1 and VERCEL_ENV (production|preview|development).
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
         return "/tmp/api.sqlite3"
     return os.path.join(_REPO_ROOT, "data", "api.sqlite3")
 
@@ -144,56 +145,75 @@ app = Flask(__name__)
 
 def _ensure_runtime_tables() -> None:
     """Create local runtime tables for API keys, audit logs, and async jobs metadata."""
-    os.makedirs(os.path.dirname(API_DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(API_DB_PATH)
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS api_keys (
-                key_hash TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                key_name TEXT,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                last_used_at TEXT,
-                usage_count INTEGER NOT NULL DEFAULT 0
+    global API_DB_PATH
+
+    def _init_at(db_path: str) -> None:
+        parent = os.path.dirname(db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    key_hash TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    key_name TEXT,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    last_used_at TEXT,
+                    usage_count INTEGER NOT NULL DEFAULT 0
+                )
+                """
             )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT,
-                tenant_id TEXT,
-                action TEXT,
-                endpoint TEXT,
-                method TEXT,
-                payload_json TEXT,
-                response_status INTEGER,
-                duration_ms REAL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id TEXT,
+                    tenant_id TEXT,
+                    action TEXT,
+                    endpoint TEXT,
+                    method TEXT,
+                    payload_json TEXT,
+                    response_status INTEGER,
+                    duration_ms REAL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
             )
-            """
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_log(request_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_tenant_id ON audit_log(tenant_id)")
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tenant_integration_secrets (
-                tenant_id TEXT NOT NULL,
-                provider TEXT NOT NULL,
-                secret_enc TEXT NOT NULL,
-                metadata_json TEXT,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (tenant_id, provider)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_log(request_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_tenant_id ON audit_log(tenant_id)")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tenant_integration_secrets (
+                    tenant_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    secret_enc TEXT NOT NULL,
+                    metadata_json TEXT,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (tenant_id, provider)
+                )
+                """
             )
-            """
-        )
-        conn.commit()
-    finally:
-        conn.close()
+            conn.commit()
+        finally:
+            conn.close()
+
+    candidates = [API_DB_PATH]
+    if API_DB_PATH != "/tmp/api.sqlite3":
+        candidates.append("/tmp/api.sqlite3")
+    last_err: Exception | None = None
+    for db_path in candidates:
+        try:
+            _init_at(db_path)
+            API_DB_PATH = db_path
+            return
+        except (OSError, sqlite3.OperationalError) as e:
+            last_err = e
+    assert last_err is not None
+    raise last_err
 
 
 def _db_conn():
