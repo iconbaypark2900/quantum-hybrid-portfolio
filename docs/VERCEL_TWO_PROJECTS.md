@@ -70,7 +70,14 @@ To avoid CORS entirely you would need the Next app to proxy `/api/*` to Project 
 
 ---
 
+## Terminal / CLI (no dashboard)
+
+See **[docs/VERCEL_CLI.md](VERCEL_CLI.md)** — `vercel link`, `vercel env`, deploy scripts (`scripts/vercel-deploy-*.sh`), and VS Code tasks.
+
+---
+
 ## Related
 
 - [DEPLOYMENT.md](DEPLOYMENT.md) — general env and split-host notes
+- [VERCEL_CLI.md](VERCEL_CLI.md) — CLI + IDE workflow
 - [AGENTS.md](../AGENTS.md) — local ports and proxy behavior
