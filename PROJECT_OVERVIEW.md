@@ -56,7 +56,7 @@ This leads to reported improvements of **27% Sharpe ratio** and **90% turnover r
 
 ### Components
 
-- **`api.py`** — Flask REST API; entry point for optimization, backtesting, market data
+- **`api/`** (`api/app.py`) — Flask REST API; run with `python -m api`; entry point for optimization, backtesting, market data
 - **`frontend/`** — React dashboard; configure and run optimizations, view backtests
 - **`core/quantum_inspired/`** — Core algorithms: QSW, graph builder, evolution dynamics, Braket, VQE, QAOA
 - **`services/`** — Portfolio optimizer, backtest engine, market data, HRP, constraints
@@ -68,7 +68,7 @@ This leads to reported improvements of **27% Sharpe ratio** and **90% turnover r
 
 ```
 quantum-hybrid-portfolio/
-├── api.py                      # Flask REST API
+├── api/                        # Flask REST API (api/app.py)
 ├── core/
 │   ├── quantum_inspired/
 │   │   ├── quantum_walk.py     # QSW optimizer (main algorithm)
@@ -118,7 +118,7 @@ pip install -e .
 cp .env.example .env
 
 # 3. Run API
-python api.py
+python -m api
 # API at http://localhost:5000
 
 # 4. Optional: React dashboard

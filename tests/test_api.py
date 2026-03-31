@@ -126,7 +126,7 @@ def test_config_constraints_returns_200(client):
     assert 'sector_limits' in payload or 'cardinality' in payload
 
 
-@patch('api.fetch_market_data')
+@patch('api.app.fetch_market_data')
 def test_portfolio_optimize_with_minimal_valid_data(mock_fetch, client):
     """Test POST /api/portfolio/optimize with minimal valid data via generate_mock_data."""
     payload = _minimal_optimize_payload()
@@ -216,7 +216,7 @@ def test_backtest_missing_required_fields_returns_400(client):
     assert resp3.status_code == 400
 
 
-@patch('api.fetch_market_data')
+@patch('api.app.fetch_market_data')
 def test_efficient_frontier_with_minimal_valid_data(mock_fetch, client):
     """Test POST /api/portfolio/efficient-frontier with minimal valid data."""
     mock_fetch.return_value = _mock_market_data_response(['AAPL', 'MSFT', 'GOOGL'])

@@ -6,7 +6,7 @@ This document describes the system architecture of the Quantum Hybrid Portfolio 
 
 The system consists of:
 
-1. **Backend API** (`api.py`) — Flask REST API, optimization, backtest, market data
+1. **Backend API** (`api/app.py`, `python -m api`) — Flask REST API, optimization, backtest, market data
 2. **Frontend** (`frontend/`) — React dashboard (EnhancedQuantumDashboard.js)
 3. **Core** (`core/quantum_inspired/`) — QSW optimizer, graph builder, evolution dynamics
 4. **Services** (`services/`) — Market data, backtest, portfolio optimizer
@@ -29,7 +29,7 @@ The system consists of:
 
 ## Backend
 
-### API Layer (`api.py`)
+### API Layer (`api/app.py`)
 
 - CORS enabled for frontend
 - Optional `X-API-Key` authentication

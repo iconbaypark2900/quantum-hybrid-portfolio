@@ -17,7 +17,7 @@ description: >
  
 ## What This Project Is
  
-A portfolio optimisation platform. The backend is Flask (`api.py`). The frontend
+A portfolio optimisation platform. The backend is Flask (`api/app.py`, `python -m api`). The frontend
 is React (`frontend/`). The optimisers live in `core/optimizers/`. Market data
 comes from AKShare (replacing the old yfinance). The backtest engine is in
 `services/backtest.py`.
@@ -42,10 +42,10 @@ Read `references/ui-design.md` **before** any frontend UI change.
    and `PRESETS_CONFIG` for `/api/config/*` endpoints.
  
 4. **`api_patch.py`** — Contains the replacement `optimize_portfolio()` handler
-   ready to paste into `api.py`. Not yet applied to `api.py`.
+   ready to paste into `api/app.py`. Not yet applied to `api/app.py`.
  
 5. **`MIGRATION.md`** — Full list of files to delete and exactly what to change
-   in `api.py`. Read this first.
+   in `api/app.py`. Read this first.
  
 6. **yfinance is still present** — `services/market_data.py` still uses
    yfinance. The task is to replace it with AKShare.
@@ -62,7 +62,7 @@ For **frontend UI work**: read `references/ui-design.md` first, then
 visual and component decisions.
  
 Read `references/akshare-guide.md` before touching any data layer code.
-Read `references/api-guide.md` before touching `api.py`.
+Read `references/api-guide.md` before touching `api/app.py`.
  
 ---
  
@@ -90,9 +90,9 @@ Read `references/api-guide.md` before touching `api.py`.
 ## Key File Locations
  
 ```
-api.py                                  Flask app — primary entry point
-api_patch.py                            Replacement optimize_portfolio() — paste into api.py
-MIGRATION.md                            What to delete, what to change in api.py
+api/app.py                              Flask app — primary entry point
+api_patch.py                            Replacement optimize_portfolio() — paste into api/app.py
+MIGRATION.md                            What to delete, what to change in api/app.py
 config/api_config.py                    Objectives and presets config
 core/optimizers/                        Six optimiser modules (already written)
 services/portfolio_optimizer.py         Optimizer router (already written)

@@ -74,7 +74,7 @@ _db_conn_factory: Optional[Callable[[], object]] = None
 
 
 def set_db_conn_factory(fn: Callable[[], object]) -> None:
-    """Called from api.py to enable persistence."""
+    """Called from api/app.py to enable persistence."""
     global _db_conn_factory
     _db_conn_factory = fn
 

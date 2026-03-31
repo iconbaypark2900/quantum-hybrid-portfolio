@@ -84,5 +84,5 @@ def run_basic_optimization():
 if __name__ == "__main__":
     optimization_result = run_basic_optimization()
     print("\nOptimization complete!")
-    print("Run the API server: python api.py")
+    print("Run the API server: python -m api")
     print("Or explore examples: python examples/quantum_integration_example.py")

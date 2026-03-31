@@ -311,7 +311,7 @@ export async function healthCheck() {
   return res.data;
 }
 
-/** Async job queue — see `api.py` `/api/jobs/*`. Body uses `payload` for optimize/backtest params. */
+/** Async job queue — see `api/app.py` `/api/jobs/*`. Body uses `payload` for optimize/backtest params. */
 export async function submitOptimizeJob(payload: Record<string, unknown>) {
   const res = await api.post("/api/jobs/optimize", { payload });
   return res.data as { job_id: string; status: string };

@@ -255,7 +255,7 @@ class TestOptimizeResponseShape:
 
 class TestMarketData:
 
-    @patch('api.fetch_market_data')
+    @patch('api.app.fetch_market_data')
     def test_market_data_happy(self, mock_fetch, client):
         mock_fetch.return_value = _mock_market_data()
         resp = client.post('/api/market-data', json={'tickers': ['AAPL', 'MSFT', 'GOOGL']})
@@ -301,7 +301,7 @@ class TestBacktest:
 
     @patch('services.backtest.fetch_price_panel')
     def test_backtest_happy(self, _mock_panel, client):
-        with patch('api._run_backtest_payload', return_value=_mock_backtest_result()):
+        with patch('api.app._run_backtest_payload', return_value=_mock_backtest_result()):
             resp = client.post('/api/portfolio/backtest', json={
                 'tickers': ['AAPL', 'MSFT'],
                 'start_date': '2023-01-01',

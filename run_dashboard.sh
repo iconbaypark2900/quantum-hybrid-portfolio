@@ -42,7 +42,7 @@ echo "🔌 Starting backend API on port $BACKEND_PORT..."
 source "$ROOT/.venv/bin/activate"
 export PORT="$BACKEND_PORT"
 export CORS_ORIGINS="http://localhost:$FRONTEND_PORT"
-python "$ROOT/api.py" &
+python -m api &
 BACKEND_PID=$!
 
 # Give backend time to bind
