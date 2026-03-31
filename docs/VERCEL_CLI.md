@@ -55,7 +55,7 @@ Deploying from `web/` means Vercel uses **`web/`** as the app root—no dashboar
 
 ## 4. Environment variables (CLI)
 
-Set variables **from the same directory** you linked (`api` vs `web`).
+Set variables **from the same directory** you linked: **repo root** (Flask/API Vercel project) vs **`web/`** (Next Vercel project). The Python package lives under `api/` in the repo, but **`vercel link` and `vercel env`** for the API use the **repository root**, not `api/`.
 
 **API (repo root)**
 
@@ -94,6 +94,23 @@ npx vercel@latest env pull .env.local
 **Caution:** `env pull` **overwrites** `.env.local`. Keys that exist only locally but not in Vercel (e.g. `NEXT_PUBLIC_*`) can be **removed**. Restore them from [web/.env.example](../web/.env.example) or re-add with `vercel env add`.
 
 For Option 1, `CORS_ORIGINS` on the API must list the dashboard origin(s). After changing API env, redeploy the API.
+
+---
+
+## 4b. Local .env.local vs Vercel (production parity)
+
+*If your viewer hides section numbers, search this file for **production parity**.*
+
+| | Local dev | Vercel Production / Preview |
+|--|-----------|-----------------------------|
+| **Source of truth** | `web/.env.local` (gitignored) | **Environment Variables** in the Vercel project (or `vercel env add`) |
+| **After `git push`** | N/A | Runtime and **`NEXT_PUBLIC_*` at build time** come from **Vercel**, not your laptop |
+
+- A successful **`npm run build`** on your machine does **not** prove Production env is set on Vercel.
+- Before relying on a deploy, from **`web/`** run **`npx vercel@latest env ls`** and confirm **Production** (and **Preview** if you use it) has **`NEXT_PUBLIC_API_KEY`** and either **Option 1** (`NEXT_PUBLIC_API_URL`) or **Option 2** (`API_PROXY_TARGET`, no `NEXT_PUBLIC_API_URL`).
+- From **repo root**, confirm the API project has **`API_KEY`**, **`CORS_ORIGINS`** (if Option 1), etc.
+
+**Node version:** `web/package.json` declares **`engines.node`** (`20.x`). In the **web** Vercel project, open **Settings → General → Node.js Version** and choose **20.x** so the dashboard matches `engines` and `web/.nvmrc`. For local parity, run **`nvm use`** in **`web/`** (reads **`.nvmrc`**) before `npm run build`.
 
 ---
 
@@ -138,3 +155,5 @@ Use **Terminal → Run Task** → *Vercel: Deploy API (prod)*, *Vercel: Deploy W
 
 - [VERCEL_TWO_PROJECTS.md](VERCEL_TWO_PROJECTS.md) — architecture and env meanings
 - [DEPLOYMENT.md](DEPLOYMENT.md) — general deployment notes
+
+**Local Python tests / CI:** Full **`pytest`** needs a virtualenv and `pip install -r requirements.txt` (PEP 668 systems should not install into the system Python). Disposable dirs like **`.venv-ci/`** are gitignored alongside **`.venv/`**. On push to **`main`**, **`.github/workflows/ci.yml`** runs backend tests, **`web/`** lint/build, and the legacy CRA job—use that as the reference for green CI.
