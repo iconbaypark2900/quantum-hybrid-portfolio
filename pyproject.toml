@@ -7,7 +7,7 @@ name = "quantum-hybrid-portfolio"
 version = "0.1.0"
 description = "Pragmatic quantum-inspired portfolio optimization using QSW"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dynamic = ["dependencies"]
 
 [project.scripts]
