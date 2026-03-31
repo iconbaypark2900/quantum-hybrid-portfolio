@@ -1,5 +1,6 @@
 # Virtual environment
 .venv/
+.venv-ci/
 venv/
 env/
 ENV/
@@ -81,3 +82,5 @@ data/*.parquet
 results/
 checkpoints/
 data/api.sqlite3
+.vercel
+.env*.local

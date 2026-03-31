@@ -37,6 +37,7 @@ Use `-H "X-API-Key: $API_KEY"` if your deployment requires it.
 |--------|--------|
 | **Root Directory** | `web` |
 | **Framework** | Next.js (auto) |
+| **Node.js Version** (Settings → General) | **20.x** — matches `web/package.json` **`engines`** and **`web/.nvmrc`** |
 
 Use **one** of the two patterns below (both are valid on Vercel).
 
@@ -80,6 +81,12 @@ Link **`vercel link`** from **repo root** to **Project A** (API) and from **`web
    Include preview URLs if needed.
 
 **Option 2:** skip CORS for dashboard→API (use `API_PROXY_TARGET` on B instead). Flask’s `CORS_ORIGINS` is read at startup (`api/app.py`). After changing env, redeploy the affected project.
+
+---
+
+## Production env vs local `web/.env.local`
+
+Vercel does **not** deploy `.env.local`. Set **[Option 1 or 2](#option-1--browser-calls-api-directly-cross-origin)** variables in the **web** project on Vercel (and API vars in the **API** project). For a checklist and Node parity notes, open **[VERCEL_CLI.md](VERCEL_CLI.md)** and find **§ 4b — Local .env.local vs Vercel (production parity)**. If your viewer hides section numbers or strips heading anchors, search that file for **4b** or **production parity** (no URL fragment required).
 
 ---
 
