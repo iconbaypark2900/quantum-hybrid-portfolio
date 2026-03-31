@@ -105,7 +105,14 @@ MARKET_DATA_LATENCY = Histogram(
 # ─── In-Memory Cache for Market Data ───
 _market_data_cache = {}
 CACHE_TTL = int(os.getenv('CACHE_TTL', 3600))  # 1 hour default
-API_DB_PATH = os.getenv('API_DB_PATH', os.path.join(_REPO_ROOT, 'data', 'api.sqlite3'))
+# Vercel serverless: only /tmp is writable; repo data/ is not. Override with API_DB_PATH if needed.
+def _default_api_db_path() -> str:
+    if os.getenv("VERCEL"):
+        return "/tmp/api.sqlite3"
+    return os.path.join(_REPO_ROOT, "data", "api.sqlite3")
+
+
+API_DB_PATH = os.getenv("API_DB_PATH", _default_api_db_path())
 
 # ─── Async Job Runtime ───
 _executor = ThreadPoolExecutor(max_workers=int(os.getenv("JOB_WORKERS", "4")))
