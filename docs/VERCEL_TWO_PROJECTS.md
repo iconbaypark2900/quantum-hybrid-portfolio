@@ -1,6 +1,6 @@
 # Vercel: API + Next.js (two projects)
 
-Use **two Vercel projects** from the same GitHub repo: one for the **Flask API** (Python) and one for the **Next.js dashboard** (`web/`). The browser talks to the API either **cross-origin** (set `NEXT_PUBLIC_API_URL` + Flask `CORS_ORIGINS`) or you can keep split deploy and always use the direct API URL from the client.
+Use **two Vercel projects** from the same GitHub repo: one for the **Flask API** (Python) and one for the **Next.js dashboard** (`web/`). Wire the dashboard to the API with **either** **`NEXT_PUBLIC_API_URL`** (direct calls + **`CORS_ORIGINS`** on Flask) **or** an empty public URL + **`API_PROXY_TARGET`** (same-origin `/api/*` proxied by Next; no CORS for browser→API).
 
 ---
 
@@ -38,35 +38,48 @@ Use `-H "X-API-Key: $API_KEY"` if your deployment requires it.
 | **Root Directory** | `web` |
 | **Framework** | Next.js (auto) |
 
-**Environment variables**
+Use **one** of the two patterns below (both are valid on Vercel).
 
-| Variable | Purpose |
-|----------|---------|
-| `NEXT_PUBLIC_API_URL` | **Full base URL of Project A**, no trailing slash, e.g. `https://<project-a>.vercel.app`. The client (`web/src/lib/api.ts`) uses this as Axios `baseURL`. |
-| `NEXT_PUBLIC_API_KEY` | Same value as Project A’s `API_KEY` (embedded in browser bundle). |
+### Option 1 — Browser calls API directly (cross-origin)
 
-With `NEXT_PUBLIC_API_URL` set, the browser calls the API **directly** on Project A. **`API_PROXY_TARGET`** rewrites in `next.config.ts` are mainly for **local dev** when `NEXT_PUBLIC_API_URL` is empty.
+The dashboard and API are different origins; the browser talks to Project A’s URL. **Flask must allow the dashboard origin** via `CORS_ORIGINS`.
 
-**Do not** set `NEXT_PUBLIC_API_URL` to the Project B URL unless you intentionally proxy; for split deployment, it must be **Project A’s** URL.
+| Variable | Value |
+|----------|--------|
+| `NEXT_PUBLIC_API_URL` | Project A base URL, **no trailing slash**, e.g. `https://<project-a>.vercel.app` |
+| `NEXT_PUBLIC_API_KEY` | Same secret as Project A’s `API_KEY` |
+
+Do **not** set `NEXT_PUBLIC_API_URL` to Project B’s URL.
+
+### Option 2 — Same-origin via Next rewrites (no CORS for browser→API)
+
+Leave `NEXT_PUBLIC_API_URL` **empty** so Axios uses relative `/api/*` against Project B. **`next.config.ts`** rewrites those to `API_PROXY_TARGET`. On Vercel, set **`API_PROXY_TARGET`** to Project A’s base URL (same as Option 1’s URL, no trailing slash)—**not** `http://127.0.0.1:5000`.
+
+| Variable | Value |
+|----------|--------|
+| `NEXT_PUBLIC_API_URL` | *(empty)* |
+| `NEXT_PUBLIC_API_KEY` | Same as Project A’s `API_KEY` (still sent from the browser to `/api/*` on Project B; Next proxies to A) |
+| `API_PROXY_TARGET` | `https://<project-a>.vercel.app` |
+
+The browser only sees Project B’s origin; **Flask `CORS_ORIGINS` does not need** the dashboard origin for this path (server-side proxy to A). You still need `API_KEY` / `NEXT_PUBLIC_API_KEY` aligned.
 
 ---
 
-## CORS checklist
+## Two Vercel projects — do not reuse one project for both
 
-1. Deploy Project A; copy its production URL (e.g. `https://quantum-api.vercel.app`).
-2. Deploy Project B with `NEXT_PUBLIC_API_URL` = that URL.
-3. On **Project A**, set `CORS_ORIGINS` to **Project B’s** origin(s), e.g.  
+Link **`vercel link`** from **repo root** to **Project A** (API) and from **`web/`** to a **different** Vercel project name (e.g. `…-api` vs `…-web`). If `web/` is linked to the same project as the API, builds and env are wrong.
+
+---
+
+## CORS checklist (Option 1 only)
+
+1. Deploy Project A; copy its production URL.
+2. Deploy Project B with `NEXT_PUBLIC_API_URL` = that URL (Option 1).
+3. On **Project A**, set `CORS_ORIGINS` to Project B’s origin(s), comma-separated, e.g.  
    `https://quantum-dashboard.vercel.app`  
-   Include preview URLs if you test previews:  
-   `https://quantum-dashboard-xxx-team.vercel.app` (or use Preview env vars in Vercel per environment).
+   Include preview URLs if needed.
 
-Flask’s `CORS_ORIGINS` is read at startup (`api/app.py`). After changing it, redeploy Project A.
-
----
-
-## Optional: same-origin (advanced)
-
-To avoid CORS entirely you would need the Next app to proxy `/api/*` to Project A **on the server** (Next rewrites to an absolute URL). That requires Project B’s server to reach Project A (possible on Vercel) and is a different wiring than `NEXT_PUBLIC_API_URL` pointing at A. The **simple split-host** pattern is: **`NEXT_PUBLIC_API_URL` + `CORS_ORIGINS`**.
+**Option 2:** skip CORS for dashboard→API (use `API_PROXY_TARGET` on B instead). Flask’s `CORS_ORIGINS` is read at startup (`api/app.py`). After changing env, redeploy the affected project.
 
 ---
 

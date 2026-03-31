@@ -106,7 +106,7 @@ Flask's `CORS_ORIGINS` (default `http://localhost:3000`) must include the Next.j
 
 Typical setup: **Project A** = Python/Flask at repo root (`pyproject.toml`); **Project B** = Next.js with **Root Directory** `web`. Set **`NEXT_PUBLIC_API_URL`** on B to A’s URL and **`CORS_ORIGINS`** on A to B’s origin.
 
-Step-by-step: **[docs/VERCEL_TWO_PROJECTS.md](VERCEL_TWO_PROJECTS.md)**. CLI / terminal: **[docs/VERCEL_CLI.md](VERCEL_CLI.md)**.
+Step-by-step: **[docs/VERCEL_TWO_PROJECTS.md](VERCEL_TWO_PROJECTS.md)** (direct `NEXT_PUBLIC_*` vs `API_PROXY_TARGET`). CLI / terminal: **[docs/VERCEL_CLI.md](VERCEL_CLI.md)**.
 
 ---
 

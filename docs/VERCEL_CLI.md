@@ -66,11 +66,21 @@ npx vercel@latest env add CORS_ORIGINS production
 npx vercel@latest env add CORS_ORIGINS preview
 ```
 
-**Web (`web/`)**
+**Web (`web/`)** — pick **one** pattern (see [VERCEL_TWO_PROJECTS.md](VERCEL_TWO_PROJECTS.md)):
+
+*Option 1 — direct API (needs `CORS_ORIGINS` on the API project):*
 
 ```bash
 cd web
 npx vercel@latest env add NEXT_PUBLIC_API_URL production
+npx vercel@latest env add NEXT_PUBLIC_API_KEY production
+```
+
+*Option 2 — proxy via Next (`NEXT_PUBLIC_API_URL` empty, set `API_PROXY_TARGET` to the API base URL):*
+
+```bash
+cd web
+npx vercel@latest env add API_PROXY_TARGET production
 npx vercel@latest env add NEXT_PUBLIC_API_KEY production
 ```
 
@@ -81,7 +91,9 @@ npx vercel@latest env ls
 npx vercel@latest env pull .env.local
 ```
 
-`CORS_ORIGINS` must include the **exact** dashboard origin(s) (scheme + host, no path). After changing API env, redeploy the API.
+**Caution:** `env pull` **overwrites** `.env.local`. Keys that exist only locally but not in Vercel (e.g. `NEXT_PUBLIC_*`) can be **removed**. Restore them from [web/.env.example](../web/.env.example) or re-add with `vercel env add`.
+
+For Option 1, `CORS_ORIGINS` on the API must list the dashboard origin(s). After changing API env, redeploy the API.
 
 ---
 
