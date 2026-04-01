@@ -1,6 +1,7 @@
 # Virtual environment
 .venv/
 .venv-ci/
+.venv-api-size/
 venv/
 env/
 ENV/
