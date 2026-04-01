@@ -1,0 +1,50 @@
+# Fly.io configuration for the Flask API app.
+# Rename app to your chosen Fly app name (must match what you pass to fly apps create).
+# Deploy from repo root: fly deploy --config fly.toml
+#
+# Before first deploy:
+#   1. fly apps create <your-api-app-name>
+#   2. Update app = '...' below to match.
+#   3. fly secrets set API_KEY=<strong-key> TIINGO_API_KEY=<key> \
+#        IBM_QUANTUM_TOKEN=<token>  (and any other secrets from docs/FLY_DEPLOY.md)
+#   4. If using SQLite persistence, uncomment [[mounts]] and create the volume:
+#        fly volumes create quantum_data --region ord --size 1
+#   5. fly deploy --config fly.toml
+
+app = 'your-quantum-api'
+primary_region = 'ord'
+
+[build]
+  dockerfile = 'Dockerfile.fly'
+
+[http_service]
+  internal_port = 5000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/api/health'
+
+[env]
+  PORT = '5000'
+  # Set CORS_ORIGINS if your Next app calls the API directly from the browser
+  # (not needed with the recommended Option 2 server-side proxy via API_PROXY_TARGET).
+  # CORS_ORIGINS = 'https://your-quantum-web.fly.dev'
+
+[[vm]]
+  # 1 GB handles numpy/pandas/qiskit cold-start; raise to 2 GB if OOM.
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+# Uncomment to persist SQLite (API_DB_PATH=/data/api.sqlite3) across restarts.
+# Also set the secret: fly secrets set API_DB_PATH=/data/api.sqlite3
+# [[mounts]]
+#   source = 'quantum_data'
+#   destination = '/data'
