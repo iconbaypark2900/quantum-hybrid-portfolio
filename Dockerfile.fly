@@ -1,0 +1,54 @@
+# Fly.io Dockerfile for the Flask API (quantum-hybrid-portfolio).
+# Runs api.app:app via gunicorn on port 5000.
+# Full requirements.txt stack (no Vercel bundle cap here) + IBM Quantum wheels.
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        libgomp1 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -u 1000 appuser
+
+WORKDIR /app
+
+# Install deps before copying source for layer caching.
+COPY requirements.txt requirements-vercel.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir \
+        qiskit==2.3.1 \
+        qiskit-ibm-runtime==0.46.1 \
+        gunicorn
+
+# Copy source and install the package without re-resolving shared deps.
+COPY --chown=appuser:appuser . .
+RUN pip install --no-cache-dir --no-deps .
+
+USER appuser
+
+# Fly machines map external 443 → internal 5000 via http_service in fly.toml.
+EXPOSE 5000
+
+# 2 workers × 2 gthreads = 4 concurrent requests.
+# Raise workers/memory in fly.toml [[vm]] for heavier workloads.
+# Timeout 120s covers long optimization jobs (VQE/QAOA).
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--workers", "2", \
+     "--worker-class", "gthread", \
+     "--threads", "2", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "100", \
+     "--preload", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "api.app:app"]
