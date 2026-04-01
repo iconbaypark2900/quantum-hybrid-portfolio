@@ -17,7 +17,8 @@
 #        fly volumes create quantum_data --region ord --size 1
 #   5. fly deploy --config fly.toml
 
-app = 'your-quantum-api'
+# Must match an app from `fly apps list`. Use your real Fly app name (e.g. quantum-hybrid-portfolio).
+app = 'quantum-hybrid-portfolio'
 primary_region = 'ord'
 
 [build]
