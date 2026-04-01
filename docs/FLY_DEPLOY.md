@@ -193,11 +193,11 @@ Both apps can be deployed independently. The private `.internal` DNS is stable a
 
 **Fly Doctor: “App is not listening on internal_port 7860” or 502 Bad Gateway**
 
-The **API** app (`Dockerfile.fly`) listens on **`PORT`**, default **5000**. `fly.toml` must use **`internal_port = 5000`**.
+The **API** app (`Dockerfile.fly`) binds gunicorn to **`0.0.0.0:5000`**. `fly.toml` must use **`internal_port = 5000`** (do not use a shell `$$PORT` bind — it breaks as `638PORT` etc.).
 
 - **7860** is only for **Hugging Face** / the root `Dockerfile` + `serve_hf.py`, not for Fly’s API deploy.
 - If the dashboard or an old `fly launch` set **internal_port = 7860**, change it to **5000** (or edit `fly.toml` and run `fly deploy`).
-- After changing port, redeploy so Fly’s proxy and `PORT` match the container.
+- After changing port, redeploy so Fly’s proxy matches the container listen port.
 
 **`/api/health` returns 404 or HTML from the Next app**
 → `API_PROXY_TARGET` is missing or wrong on App B. Check with:

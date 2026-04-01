@@ -36,11 +36,21 @@ USER appuser
 # Default matches fly.toml [[http_service]] internal_port (must NOT be 7860 — that is Hugging Face / Dockerfile only).
 ENV PORT=5000
 
-# Fly machines map external 443 → internal_port from fly.toml; Fly also sets PORT to match internal_port.
+# Fly maps 443 → fly.toml [[http_service]] internal_port (5000). Do not use shell `$PORT` here:
+# in `sh -c`, `$$` expands to the shell PID and breaks `--bind 0.0.0.0:$$PORT` into e.g. `638PORT`.
 EXPOSE 5000
 
-# 2 workers × 2 gthreads = 4 concurrent requests.
-# Bind to $PORT so Fly Doctor and the proxy always match (502 if internal_port ≠ listening port).
-# Timeout 120s covers long optimization jobs (VQE/QAOA).
-# $$PORT so Docker passes $PORT to the shell (Fly sets PORT to match internal_port).
-CMD ["/bin/sh", "-c", "exec gunicorn --bind 0.0.0.0:$$PORT --workers 2 --worker-class gthread --threads 2 --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --preload --access-logfile - --error-logfile - api.app:app"]
+# 2 workers × 2 gthreads = 4 concurrent requests. Timeout 120s for long optimization jobs (VQE/QAOA).
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--workers", "2", \
+     "--worker-class", "gthread", \
+     "--threads", "2", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "100", \
+     "--preload", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "api.app:app"]
