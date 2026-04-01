@@ -1,0 +1,44 @@
+# Fly.io configuration for the Next.js web app (web/).
+# Rename app to your chosen Fly app name (must match what you pass to fly apps create).
+# Deploy from web/: fly deploy
+# Or from repo root: fly deploy --config web/fly.toml
+#
+# Before first deploy:
+#   1. fly apps create <your-web-app-name>
+#   2. Update app = '...' below to match.
+#   3. fly secrets set \
+#        API_PROXY_TARGET=http://<your-api-app-name>.internal:5000 \
+#        NEXT_PUBLIC_API_KEY=<same-value-as-API_KEY-on-api-app>
+#      (Replace <your-api-app-name> with the Fly app name of the Flask API.)
+#   4. fly deploy
+
+app = 'your-quantum-web'
+primary_region = 'ord'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/'
+
+[env]
+  NODE_ENV = 'production'
+  NEXT_TELEMETRY_DISABLED = '1'
+  # API_PROXY_TARGET and NEXT_PUBLIC_API_KEY are set via fly secrets (see above).
+  # Do NOT commit real values here.
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

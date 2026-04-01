@@ -16,6 +16,10 @@ frontend/node_modules
 frontend/build
 frontend/.env*
 frontend/npm-debug.log*
+web/node_modules
+web/.next
+web/.env*
+web/npm-debug.log*
 
 # IDE
 .idea
@@ -31,6 +35,11 @@ frontend/npm-debug.log*
 # tests/
 # examples/
 # notebooks/
+
+# Venvs / size-check dirs
+.venv
+.venv-api-size
+venv
 
 # Misc
 .env
