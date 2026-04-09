@@ -98,31 +98,37 @@ app = '<your-web-app-name>'
 primary_region = 'ord'   # match App A's region so .internal traffic is fast
 ```
 
-### 3b. Set secrets
+### 3b. Web app environment
 
-`API_PROXY_TARGET` must point to the Flask API using Fly's **private network DNS**. The pattern is `http://<api-app-name>.internal:5000` (no trailing slash).
+**`API_PROXY_TARGET`** — Must point to the Flask API using Fly's **private network DNS**: `http://<api-app-name>.internal:5000` (no trailing slash). The checked-in **`web/fly.toml`** sets a default under **`[env]`** matching **`app`** in the repo root **`fly.toml`**. Override with **`fly secrets set`** if your API app name differs (secrets override `[env]`):
 
 ```bash
-fly secrets set \
-  API_PROXY_TARGET=http://<your-api-app-name>.internal:5000 \
-  NEXT_PUBLIC_API_KEY=<same-value-as-API_KEY-above> \
-  --app <your-web-app-name>
+fly secrets set API_PROXY_TARGET=http://<your-api-app-name>.internal:5000 --app <your-web-app-name>
 ```
 
-`NEXT_PUBLIC_API_URL` should be **left unset** (or empty). The rewrites in `web/next.config.ts` handle routing — the browser never calls Flask directly.
+**`NEXT_PUBLIC_API_KEY`** — Must match **`API_KEY`** on the API app and is **inlined when the client bundle is built**. Fly **secrets** are not available to `npm run build`; pass a **build arg** on deploy:
+
+```bash
+fly deploy ./web --config fly.toml --app <your-web-app-name> \
+  --build-arg NEXT_PUBLIC_API_KEY=<same-value-as-API_KEY-on-api-app>
+```
+
+`NEXT_PUBLIC_API_URL` should be **left unset** (or empty) for same-origin `/api/*` through Next. The browser never calls Flask directly unless you use Option 1 (direct URL + CORS).
 
 ### 3c. Deploy
 
+Fly’s **build context** is the working directory you pass to `fly deploy` (default: current directory). From repo root, `fly deploy --config web/fly.toml` still uses the **repo root** as context, so `web/Dockerfile`’s `COPY package.json` fails. Always pass **`./web`** first:
+
 ```bash
-# From web/
-cd web
-fly deploy
+# From repo root (recommended)
+fly deploy ./web --config fly.toml --app <your-web-app-name>
 ```
 
-Or from repo root:
+Or from inside `web/`:
 
 ```bash
-fly deploy --config web/fly.toml
+cd web
+fly deploy
 ```
 
 ### 3d. Verify end-to-end
@@ -150,8 +156,8 @@ fly deploy --config web/fly.toml
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `API_PROXY_TARGET` | Yes | `http://<api-app>.internal:5000` — Next server → Flask via private network |
-| `NEXT_PUBLIC_API_KEY` | Yes | Same value as `API_KEY` on App A |
+| `API_PROXY_TARGET` | Yes | **Runtime** (`fly secrets` on web app). Pattern: `http://<api-app>.internal:5000` |
+| `NEXT_PUBLIC_API_KEY` | Yes | **Build-time** (`--build-arg`); same value as `API_KEY` on App A |
 | `NEXT_PUBLIC_API_URL` | No | Leave unset when using the `/api` proxy (Option 2) |
 
 ---
@@ -165,10 +171,10 @@ docker run --rm -p 5000:5000 -e API_KEY=dev quantum-api-fly
 curl http://localhost:5000/api/health
 
 # Build and run Next locally (assumes API is running on 5000)
-docker build -f web/Dockerfile -t quantum-web-fly web/
+docker build -f web/Dockerfile -t quantum-web-fly web/ \
+  --build-arg NEXT_PUBLIC_API_KEY=dev
 docker run --rm -p 3000:3000 \
   -e API_PROXY_TARGET=http://host.docker.internal:5000 \
-  -e NEXT_PUBLIC_API_KEY=dev \
   quantum-web-fly
 # Then open http://localhost:3000 and check /api/health in DevTools
 ```
@@ -178,11 +184,11 @@ docker run --rm -p 3000:3000 \
 ## Updating after code changes
 
 ```bash
-# API
+# API (from repo root)
 fly deploy --config fly.toml
 
-# Web
-fly deploy --config web/fly.toml   # or: cd web && fly deploy
+# Web — use ./web as build context (see §3c)
+fly deploy ./web --config fly.toml
 ```
 
 Both apps can be deployed independently. The private `.internal` DNS is stable as long as the app name does not change.
@@ -190,6 +196,20 @@ Both apps can be deployed independently. The private `.internal` DNS is stable a
 ---
 
 ## Troubleshooting
+
+**Health checks never pass / deploy times out**
+
+The app’s root **`/`** redirects to **`/dashboard`** (HTTP **307**). Fly’s HTTP checks require **2xx** responses, so **`path = '/'`** fails. This repo uses **`path = '/health'`** in `web/fly.toml`, served by `web/src/app/health/route.ts`.
+
+**Docker build fails on `COPY package.json package-lock.json` (or `useradd: UID 1000 is not unique`)**
+
+You are building with the **wrong context** (usually repo root) or an **old cached Dockerfile**. From repo root:
+
+```bash
+fly deploy ./web --config fly.toml --app <your-web-app-name>
+```
+
+Not `fly deploy --config web/fly.toml` alone. See [Monorepo and multi-environment deployments](https://fly.io/docs/reference/monorepo/).
 
 **Fly Doctor: “App is not listening on internal_port 7860” or 502 Bad Gateway**
 
@@ -199,12 +219,11 @@ The **API** app (`Dockerfile.fly`) binds gunicorn to **`0.0.0.0:5000`**. `fly.to
 - If the dashboard or an old `fly launch` set **internal_port = 7860**, change it to **5000** (or edit `fly.toml` and run `fly deploy`).
 - After changing port, redeploy so Fly’s proxy matches the container listen port.
 
-**`/api/health` returns 404 or HTML from the Next app**
-→ `API_PROXY_TARGET` is missing or wrong on App B. Check with:
+**`/api/health` returns 404 or HTML from the Next app, or logs show `ECONNREFUSED 127.0.0.1:5000`**
+→ **`API_PROXY_TARGET`** is missing or still points at localhost. On the **web** app run **`fly secrets set API_PROXY_TARGET=http://<api-app-name>.internal:5000`** and redeploy (no rebuild required unless you change `NEXT_PUBLIC_*`).
 
-```bash
-fly secrets list --app <your-web-app-name>
-```
+**`/api/*` returns 401 from the browser**
+→ Rebuild with **`--build-arg NEXT_PUBLIC_API_KEY=...`** matching the API app’s **`API_KEY`** (client bundle is build-time).
 
 **API returns 500 on IBM paths**
 → `IBM_QUANTUM_TOKEN` is not set or token has expired. Re-set the secret and redeploy.

@@ -29,6 +29,23 @@ const api = axios.create({
 /** When set (e.g. admin static API key), sent as X-Tenant-Id for per-enterprise IBM / integrations. */
 export const INTEGRATION_TENANT_STORAGE_KEY = "ql_active_tenant";
 
+/**
+ * Per-browser session tenant ID — generated once, stored in localStorage.
+ * Sent as X-Tenant-Id on every request so each user's IBM credentials are
+ * isolated server-side without requiring a full auth system.
+ */
+const SESSION_TENANT_KEY = "ql_session_tenant";
+
+export function getOrCreateSessionTenantId(): string {
+  if (typeof window === "undefined") return "";
+  let id = localStorage.getItem(SESSION_TENANT_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(SESSION_TENANT_KEY, id);
+  }
+  return id;
+}
+
 export function setActiveIntegrationTenant(tenantId: string | null): void {
   if (typeof window === "undefined") return;
   if (tenantId) {
@@ -45,10 +62,12 @@ export function getActiveIntegrationTenant(): string | null {
 
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const t = localStorage.getItem(INTEGRATION_TENANT_STORAGE_KEY);
-    if (t) {
+    // Explicit admin/enterprise tenant overrides the auto session tenant.
+    const explicit = localStorage.getItem(INTEGRATION_TENANT_STORAGE_KEY);
+    const tenant = explicit || getOrCreateSessionTenantId();
+    if (tenant) {
       config.headers = config.headers ?? {};
-      (config.headers as Record<string, string>)["X-Tenant-Id"] = t;
+      (config.headers as Record<string, string>)["X-Tenant-Id"] = tenant;
     }
   }
   return config;

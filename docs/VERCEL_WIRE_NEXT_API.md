@@ -44,9 +44,9 @@ curl -sS -H "X-API-Key: $API_KEY" "https://<your-api>.vercel.app/api/health"
 
 ## 2. Project B (Next `web/`) — pick Option 2 **or** Option 1
 
-### Option 2 (recommended): same-origin `/api/*` → Next rewrites to API
+### Option 2 (recommended): same-origin `/api/*` → Next server proxies to API
 
-Browser calls **`https://<your-web>.vercel.app/api/...`** only. Next proxies to Flask (**no CORS** needed for browser→API).
+Browser calls **`https://<your-web>.vercel.app/api/...`** only. The Next **Route Handler** (`web/src/app/api/[[...path]]/route.ts`) proxies to Flask using **`API_PROXY_TARGET`** at request time (**no CORS** needed for browser→API).
 
 In **Project B → Settings → Environment Variables**:
 
@@ -58,7 +58,7 @@ In **Project B → Settings → Environment Variables**:
 
 Do **not** leave `API_PROXY_TARGET` as `http://127.0.0.1:5000` on Vercel — that is for **local** dev only.
 
-Redeploy **Project B** after saving (new build picks up `API_PROXY_TARGET` for `next.config.ts` rewrites).
+Redeploy **Project B** after saving env vars so serverless functions pick up **`API_PROXY_TARGET`** (it is read at **request** time, not baked into `next.config` rewrites).
 
 ### Option 1: browser calls API directly
 

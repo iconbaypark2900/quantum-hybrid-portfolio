@@ -1,18 +1,23 @@
 # Fly.io configuration for the Next.js web app (web/).
 # Rename app to your chosen Fly app name (must match what you pass to fly apps create).
-# Deploy from web/: fly deploy
-# Or from repo root: fly deploy --config web/fly.toml
+#
+# Deploy — build context MUST be web/ (see Fly monorepo docs). From repo root use:
+#   fly deploy ./web --config fly.toml -a <app-name>
+# From inside web/:
+#   fly deploy
 #
 # Before first deploy:
 #   1. fly apps create <your-web-app-name>
 #   2. Update app = '...' below to match.
-#   3. fly secrets set \
-#        API_PROXY_TARGET=http://<your-api-app-name>.internal:5000 \
-#        NEXT_PUBLIC_API_KEY=<same-value-as-API_KEY-on-api-app>
-#      (Replace <your-api-app-name> with the Fly app name of the Flask API.)
-#   4. fly deploy
+#   3. fly secrets set on this (web) app:
+#        API_PROXY_TARGET=http://<api-fly-app-name>.internal:5000
+#      (Must match Flask API Fly app name — see repo root fly.toml.)
+#   4. Deploy with --build-arg for the browser API key (must match API app API_KEY):
+#        fly deploy ./web --config fly.toml -a <web-app> \
+#          --build-arg NEXT_PUBLIC_API_KEY=<same-as-API_KEY-on-api-app>
+#   5. Redeploy when NEXT_PUBLIC_API_KEY or API URL changes (rebuild for NEXT_PUBLIC_*).
 
-app = 'your-quantum-web'
+app = 'quantumledger'
 primary_region = 'ord'
 
 [build]
@@ -25,18 +30,21 @@ primary_region = 'ord'
   auto_start_machines = true
   min_machines_running = 0
 
+  # Root `/` redirects to /dashboard (307) — Fly expects 2xx. Use a dedicated liveness path.
   [[http_service.checks]]
     interval = '30s'
     timeout = '10s'
-    grace_period = '30s'
+    grace_period = '60s'
     method = 'GET'
-    path = '/'
+    path = '/health'
 
 [env]
   NODE_ENV = 'production'
   NEXT_TELEMETRY_DISABLED = '1'
-  # API_PROXY_TARGET and NEXT_PUBLIC_API_KEY are set via fly secrets (see above).
-  # Do NOT commit real values here.
+  # Private URL to the Flask API (same Fly org / 6PN). Must match root `fly.toml` app name.
+  # Override with `fly secrets set API_PROXY_TARGET=...` if your API app name differs.
+  API_PROXY_TARGET = 'http://quantum-hybrid-portfolio.internal:5000'
+  # NEXT_PUBLIC_API_KEY: pass at build via `fly deploy --build-arg ...`
 
 [[vm]]
   memory = '512mb'

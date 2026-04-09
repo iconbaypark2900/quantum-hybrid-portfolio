@@ -7,9 +7,10 @@
 FROM node:20-slim AS builder
 WORKDIR /app
 
-# API_PROXY_TARGET is read at runtime by Next rewrites; passing a dummy value
-# here avoids any build-time warnings without embedding a real URL in the image.
-ENV API_PROXY_TARGET=http://localhost:5000
+# NEXT_PUBLIC_* is inlined at `npm run build`. API_PROXY_TARGET is read at runtime
+# by `src/app/api/[[...path]]/route.ts` (Fly secrets / container env — not required here).
+ARG NEXT_PUBLIC_API_KEY=
+ENV NEXT_PUBLIC_API_KEY=$NEXT_PUBLIC_API_KEY
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json package-lock.json ./
@@ -25,7 +26,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN useradd -m -u 1000 nextjs
+# node:20-slim reserves UID 1000 for the built-in `node` user.
+RUN useradd -m -u 1001 nextjs
 USER nextjs
 
 # Standalone output includes its own node_modules copy.
