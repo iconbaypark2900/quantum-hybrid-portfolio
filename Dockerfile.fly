@@ -38,11 +38,13 @@ ENV PORT=5000
 
 # Fly maps 443 → fly.toml [[http_service]] internal_port (5000). Do not use shell `$PORT` here:
 # in `sh -c`, `$$` expands to the shell PID and breaks `--bind 0.0.0.0:$$PORT` into e.g. `638PORT`.
+# Bind to [::] (all IPv6 + IPv4 via dual-stack) so Fly's 6PN private network (IPv6 fdaa:... addresses)
+# can reach the service from other apps (e.g. the Next.js web app in a different region).
 EXPOSE 5000
 
 # 2 workers × 2 gthreads = 4 concurrent requests. Timeout 120s for long optimization jobs (VQE/QAOA).
 CMD ["gunicorn", \
-     "--bind", "0.0.0.0:5000", \
+     "--bind", "[::]:5000", \
      "--workers", "2", \
      "--worker-class", "gthread", \
      "--threads", "2", \
