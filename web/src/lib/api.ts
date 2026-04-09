@@ -188,6 +188,9 @@ export type IbmQuantumCredentials = {
   instance?: string;
 };
 
+// IBM Quantum calls hit external IBM APIs — give them 3 minutes.
+const IBM_TIMEOUT_MS = 180_000;
+
 export async function setIbmQuantumToken(
   token: string,
   opts?: { instance?: string }
@@ -195,7 +198,7 @@ export async function setIbmQuantumToken(
   const body: Record<string, string> = { token };
   const inst = opts?.instance?.trim();
   if (inst) body.instance = inst;
-  const res = await api.post("/api/config/ibm-quantum", body);
+  const res = await api.post("/api/config/ibm-quantum", body, { timeout: IBM_TIMEOUT_MS });
   return res.data;
 }
 
@@ -207,7 +210,7 @@ export async function verifyIbmQuantumToken(
   const body: Record<string, string> = { token };
   const inst = opts?.instance?.trim();
   if (inst) body.instance = inst;
-  const res = await api.post("/api/config/ibm-quantum/verify", body);
+  const res = await api.post("/api/config/ibm-quantum/verify", body, { timeout: IBM_TIMEOUT_MS });
   return res.data;
 }
 

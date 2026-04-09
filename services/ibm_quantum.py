@@ -205,6 +205,43 @@ def _instance_probe(svc: Any) -> dict[str, Any]:
     return out
 
 
+_IBM_CONNECT_TIMEOUT_S = 120  # seconds before we give up on IBM's API
+
+
+def _connect_with_timeout(
+    token: str, instance_crn: Optional[str]
+) -> tuple[Any, list[str], dict]:
+    """
+    Build a QiskitRuntimeService, list backends, and probe instances —
+    all inside a thread so we can enforce a hard timeout.
+
+    Returns (svc, backends, probe) or raises TimeoutError / the original exception.
+    """
+    import concurrent.futures
+
+    result: dict[str, Any] = {}
+
+    def _work() -> None:
+        svc = _build_runtime_service(token, instance_crn)
+        backends = [b.name for b in svc.backends()]
+        probe = _instance_probe(svc)
+        result["svc"] = svc
+        result["backends"] = backends
+        result["probe"] = probe
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_work)
+        try:
+            fut.result(timeout=_IBM_CONNECT_TIMEOUT_S)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(
+                f"IBM Quantum API did not respond within {_IBM_CONNECT_TIMEOUT_S}s. "
+                "Check your token and network connectivity, then try again."
+            )
+
+    return result["svc"], result["backends"], result["probe"]
+
+
 def verify_token(
     tenant_id: str, token: str, instance_crn: Optional[str] = None
 ) -> dict:
@@ -222,9 +259,7 @@ def verify_token(
         return {"ok": False, "error": "Token is empty"}
 
     try:
-        svc = _build_runtime_service(token, instance_crn)
-        backends = [b.name for b in svc.backends()]
-        probe = _instance_probe(svc)
+        _, backends, probe = _connect_with_timeout(token, instance_crn)
     except ImportError:
         return {
             "ok": False,
@@ -263,9 +298,7 @@ def set_token(
         return {"ok": False, "error": "Token is empty"}
 
     try:
-        svc = _build_runtime_service(token, instance_crn)
-        backends = [b.name for b in svc.backends()]
-        probe = _instance_probe(svc)
+        svc, backends, probe = _connect_with_timeout(token, instance_crn)
     except ImportError:
         return {
             "ok": False,
