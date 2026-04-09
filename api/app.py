@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import json
 import os
+import re
 import uuid
 import time
 import hashlib
@@ -398,12 +399,19 @@ def _create_api_key(tenant_id: str, key_name: str = "") -> str:
     return plain
 
 
+_SAFE_TENANT_RE = re.compile(r'^[a-zA-Z0-9_\-]{8,64}$')
+
+
 def integration_effective_tenant_id():
     """
     Tenant id for integration credentials (IBM, Braket metadata).
     - Static API_KEY + same header value: X-Tenant-Id selects enterprise.
     - Database API key: tenant from key (ignores X-Tenant-Id).
-    - Anonymous: default.
+    - No API_KEY configured: X-Tenant-Id used as anonymous session key when
+      it passes the safe-format check (UUID / alphanumeric+hyphen, 8-64 chars).
+      This lets each browser generate its own UUID and keep credentials isolated
+      without requiring a full auth system.
+    - Anonymous fallback: default.
     """
     header_tid = (request.headers.get("X-Tenant-Id") or "").strip()
     client_key = request.headers.get("X-API-Key", "")
@@ -412,6 +420,10 @@ def integration_effective_tenant_id():
     tenant = _lookup_tenant_by_key(client_key) if client_key else None
     if tenant:
         return str(tenant["tenant_id"])
+    # Anonymous mode: honor X-Tenant-Id as a session-scoped tenant when no
+    # static API_KEY is set. UUID from the browser is the common case.
+    if not API_KEY and header_tid and _SAFE_TENANT_RE.match(header_tid):
+        return header_tid
     gid = getattr(g, "tenant_id", "anonymous")
     if gid not in ("anonymous", None, ""):
         return str(gid)
@@ -478,11 +490,14 @@ def before_request_hook():
 
 @app.after_request
 def after_request_hook(response):
-    # Metrics
+    # Metrics (never fail the response if Prometheus labels error)
     duration = time.time() - getattr(g, 'start_time', time.time())
     endpoint = request.endpoint or 'unknown'
-    REQUEST_COUNT.labels(method=request.method, endpoint=endpoint, status=response.status_code).inc()
-    REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint).observe(duration)
+    try:
+        REQUEST_COUNT.labels(method=request.method, endpoint=endpoint, status=response.status_code).inc()
+        REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint).observe(duration)
+    except Exception as metric_exc:
+        logger.warning("prometheus_metrics_failed: %s", metric_exc)
 
     # Structured log
     logger.info('request_completed', extra={
@@ -2458,7 +2473,23 @@ def favicon_placeholder():
 def health_check():
     """Enhanced health check -- reports status of API and optional dependencies."""
     import importlib
-    
+
+    try:
+        return _health_check_body(importlib)
+    except Exception as exc:
+        logger.exception("health_check_failed: %s", exc)
+        return success_response(
+            {
+                "status": "degraded",
+                "checks": {"api": "error"},
+                "details": {"error": str(exc)[:500]},
+                "message": "Health check raised an exception; see API logs.",
+            },
+            status=200,
+        )
+
+
+def _health_check_body(importlib):
     checks = {'api': 'ok'}
     overall = 'healthy'
     details = {
