@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(git:*)",
+      "Bash(python3:*)",
+      "Bash(~/.local/bin/uvx:*)",
+      "Bash(python:*)",
+      "Bash(ls /home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/venv*/bin/python3)",
+      "Read(//usr/bin/**)",
+      "Bash(/home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/.venv/bin/python3 -c \"\nfrom services.data_provider_v2 import MarketDataProvider, fetch_market_data\nprint\\('data_provider_v2 OK'\\)\nfrom services.market_data import validate_tickers\nprint\\('validate_tickers OK'\\)\nfrom services.data_provider import load_market_payload\nprint\\('load_market_payload OK'\\)\n\" 2>&1)",
+      "Bash(.venv/bin/python3 -c \"import api; print\\('api.py imports OK'\\)\" 2>&1)",
+      "Bash(.venv/bin/python3 scripts/test_api_integration.py --base-url http://localhost:5000 2>&1)",
+      "Bash(unzip:*)",
+      "Bash(cp /tmp/stitch_design/DESIGN.md /home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/docs/design/DESIGN.md)",
+      "Bash(cp /tmp/stitch_design/code.html /home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/docs/design/reference.html)",
+      "Bash(cp /tmp/stitch_design/screen.png /home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/docs/design/reference-screenshot.png)",
+      "Bash(ls:*)",
+      "Bash(grep -r \"styled-components\\\\|@emotion\\\\|tailwind\" /home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/frontend/package.json /home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/frontend/src --include=*.js --include=*.json)",
+      "Read(///wsl.localhost/Ubuntu/home/roc/**)",
+      "Read(///wsl.localhost/Ubuntu/home/**)",
+      "Read(///wsl.localhost/Ubuntu/home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/frontend/**)",
+      "Read(///wsl.localhost/Ubuntu/home/roc/quantumGlobalGroup/quantum-hybrid-portfolio/**)"
+    ]
+  }
+}
