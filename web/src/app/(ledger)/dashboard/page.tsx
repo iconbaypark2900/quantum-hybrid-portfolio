@@ -56,6 +56,88 @@ const QUICK_ACTION_GROUPS: {
   },
 ];
 
+/** Plain-English explanations for each KPI card — shown on hover. */
+const KPI_META: Record<string, { desc: string; formula?: string; good: string }> = {
+  sharpe: {
+    desc: "Risk-adjusted return: how much excess return per unit of risk. Higher is better.",
+    formula: "Sharpe = (Portfolio return − rf) / Volatility  (here rf = 0)",
+    good: "> 1.0 acceptable, > 1.5 strong, > 2.0 excellent",
+  },
+  return: {
+    desc: "Annualized expected return of the optimized portfolio based on weights and asset returns.",
+    formula: "E[R_p] = Σ w_i × E[R_i]",
+    good: "Higher is better, but consider alongside volatility",
+  },
+  vol: {
+    desc: "Annualized portfolio volatility (σ) — the standard deviation of returns. Captures how much the portfolio swings.",
+    formula: "σ_p = √(w′ Σ w)",
+    good: "Lower means smoother returns; the optimizer balances this vs. return",
+  },
+  nActive: {
+    desc: "Number of assets with meaningful allocation (above the min-weight threshold). Fewer = more concentrated.",
+    good: "Low count = concentrated portfolio; high count = well-diversified",
+  },
+  var95: {
+    desc: "Value at Risk (95%): worst expected daily loss on 19 of 20 trading days. Shown as a positive %.",
+    formula: "VaR = −μ_daily + z_0.95 × σ_daily  (parametric, normal assumption)",
+    good: "Lower (absolute) is better; 2 % VaR ≈ ~2 % loss on a bad day",
+  },
+};
+
+/** KPI card with hover tooltip showing plain-English explanation, formula, and guidance. */
+function KpiCard({ label, value, color, meta }: { label: string; value: string; color: string; meta: { desc: string; formula?: string; good: string } }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      className="relative bg-ql-surface-low rounded-xl p-5 border border-ql-outline-variant transition-shadow hover:shadow-md"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <p className="text-[10px] text-ql-on-surface-variant uppercase font-bold tracking-widest">
+        {label}
+      </p>
+      <p className={`text-2xl font-headline font-bold mt-1 tabular-nums ${color}`}>
+        {value}
+      </p>
+      {/* Hover tooltip */}
+      {hover && (
+        <div className="absolute left-0 right-0 bottom-full mb-2 z-30 bg-ql-surface-container border border-ql-outline-variant rounded-lg p-3 text-[11px] leading-relaxed shadow-lg pointer-events-none">
+          <p className="font-bold text-ql-on-surface mb-1">{meta.desc}</p>
+          {meta.formula && (
+            <p className="font-mono text-ql-on-surface-variant text-[10px] mb-1">{meta.formula}</p>
+          )}
+          <p className="text-ql-tertiary text-[10px] font-semibold">Guidance: {meta.good}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** System status card with subtitle explaining what the subsystem does. */
+function SystemStatusCard({ label, value, color, desc }: { label: string; value: string; color: string; desc: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      className="relative bg-ql-surface-container/60 backdrop-blur p-4 rounded-lg border border-ql-outline-variant"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <p className="text-[10px] text-ql-on-surface-variant uppercase font-bold tracking-widest">
+        {label}
+      </p>
+      <p className={`text-lg font-headline font-bold ${color}`}>
+        {value}
+      </p>
+      {hover && (
+        <div className="absolute left-0 right-0 bottom-full mb-2 z-30 bg-ql-surface-container border border-ql-outline-variant rounded-lg p-3 text-[11px] leading-relaxed shadow-lg pointer-events-none">
+          <p className="font-bold text-ql-on-surface mb-1">{label}</p>
+          <p className="text-ql-on-surface-variant">{desc}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PLATFORM_TOOLS: {
   href: string;
   icon: string;
@@ -263,7 +345,7 @@ export default function DashboardPage(props: NextClientPageProps) {
 
   return (
     <div className="p-6 lg:p-10 space-y-10">
-      <section className="border-b border-ql-outline-variant/10 pb-8 space-y-6 min-w-0">
+      <section className="border-b border-ql-outline-variant pb-8 space-y-6 min-w-0">
         <LedgerPageHeader
           title="Executive Dashboard"
           subtitle="Quantum Ledger — session-aware optimize, live KPIs, holdings, and workspace shortcuts."
@@ -280,7 +362,7 @@ export default function DashboardPage(props: NextClientPageProps) {
           }
         />
         <div
-          className="flex flex-wrap items-center gap-3 rounded-xl bg-ql-surface-low border border-ql-outline-variant/10 px-4 py-3"
+          className="flex flex-wrap items-center gap-3 rounded-xl bg-ql-surface-low border border-ql-outline-variant px-4 py-3"
           role="status"
         >
           <span
@@ -313,23 +395,13 @@ export default function DashboardPage(props: NextClientPageProps) {
       {/* KPI Grid — above the fold */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: "Sharpe Ratio", value: sharpe.toFixed(3), color: sharpe > 1 ? "text-ql-tertiary" : "" },
-          { label: "Expected Return", value: `${ret.toFixed(1)}%`, color: "text-ql-primary" },
-          { label: "Volatility", value: `${vol.toFixed(1)}%`, color: "" },
-          { label: "Active Positions", value: String(nActive), color: "text-ql-secondary" },
-          { label: "VaR (95%)", value: `${var95.toFixed(2)}%`, color: "text-ql-error" },
+          { label: "Sharpe Ratio", value: sharpe.toFixed(3), color: sharpe > 1 ? "text-ql-tertiary" : "", meta: KPI_META.sharpe },
+          { label: "Expected Return", value: `${ret.toFixed(1)}%`, color: "text-ql-primary", meta: KPI_META.return },
+          { label: "Volatility", value: `${vol.toFixed(1)}%`, color: "", meta: KPI_META.vol },
+          { label: "Active Positions", value: String(nActive), color: "text-ql-secondary", meta: KPI_META.nActive },
+          { label: "VaR (95%)", value: `${var95.toFixed(2)}%`, color: "text-ql-error", meta: KPI_META.var95 },
         ].map((m) => (
-          <div
-            key={m.label}
-            className="bg-ql-surface-low rounded-xl p-5 border border-ql-outline-variant/5"
-          >
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">
-              {m.label}
-            </p>
-            <p className={`text-2xl font-headline font-bold mt-1 ${m.color}`}>
-              {m.value}
-            </p>
-          </div>
+          <KpiCard key={m.label} {...m} />
         ))}
       </div>
 
@@ -338,8 +410,8 @@ export default function DashboardPage(props: NextClientPageProps) {
         {/* Holdings */}
         <div className="md:col-span-7 bg-ql-surface-low rounded-xl p-6">
           <h3 className="font-headline text-xl font-bold mb-1">Holdings</h3>
-          <p className="text-slate-500 text-xs mb-6">
-            {result?.holdings?.length ?? 0} active positions
+          <p className="text-ql-on-surface-variant text-xs mb-6">
+            Assets the optimizer selected for this portfolio. Sorted by weight (largest first). Bar width is proportional to allocation; only assets above the min-weight threshold appear.
           </p>
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {result?.holdings?.length ? (
@@ -350,12 +422,12 @@ export default function DashboardPage(props: NextClientPageProps) {
                     key={h.name}
                     className="flex items-center gap-3 py-2 hover:bg-ql-surface-container/40 px-2 rounded transition-colors"
                   >
-                    <span className="text-[10px] text-slate-500 font-mono w-5 text-right">
+                    <span className="text-[10px] text-ql-on-surface-variant font-mono w-5 text-right">
                       {i + 1}
                     </span>
                     <div className="flex-1">
                       <span className="text-sm font-bold">{h.name}</span>
-                      <span className="text-[10px] text-slate-500 ml-2">
+                      <span className="text-[10px] text-ql-on-surface-variant ml-2">
                         {h.sector}
                       </span>
                     </div>
@@ -373,7 +445,7 @@ export default function DashboardPage(props: NextClientPageProps) {
                   </div>
                 ))
             ) : (
-              <p className="text-slate-500 text-sm text-center py-10">
+              <p className="text-ql-on-surface-variant text-sm text-center py-10">
                 Run an optimization to see holdings
               </p>
             )}
@@ -382,7 +454,7 @@ export default function DashboardPage(props: NextClientPageProps) {
 
         {/* Optimization Feed */}
         <div className="md:col-span-5 bg-ql-surface-container rounded-xl p-6">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-2">
             <h3 className="font-headline text-lg font-bold">
               Optimization Feed
             </h3>
@@ -391,6 +463,9 @@ export default function DashboardPage(props: NextClientPageProps) {
               Live
             </span>
           </div>
+          <p className="text-ql-on-surface-variant text-xs mb-4">
+            Activity log of recent optimization runs and lab events. Each entry shows the result, number of tickers, and objective used.
+          </p>
           <div className="space-y-5 max-h-80 overflow-y-auto">
             {feed.map((ev) => (
               <div key={ev.id} className="flex gap-3">
@@ -404,11 +479,11 @@ export default function DashboardPage(props: NextClientPageProps) {
                 <div className="min-w-0">
                   <div className="flex justify-between items-start gap-2">
                     <p className="text-sm font-bold truncate">{ev.title}</p>
-                    <span className="text-[10px] text-slate-500 shrink-0">
+                    <span className="text-[10px] text-ql-on-surface-variant shrink-0">
                       {ev.time}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">{ev.detail}</p>
+                  <p className="text-xs text-ql-on-surface-variant mt-0.5">{ev.detail}</p>
                 </div>
               </div>
             ))}
@@ -420,13 +495,15 @@ export default function DashboardPage(props: NextClientPageProps) {
           <h3 className="font-headline text-xl font-bold mb-1">
             Sector Allocation
           </h3>
-          <p className="text-slate-500 text-xs mb-6">Current distribution</p>
+          <p className="text-ql-on-surface-variant text-xs mb-6">
+            Aggregation of holdings by industry sector. Shows where the portfolio's risk and capital are concentrated — useful for spotting unintended tilts.
+          </p>
           <div className="space-y-3">
             {result?.sector_allocation?.length ? (
               result.sector_allocation
                 .sort((a, b) => b.weight - a.weight)
                 .map((s, i) => {
-                  const colors = ["bg-ql-primary", "bg-ql-tertiary", "bg-slate-500", "bg-ql-secondary", "bg-ql-error"];
+                  const colors = ["bg-ql-primary", "bg-ql-tertiary", "bg-ql-secondary", "bg-ql-outline", "bg-ql-error"];
                   return (
                     <div key={s.sector} className="flex items-center gap-3">
                       <div className={`w-2 h-2 rounded-full ${colors[i % colors.length]}`} />
@@ -438,7 +515,7 @@ export default function DashboardPage(props: NextClientPageProps) {
                   );
                 })
             ) : (
-              <p className="text-slate-500 text-sm text-center py-8">
+              <p className="text-ql-on-surface-variant text-sm text-center py-8">
                 No allocation data
               </p>
             )}
@@ -450,35 +527,43 @@ export default function DashboardPage(props: NextClientPageProps) {
           <h3 className="font-headline text-xl font-bold mb-1">
             System Status
           </h3>
-          <p className="text-slate-500 text-xs mb-6">Platform health</p>
+          <p className="text-ql-on-surface-variant text-xs mb-6">
+            Platform health indicators. The Flask API serves optimization requests; the Optimizer runs QSW / HRP / VQE solves; Market Data supplies returns &amp; covariance; Quantum Engine controls IBM Runtime or simulator fallback.
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               {
                 label: "API",
                 value: health?.status === "healthy" ? "Online" : "Offline",
-                color:
-                  health?.status === "healthy"
-                    ? "text-[#00E475]"
-                    : "text-ql-error",
+                color: health?.status === "healthy" ? "text-ql-tertiary" : "text-ql-error",
+                desc: "Flask backend — handles optimize, backtest, and config requests",
               },
-              { label: "Optimizer", value: "Ready", color: "text-[#00E475]" },
-              { label: "Market Data", value: "Connected", color: "text-[#00E475]" },
-              { label: "Quantum Engine", value: "Simulator", color: "text-ql-primary" },
+              {
+                label: "Optimizer",
+                value: "Ready",
+                color: "text-ql-tertiary",
+                desc: "Solves QSW, HRP, Markowitz, QUBO-SA, VQE, and Hybrid objectives",
+              },
+              {
+                label: "Market Data",
+                value: "Connected",
+                color: "text-ql-tertiary",
+                desc: "Tiingo (primary) or synthetic data for returns &amp; covariance",
+              },
+              {
+                label: "Quantum Engine",
+                value: "Simulator",
+                color: "text-ql-primary",
+                desc: "IBM Runtime or local simulator — controls QPU execution mode",
+              },
             ].map((s) => (
-              <div key={s.label} className="bg-ql-surface-container/60 backdrop-blur p-4 rounded-lg border border-ql-outline-variant/10">
-                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">
-                  {s.label}
-                </p>
-                <p className={`text-lg font-headline font-bold ${s.color}`}>
-                  {s.value}
-                </p>
-              </div>
+              <SystemStatusCard key={s.label} {...s} />
             ))}
           </div>
         </div>
       </div>
 
-      <section className="space-y-6 border-t border-ql-outline-variant/10 pt-10">
+      <section className="space-y-6 border-t border-ql-outline-variant pt-10">
         <div>
           <h3 className="font-headline text-lg font-bold text-ql-on-surface">
             Quick actions
@@ -499,7 +584,7 @@ export default function DashboardPage(props: NextClientPageProps) {
                   <Link
                     key={item.href + item.label}
                     href={item.href}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold border border-ql-outline-variant/20 bg-ql-surface-low text-ql-on-surface hover:bg-ql-surface-container hover:border-ql-primary/30 transition-colors no-underline"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold border border-ql-outline-variant bg-ql-surface-low text-ql-on-surface hover:bg-ql-surface-container hover:border-ql-primary/30 transition-colors no-underline"
                   >
                     <span className="material-symbols-outlined text-lg text-ql-primary">
                       {item.icon}
@@ -526,7 +611,7 @@ export default function DashboardPage(props: NextClientPageProps) {
           {PLATFORM_TOOLS.map((tool) => (
             <div
               key={tool.title}
-              className="bg-ql-surface-low rounded-xl p-5 border border-ql-outline-variant/10 flex flex-col"
+              className="bg-ql-surface-low rounded-xl p-5 border border-ql-outline-variant flex flex-col"
             >
               <div className="flex items-start gap-3 mb-3">
                 <span className="material-symbols-outlined text-2xl text-ql-primary shrink-0">
@@ -544,7 +629,7 @@ export default function DashboardPage(props: NextClientPageProps) {
               <p className="text-xs text-ql-on-surface leading-relaxed flex-1">
                 {tool.purpose}
               </p>
-              <p className="text-[11px] text-ql-on-surface-variant mt-3 pt-3 border-t border-ql-outline-variant/10">
+              <p className="text-[11px] text-ql-on-surface-variant mt-3 pt-3 border-t border-ql-outline-variant">
                 <span className="font-bold text-ql-secondary">When: </span>
                 {tool.when}
               </p>

@@ -24,6 +24,7 @@ For full UI detail, see **[DASHBOARD_GUIDE.md](DASHBOARD_GUIDE.md)**.
 | Topic | Document |
 |--------|----------|
 | Hugging Face Spaces (Docker, port 7860) | [HUGGINGFACE_SPACES.md](HUGGINGFACE_SPACES.md) |
+| HF lite venture + roadmap (tiers, phases) | [HF_VENTURE.md](HF_VENTURE.md), [HF_LITE_ROADMAP.md](HF_LITE_ROADMAP.md) |
 | Local run (API + dashboard) | [GETTING_STARTED.md](GETTING_STARTED.md) |
 | Root overview | [README.md](../README.md) |
 

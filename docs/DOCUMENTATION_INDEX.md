@@ -21,6 +21,8 @@ This is the master index for all Quantum Hybrid Portfolio documentation.
 |----------|-------------|
 | [PUBLIC_DEMO.md](PUBLIC_DEMO.md) | Audience, 60s story, disclaimer, operational expectations |
 | [HUGGINGFACE_SPACES.md](HUGGINGFACE_SPACES.md) | Hugging Face Spaces (Docker, port 7860) |
+| [HF_VENTURE.md](HF_VENTURE.md) | HF “lite” venture: positioning, goals, success criteria |
+| [HF_LITE_ROADMAP.md](HF_LITE_ROADMAP.md) | HF lite: feature tiers (A/B/C), phases, UI options |
 
 ## Architecture & design
 

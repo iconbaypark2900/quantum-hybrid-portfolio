@@ -7,6 +7,7 @@ import { DashboardThemeContext, darkTheme } from "./theme";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AppSidebar from "./components/AppSidebar";
 
+import { isHfSpace } from "./hfSpace";
 import EnhancedQuantumPortfolioDashboard from "./CustomizableQuantumDashboard";
 import BacktestPage from "./pages/BacktestPage";
 import RiskPage from "./pages/RiskPage";
@@ -19,7 +20,10 @@ export default function AppShell() {
   return (
     <DashboardThemeContext.Provider value={darkTheme}>
       <BrowserRouter>
-        <div style={{ display: "flex", minHeight: "100vh", background: darkTheme.bg }}>
+        <div
+          data-hf-space={isHfSpace ? "1" : "0"}
+          style={{ display: "flex", minHeight: "100vh", background: darkTheme.bg }}
+        >
           <AppSidebar />
 
           {/* Main content pushed right of the sidebar */}

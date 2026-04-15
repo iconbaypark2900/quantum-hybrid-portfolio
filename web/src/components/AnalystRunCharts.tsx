@@ -14,6 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useThemePreference } from "@/context/ThemeContext";
 
 /**
  * During browser print, ResponsiveContainer measures its parent as 0px wide
@@ -51,11 +52,18 @@ const SECTOR_COLORS = [
   "#14b8a6",
 ];
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function SectionHeader({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
   return (
-    <h3 className="text-[10px] uppercase tracking-widest text-ql-muted font-bold mb-3">
-      {children}
-    </h3>
+    <div className="mb-3">
+      <h3 className="text-[10px] uppercase tracking-widest text-ql-muted font-bold">
+        {children}
+      </h3>
+      {subtitle && (
+        <p className="text-[10px] text-ql-on-surface-variant/70 mt-1 leading-relaxed">
+          {subtitle}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -136,12 +144,14 @@ export default function AnalystRunCharts({
   const sectors = parseSectors(merged);
   const benchmarks = parseBenchmarks(merged);
   const printKey = usePrintLayout();
+  const { resolved } = useThemePreference();
+  const gridStroke = resolved === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)";
 
   return (
     <div className="space-y-8">
       {/* Holdings bar chart */}
       <div className="print-chart-card">
-        <SectionHeader>Portfolio Holdings</SectionHeader>
+        <SectionHeader subtitle="Top assets by optimized weight. Bar height shows percentage allocation.">Portfolio Holdings</SectionHeader>
         {holdings.length === 0 ? (
           <EmptyState label="No holdings data" />
         ) : (
@@ -153,7 +163,7 @@ export default function AnalystRunCharts({
               }))}
               margin={{ top: 4, right: 16, left: 0, bottom: 32 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
               <XAxis
                 dataKey="name"
                 tick={{ fontSize: 10, fill: "currentColor" }}
@@ -185,7 +195,7 @@ export default function AnalystRunCharts({
       {/* Sector allocation pie */}
       {sectors.length > 0 && (
         <div className="print-chart-card">
-          <SectionHeader>Sector Allocation</SectionHeader>
+          <SectionHeader subtitle="Aggregated sector weights showing where risk and capital are concentrated.">Sector Allocation</SectionHeader>
           <ResponsiveContainer key={`sectors-${printKey}`} width="100%" height={220}>
             <PieChart>
               <Pie
@@ -217,7 +227,7 @@ export default function AnalystRunCharts({
       {/* Benchmark comparison */}
       {benchmarks.length > 1 && (
         <div className="print-chart-card">
-          <SectionHeader>Benchmark comparison</SectionHeader>
+          <SectionHeader subtitle="Sharpe, return, and volatility side-by-side for each objective on the same universe.">Benchmark comparison</SectionHeader>
           <ResponsiveContainer key={`bench-${printKey}`} width="100%" height={220}>
             <BarChart
               data={benchmarks.map((b) => ({
@@ -228,7 +238,7 @@ export default function AnalystRunCharts({
               }))}
               margin={{ top: 4, right: 16, left: 0, bottom: 32 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
               <XAxis
                 dataKey="name"
                 tick={{ fontSize: 10, fill: "currentColor" }}
