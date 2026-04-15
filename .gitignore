@@ -46,6 +46,9 @@ htmlcov/
 # Cursor — local hook/session state (machine-specific)
 .cursor/hooks/state/
 
+# Claude Code — local session state and debug logs
+.claude/debug-*.log
+
 *.swp
 *.swo
 *~
