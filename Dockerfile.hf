@@ -10,6 +10,8 @@ RUN npm ci --legacy-peer-deps
 
 COPY frontend/ ./
 ENV CI=false
+# Baked into CRA bundle so the UI can detect HF Space vs local CRA (see `frontend/src/hfSpace.js`).
+ENV REACT_APP_HF_SPACE=1
 RUN npm run build
 
 # ─── Stage 2: Python runtime ───

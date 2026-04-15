@@ -16,7 +16,8 @@ IBM hardware path:
   1. EfficientSU2 ansatz built with Qiskit
   2. COBYLA optimises parameters, cost evaluated by sampling the circuit on hardware
   3. Marginal |1⟩ probabilities per qubit → portfolio weights
-  4. Falls back to classical if n_assets > MAX_IBM_QUBITS or any error occurs.
+  4. Jobs are submitted asynchronously and polled for completion (non-blocking).
+  5. Falls back to classical if n_assets > MAX_IBM_QUBITS or any error occurs.
 
 Reference: Best practices for quantum error mitigation with VQE.
            Scientific Reports (2023).
@@ -174,10 +175,39 @@ def _vqe_weights_ibm(
 
     n_params = len(isa_circuit.parameters)
 
+    # ── Async job submission with polling (non-blocking) ──
+    # Each VQE evaluation submits a job and polls for completion instead of
+    # blocking on .result(). This prevents thread starvation when IBM queues
+    # are long (real hardware can queue for 5–30+ minutes per job).
+    submitted_job_ids: list[str] = []
+    total_submissions = 0
+
+    def _wait_for_job(job, timeout: float = 3600.0) -> object:
+        """Poll an IBM Runtime job until completion or timeout."""
+        job_id = job.job_id()
+        submitted_job_ids.append(job_id)
+        poll_interval = 30.0  # seconds between polls
+        elapsed = 0.0
+        while not job.done():
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            status = job.status()
+            logger.info("IBM VQE job %s: status=%s (elapsed %.0fs)", job_id, status, elapsed)
+            if elapsed > timeout:
+                raise RuntimeError(f"IBM Runtime job {job_id} timed out after {elapsed:.0f}s")
+            # Cancel check — if the job is in a terminal error state, raise immediately
+            if status in ("ERROR", "CANCELLED"):
+                error_msg = getattr(job, "error_message", lambda: "Unknown error")()
+                raise RuntimeError(f"IBM Runtime job {job_id} failed: {error_msg}")
+        return job.result()
+
     def _shots_to_weights(params: np.ndarray) -> np.ndarray:
+        nonlocal total_submissions
         param_dict = dict(zip(isa_circuit.parameters, params))
         bound = isa_circuit.assign_parameters(param_dict)
-        result = sampler.run([bound], shots=SHOTS_PER_EVAL).result()
+        job = sampler.run([bound], shots=SHOTS_PER_EVAL)
+        total_submissions += 1
+        result = _wait_for_job(job)
         counts = result[0].data.meas.get_counts()
         probs = np.zeros(n)
         total = sum(counts.values())
@@ -230,6 +260,9 @@ def _vqe_weights_ibm(
         "elapsed_seconds": round(elapsed, 4),
         "backend_mode": (backend_mode or "auto").lower(),
         "seed": seed,
+        # Async job tracking — IDs of all IBM Runtime jobs submitted during this run
+        "ibm_job_ids": list(submitted_job_ids),
+        "ibm_total_submissions": total_submissions,
     }
     if backend_name:
         meta["backend_requested"] = backend_name

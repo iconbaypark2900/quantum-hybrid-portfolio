@@ -134,7 +134,7 @@ export default function ReportsRunHistory() {
   const rows = mergeRows(serverRuns, browserRuns);
 
   return (
-    <section className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-6 space-y-4 print:hidden">
+    <section className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-6 space-y-4 print:hidden">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h3 className="font-headline text-lg font-bold text-ql-on-surface">
@@ -167,7 +167,7 @@ export default function ReportsRunHistory() {
               }
             })();
           }}
-          className="shrink-0 text-xs font-bold px-3 py-2 rounded-lg border border-ql-outline-variant/30 text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
+          className="shrink-0 text-xs font-bold px-3 py-2 rounded-lg border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
         >
           Refresh
         </button>
@@ -189,10 +189,10 @@ export default function ReportsRunHistory() {
           queue a job on the Quantum Engine — completed runs will appear here.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-ql-outline-variant/10">
+        <div className="overflow-x-auto rounded-lg border border-ql-outline-variant">
           <table className="w-full text-sm font-mono">
             <thead>
-              <tr className="border-b border-ql-outline-variant/15 text-left text-[10px] uppercase tracking-widest text-ql-on-surface-variant">
+              <tr className="border-b border-ql-outline-variant text-left text-[10px] uppercase tracking-widest text-ql-on-surface-variant">
                 <th className="px-3 py-2">When</th>
                 <th className="px-3 py-2">Kind</th>
                 <th className="px-3 py-2">Objective</th>
@@ -205,7 +205,7 @@ export default function ReportsRunHistory() {
               {rows.map((r) => (
                 <tr
                   key={`${r.kind}-${r.id}`}
-                  className="border-b border-ql-outline-variant/5 hover:bg-ql-surface-container/40"
+                  className="border-b border-ql-outline-variant hover:bg-ql-surface-container/40"
                 >
                   <td className="px-3 py-2.5 whitespace-nowrap text-ql-on-surface-variant">
                     {new Date(r.at).toLocaleString()}

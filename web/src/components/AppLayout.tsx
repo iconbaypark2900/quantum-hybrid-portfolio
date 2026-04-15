@@ -140,7 +140,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* Material Symbols: loaded in root layout <head> (not here — body <link> breaks layout/CSS ordering in some browsers). */}
       {/* Sidebar */}
       <aside
-        className={`hidden md:flex flex-col h-screen fixed left-0 top-0 bg-ql-surface-low border-r border-ql-outline-variant/15 z-50 overflow-hidden transition-[width] duration-200 ease-out ${
+        className={`hidden md:flex flex-col h-screen fixed left-0 top-0 bg-ql-surface-low border-r border-ql-outline-variant z-50 overflow-hidden transition-[width] duration-200 ease-out ${
           sidebarCollapsed ? "w-16" : "w-64"
         }`}
       >
@@ -207,13 +207,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </nav>
 
           <div
-            className={`flex flex-col gap-4 shrink-0 border-t border-ql-outline-variant/15 pt-4 w-full min-w-0 ${
+            className={`flex flex-col gap-4 shrink-0 border-t border-ql-outline-variant pt-4 w-full min-w-0 ${
               sidebarCollapsed ? "px-1.5" : "px-6"
             }`}
           >
             {sidebarCollapsed ? (
               <div
-                className="flex justify-center rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant/10 p-2.5 shrink-0"
+                className="flex justify-center rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant p-2.5 shrink-0"
                 title={sessionTooltip}
               >
                 <span className="material-symbols-outlined text-ql-on-surface-variant text-xl">
@@ -224,10 +224,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <div
                 role="region"
                 aria-label="Session summary"
-                className="flex flex-col gap-1.5 w-full min-w-0 shrink-0 rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant/10 px-3 py-3"
+                className="flex flex-col gap-1.5 w-full min-w-0 shrink-0 rounded-lg bg-ql-surface-container/60 border border-ql-outline-variant px-3 py-3"
               >
                 <div className="flex items-center justify-between gap-2 min-h-[14px]">
-                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">
+                  <span className="text-[9px] text-ql-on-surface-variant uppercase tracking-widest font-bold">
                     Session
                   </span>
                   {lo ? (
@@ -243,10 +243,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 >
                   {objectiveLabel(displayObjective)}
                 </p>
-                <p className="text-[10px] text-slate-500 leading-snug">
+                <p className="text-[10px] text-ql-on-surface-variant leading-snug">
                   {displayTickerCount} ticker{displayTickerCount === 1 ? "" : "s"}
                   {lo ? (
-                    <span className="text-slate-600">
+                    <span className="text-ql-on-surface-variant/70">
                       {" "}
                       ·{" "}
                       {new Date(lo.at).toLocaleString([], {
@@ -259,7 +259,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   ) : null}
                 </p>
                 {currentDiffersFromLast ? (
-                  <p className="text-[9px] text-slate-500 leading-snug pt-1 border-t border-ql-outline-variant/10">
+                  <p className="text-[9px] text-ql-on-surface-variant leading-snug pt-1 border-t border-ql-outline-variant">
                     Current: {objectiveLabel(session.objective)} ·{" "}
                     {session.tickers.length} ticker
                     {session.tickers.length === 1 ? "" : "s"}
@@ -271,7 +271,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={cycle}
-              className={`flex items-center rounded-lg text-xs font-bold text-ql-on-surface-variant border border-transparent hover:bg-ql-surface-container hover:border-ql-outline-variant/15 transition-colors shrink-0 ${
+              className={`flex items-center rounded-lg text-xs font-bold text-ql-on-surface-variant border border-transparent hover:bg-ql-surface-container hover:border-ql-outline-variant transition-colors shrink-0 ${
                 sidebarCollapsed
                   ? "justify-center w-full p-2.5"
                   : "gap-2 w-full px-3 py-2.5"
@@ -317,7 +317,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Mobile top bar */}
-      <header className="app-shell-mobile-header md:hidden bg-ql-surface flex justify-between items-center px-4 h-14 sticky top-0 z-40 border-b border-ql-outline-variant/10">
+      <header className="app-shell-mobile-header md:hidden bg-ql-surface flex justify-between items-center px-4 h-14 sticky top-0 z-40 border-b border-ql-outline-variant">
         <Link
           href="/dashboard"
           className="font-headline text-ql-primary text-xl font-bold tracking-tighter no-underline"
@@ -337,7 +337,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </main>
 
       {/* Mobile bottom nav */}
-      <nav className="app-shell-mobile-nav md:hidden fixed bottom-0 left-0 w-full bg-ql-surface-container flex justify-around items-center h-16 border-t border-ql-outline-variant/10 z-50">
+      <nav className="app-shell-mobile-nav md:hidden fixed bottom-0 left-0 w-full bg-ql-surface-container flex justify-around items-center h-16 border-t border-ql-outline-variant z-50">
         {NAV_ITEMS.slice(0, 4).map((item) => (
           <Link
             key={item.href}

@@ -2,6 +2,8 @@
 
 For **audience, disclaimer, and what to show in a public demo**, see **[PUBLIC_DEMO.md](PUBLIC_DEMO.md)**.
 
+For **venture scope, feature tiers, and phased roadmap** for the researcher-facing “lite” Space (vs the full Next app), see **[HF_VENTURE.md](HF_VENTURE.md)** and **[HF_LITE_ROADMAP.md](HF_LITE_ROADMAP.md)**.
+
 This guide explains how to host the Quantum Portfolio Lab on [Hugging Face Spaces](https://huggingface.co/spaces).
 
 ## Prerequisites
@@ -87,6 +89,10 @@ You can set in **Space Settings → Variables**:
 |----------|-------------|
 | `LOG_LEVEL` | INFO, DEBUG, etc. |
 | `CACHE_TTL` | Market data cache TTL (seconds) |
+| `API_KEY` | If the Flask app enforces **`X-API-Key`**, set here to match the key your UI sends (**`REACT_APP_API_KEY`** in CRA when not same-origin-only). |
+| `TIINGO_API_KEY` | Optional — live market data when provider is Tiingo (see **`DATA_PROVIDER`** / **`AGENTS.md`**). |
+
+**Build-time (Docker stage 1):** `Dockerfile.hf` sets **`REACT_APP_HF_SPACE=1`** so the CRA bundle can detect the Space build (`frontend/src/hfSpace.js`). Not a Space “Variable” — it is fixed in the image.
 
 ## Limits
 

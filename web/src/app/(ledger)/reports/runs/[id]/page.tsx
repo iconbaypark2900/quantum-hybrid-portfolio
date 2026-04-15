@@ -18,7 +18,8 @@ import {
 } from "@/lib/nextPageProps";
 
 const POLL_INTERVAL_MS = 2000;
-const MAX_POLLS = 120;
+const MAX_POLLS_DEFAULT = 120;   // 4 min — normal optimizations finish fast
+const MAX_POLLS_IBM = 450;       // 15 min — IBM Runtime jobs queue on hardware
 
 function StatusBadge({ status }: { status: LabRun["status"] }) {
   const palette: Record<string, string> = {
@@ -178,11 +179,13 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
       const status = await fetchRun();
       if (cancelled) return;
       pollCount.current += 1;
+      // Use longer polling window for IBM Runtime jobs (hardware queues can take 10–30 min)
+      const maxPolls = run?.execution_kind === "ibm_runtime" ? MAX_POLLS_IBM : MAX_POLLS_DEFAULT;
       if (
         status !== "completed" &&
         status !== "failed" &&
         status !== "error" &&
-        pollCount.current < MAX_POLLS
+        pollCount.current < maxPolls
       ) {
         timerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
       }
@@ -192,7 +195,7 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [fetchRun]);
+  }, [fetchRun, run]);
 
   const merged = run?.result
     ? (mergeOptimizeResponse(run.result) as Record<string, unknown>)

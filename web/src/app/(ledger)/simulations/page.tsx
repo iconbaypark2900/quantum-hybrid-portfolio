@@ -29,7 +29,7 @@ function StressCard({
   const barPct = Math.min(Math.abs(impact), 60);
 
   return (
-    <div className="bg-ql-surface-container rounded-lg p-5 border border-ql-outline-variant/5">
+    <div className="bg-ql-surface-container rounded-lg p-5 border border-ql-outline-variant">
       <p className="text-sm font-bold">{s.name}</p>
       <p className="text-[10px] text-ql-on-surface-variant mt-1 mb-4">
         {s.desc}
@@ -78,7 +78,7 @@ export default function SimulationsPage(props: NextClientPageProps) {
 
       {error && (
         <div
-          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm dark:text-amber-200 text-amber-800"
           role="status"
         >
           {error}
@@ -88,9 +88,12 @@ export default function SimulationsPage(props: NextClientPageProps) {
       {/* Strategy comparison table */}
       {scenarios.length > 0 && (
         <div className="bg-ql-surface-low rounded-xl p-6 overflow-x-auto">
-          <h3 className="font-headline text-lg font-bold mb-4">
+          <h3 className="font-headline text-lg font-bold mb-1">
             Strategy Comparison
           </h3>
+          <p className="text-ql-on-surface-variant text-xs mb-4">
+            All objectives run against the same universe and covariance matrix. <strong>BEST</strong> marks the highest Sharpe in this batch. Shows how each method trades off return, risk, and diversification.
+          </p>
           <table className="w-full text-sm font-mono">
             <thead>
               <tr>
@@ -149,14 +152,13 @@ export default function SimulationsPage(props: NextClientPageProps) {
           <h3 className="font-headline text-lg font-bold mb-1">
             Stress Scenarios
           </h3>
-          <p className="text-ql-on-surface-variant text-xs">
-            Illustrative heuristic based on historical shocks and current
-            volatility — not a live backtest
+          <p className="text-ql-on-surface-variant text-xs leading-relaxed">
+            Illustrative heuristic based on historical shocks and current volatility — not a live backtest. Impact = shock × (0.5 + 3σ_p) × 100, where σ_p is annualized portfolio volatility. Larger shocks and higher vol amplify the estimated loss.
           </p>
         </div>
 
         <div>
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
+          <h4 className="text-xs font-bold text-ql-on-surface-variant uppercase tracking-widest mb-4">
             Down days / crises
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -167,7 +169,7 @@ export default function SimulationsPage(props: NextClientPageProps) {
         </div>
 
         <div>
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
+          <h4 className="text-xs font-bold text-ql-on-surface-variant uppercase tracking-widest mb-4">
             Relief / rally days
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
