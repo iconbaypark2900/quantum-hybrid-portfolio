@@ -25,7 +25,7 @@ import {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-ql-outline-variant/15 bg-ql-surface-container/60 p-3">
+    <div className="rounded-lg border border-ql-outline-variant bg-ql-surface-container/60 p-3">
       <div className="text-[10px] uppercase tracking-wider text-ql-on-surface-variant mb-1">
         {label}
       </div>
@@ -149,7 +149,7 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
       </div>
 
       {/* Run identity */}
-      <section className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 space-y-4">
+      <section className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-5 space-y-4">
         <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold">
           Run identity
         </h3>
@@ -195,7 +195,7 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
 
       {/* Key metrics */}
       {metrics && (
-        <section className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 space-y-4">
+        <section className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-5 space-y-4">
           <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold">
             Key metrics
           </h3>
@@ -228,7 +228,7 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
 
       {/* Charts — single source: bundle.optimize (same object as metrics above) */}
       {merged && (
-        <section className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 space-y-2">
+        <section className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-5 space-y-2">
           <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold mb-4">
             Charts
           </h3>
@@ -238,7 +238,7 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
 
       {/* Pipeline / quantum diagnostics */}
       {stageInfo != null && (
-        <details className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 text-sm">
+        <details className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-5 text-sm">
           <summary className="cursor-pointer font-bold text-ql-on-surface">
             Pipeline / stage_info
           </summary>
@@ -249,7 +249,7 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
       )}
 
       {qmeta != null && typeof qmeta === "object" && (
-        <details className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-5 text-sm">
+        <details className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-5 text-sm">
           <summary className="cursor-pointer font-bold text-ql-on-surface">
             Quantum metadata
           </summary>
@@ -280,14 +280,14 @@ export default function BrowserRunDetailPage(props: NextClientPagePropsWithId) {
         <button
           type="button"
           onClick={() => window.print()}
-          className="px-4 py-2 rounded-lg text-sm font-bold border border-ql-outline-variant/30 text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
+          className="px-4 py-2 rounded-lg text-sm font-bold border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
           title="Use your browser's 'Save as PDF' destination for a PDF file"
         >
           Print / Save as PDF
         </button>
         <Link
           href="/reports"
-          className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-bold border border-ql-outline-variant/30 text-ql-on-surface-variant hover:bg-ql-surface-container no-underline"
+          className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-bold border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container no-underline"
         >
           Back to Reports
         </Link>

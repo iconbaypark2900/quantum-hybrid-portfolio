@@ -52,28 +52,33 @@ export default function SettingsPage(props: NextClientPageProps) {
         </div>
         <div className="grid grid-cols-2 gap-4">
           {[
-            { label: "Objective", value: session.objective },
+            { label: "Objective", value: session.objective, desc: "Default optimization method — set in Portfolio Lab" },
             {
               label: "Universe",
               value: `${session.tickers.length} tickers`,
+              desc: "Asset list for returns & covariance — set via ticker input",
             },
             {
               label: "Weight Min",
               value: session.constraints.weightMin.toFixed(3),
+              desc: "Min allocation per asset — positions below this are excluded",
             },
             {
               label: "Weight Max",
               value: session.constraints.weightMax.toFixed(3),
+              desc: "Max allocation per asset — caps concentration risk",
             },
           ].map((item) => (
             <div
               key={item.label}
-              className="bg-ql-surface-container/60 rounded-lg p-3 border border-ql-outline-variant/10"
+              className="relative bg-ql-surface-container/60 rounded-lg p-3 border border-ql-outline-variant group cursor-help"
+              title={item.desc}
             >
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
+              <p className="text-[10px] text-ql-on-surface-variant uppercase tracking-widest font-bold">
                 {item.label}
               </p>
               <p className="text-sm font-mono font-bold mt-1">{item.value}</p>
+              <p className="text-[9px] text-ql-on-surface-variant/60 mt-1 leading-snug">{item.desc}</p>
             </div>
           ))}
         </div>
@@ -97,7 +102,7 @@ export default function SettingsPage(props: NextClientPageProps) {
           {ENV_VARS.map((v) => (
             <div
               key={v.name}
-              className="bg-ql-surface-lowest rounded-lg p-4 border border-ql-outline-variant/10"
+              className="bg-ql-surface-lowest rounded-lg p-4 border border-ql-outline-variant"
             >
               <div className="flex items-center gap-2 mb-1">
                 <code className="text-sm font-mono font-bold text-ql-primary">
@@ -107,7 +112,7 @@ export default function SettingsPage(props: NextClientPageProps) {
                   className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
                     v.required
                       ? "bg-ql-error/10 text-ql-error"
-                      : "bg-slate-500/10 text-slate-400"
+                      : "bg-ql-outline-variant/20 text-ql-on-surface-variant"
                   }`}
                 >
                   {v.required ? "Required" : "Optional"}

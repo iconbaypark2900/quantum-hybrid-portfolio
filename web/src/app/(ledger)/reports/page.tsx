@@ -277,7 +277,7 @@ export default function ReportsPage(props: NextClientPageProps) {
 
       {error && (
         <div
-          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 print:hidden"
+          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm dark:text-amber-200 text-amber-800 print:hidden"
           role="status"
         >
           {error}
@@ -325,7 +325,7 @@ export default function ReportsPage(props: NextClientPageProps) {
                   className={`flex-1 py-3 rounded-lg text-sm font-bold uppercase transition-all border ${
                     format === f
                       ? "bg-ql-primary/10 border-ql-primary/30 text-ql-primary"
-                      : "border-ql-outline-variant/20 text-ql-on-surface-variant hover:bg-ql-surface-container"
+                      : "border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container"
                   }`}
                 >
                   {f === "bundle" ? "Bundle" : f}
@@ -343,7 +343,7 @@ export default function ReportsPage(props: NextClientPageProps) {
               <button
                 type="button"
                 onClick={downloadBundleCsv}
-                className="mt-2 w-full py-2 rounded-lg text-xs font-bold border border-ql-outline-variant/20 text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
+                className="mt-2 w-full py-2 rounded-lg text-xs font-bold border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
               >
                 Also download CSV from last bundle
               </button>
@@ -354,7 +354,7 @@ export default function ReportsPage(props: NextClientPageProps) {
             className={`rounded-lg px-4 py-3 text-xs font-mono ${
               hasSnapshot
                 ? "bg-ql-tertiary/10 text-ql-tertiary border border-ql-tertiary/20"
-                : "bg-ql-surface-container text-ql-on-surface-variant border border-ql-outline-variant/10"
+                : "bg-ql-surface-container text-ql-on-surface-variant border border-ql-outline-variant"
             }`}
           >
             {hasSnapshot && snapshotAt
@@ -376,7 +376,7 @@ export default function ReportsPage(props: NextClientPageProps) {
               type="button"
               onClick={() => void generateReportFresh()}
               disabled={generating}
-              className="w-full py-3 rounded-xl text-sm font-bold border border-ql-outline-variant/20 text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors disabled:opacity-50"
+              className="w-full py-3 rounded-xl text-sm font-bold border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors disabled:opacity-50"
             >
               {generating ? "Running..." : "Generate from Fresh API Run"}
             </button>
@@ -392,7 +392,7 @@ export default function ReportsPage(props: NextClientPageProps) {
                   <button
                     type="button"
                     onClick={() => void copyJson()}
-                    className="text-xs font-bold px-2 py-1 rounded border border-ql-outline-variant/30 text-ql-on-surface-variant hover:bg-ql-surface-container"
+                    className="text-xs font-bold px-2 py-1 rounded border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container"
                   >
                     {copyState === "copied"
                       ? "Copied"
@@ -403,7 +403,7 @@ export default function ReportsPage(props: NextClientPageProps) {
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="text-xs font-bold px-2 py-1 rounded border border-ql-outline-variant/30 text-ql-on-surface-variant hover:bg-ql-surface-container"
+                    className="text-xs font-bold px-2 py-1 rounded border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container"
                     title="Use your browser's 'Save as PDF' destination for a PDF file"
                   >
                     Print / Save as PDF
@@ -413,7 +413,7 @@ export default function ReportsPage(props: NextClientPageProps) {
             </div>
           </div>
           {lastReport ? (
-            <pre className="text-[10px] font-mono text-ql-on-surface-variant bg-ql-surface-lowest rounded-lg p-3 overflow-auto max-h-80 min-h-[12rem] whitespace-pre-wrap break-words leading-relaxed border border-ql-outline-variant/10 flex-1">
+            <pre className="text-[10px] font-mono text-ql-on-surface-variant bg-ql-surface-lowest rounded-lg p-3 overflow-auto max-h-80 min-h-[12rem] whitespace-pre-wrap break-words leading-relaxed border border-ql-outline-variant flex-1">
               {JSON.stringify(lastReport, null, 2)}
             </pre>
           ) : (
@@ -427,7 +427,7 @@ export default function ReportsPage(props: NextClientPageProps) {
       {/* Charts — rendered from the same merged optimize object used for downloads.
           Included in print/PDF output; @media print CSS handles Recharts sizing. */}
       {lastMerged && (
-        <div className="rounded-xl border border-ql-outline-variant/15 bg-ql-surface-low p-6 print:border-0 print:bg-transparent print:p-0">
+        <div className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-6 print:border-0 print:bg-transparent print:p-0">
           <h3 className="text-xs uppercase tracking-widest text-ql-on-surface-variant font-bold mb-4 print:text-gray-600">
             Charts
           </h3>

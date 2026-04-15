@@ -152,7 +152,17 @@ function ChartTooltip({ active, payload, label }) {
   const t = useTheme();
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6, padding: "8px 12px", fontSize: 11, fontFamily: FONT.mono }}>
+    <div
+      style={{
+        background: t.surfaceLight,
+        border: `1px solid ${t.border}`,
+        borderRadius: 6,
+        padding: "8px 12px",
+        fontSize: 11,
+        fontFamily: FONT.mono,
+        boxShadow: t.shadowLg || "0 4px 12px rgba(0,0,0,0.3)",
+      }}
+    >
       {label != null && <div style={{ color: t.textMuted, marginBottom: 4 }}>{label}</div>}
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color, display: "flex", gap: 12, justifyContent: "space-between" }}>
@@ -205,7 +215,8 @@ function MetricCard({
         minWidth: 160,
         position: "relative",
         borderLeft: `3px solid ${accent}`,
-        boxShadow: "0 1px 0 rgba(0,0,0,0.2)",
+        boxShadow: t.shadow || "0 1px 0 rgba(0,0,0,0.2)",
+        backgroundImage: t.surfaceElevated ? `linear-gradient(135deg, ${t.surface} 0%, ${t.surfaceElevated || t.surface} 100%)` : "none",
       }}
       onMouseEnter={() => hasExtra && setShowTip(true)}
       onMouseLeave={() => setShowTip(false)}
@@ -382,6 +393,8 @@ function SidebarSection({ title, subtitle, children, muted }) {
         padding: "14px 14px 12px",
         marginBottom: 14,
         opacity: muted ? 0.55 : 1,
+        boxShadow: t.shadow || "none",
+        backgroundImage: t.surfaceElevated ? `linear-gradient(180deg, ${t.surfaceLight} 0%, ${t.surfaceElevated} 100%)` : "none",
       }}
     >
       <div style={{ marginBottom: 10, fontFamily: FONT.sans }}>
@@ -718,7 +731,29 @@ function UniverseMainSection({ data, universeBrowse, setUniverseBrowse, setSelec
 function Panel({ children, span, id }) {
   const t = useTheme();
   return (
-    <div id={id} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8, padding: 20, gridColumn: span ? "1 / -1" : undefined }}>
+    <div
+      id={id}
+      style={{
+        background: t.surface,
+        border: `1px solid ${t.border}`,
+        borderRadius: 8,
+        padding: 20,
+        gridColumn: span ? "1 / -1" : undefined,
+        boxShadow: t.shadow || "none",
+        backgroundImage: t.surfaceElevated ? `linear-gradient(180deg, ${t.surface} 0%, ${t.surfaceElevated || t.surface} 100%)` : "none",
+        position: "relative",
+      }}
+    >
+      {/* Subtle inner border glow for dark mode */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: 8,
+          border: `1px solid ${t.borderSubtle || "transparent"}`,
+          pointerEvents: "none",
+        }}
+      />
       {children}
     </div>
   );
@@ -1405,7 +1440,9 @@ export default function QuantumPortfolioDashboard() {
     for (const p of presetOptions) {
       if (p.objective === "qubo_sa" || p.objective === "vqe") continue;
       try {
-        const d = generateMarketData(p.nAssets, 504, p.regime, dataSeed, list);
+        // When custom tickers are selected, use that universe size instead of the preset's default nAssets.
+        const nAssetsForPreset = list ? list.length : p.nAssets;
+        const d = generateMarketData(nAssetsForPreset, 504, p.regime, dataSeed, list);
         const r = runOptimisation(d, { objective: p.objective, wMin: p.minWeight, wMax: p.maxWeight });
         const curve = simulateEquityCurve(d, r.weights, 504);
         const dataKey = `p_${String(p.key).replace(/[^a-zA-Z0-9_]/g, "_")}`;
@@ -1449,14 +1486,18 @@ export default function QuantumPortfolioDashboard() {
     for (const p of presetOptions) {
       if (p.objective === "qubo_sa" || p.objective === "vqe") continue;
       try {
-        const d = generateMarketData(p.nAssets, 504, p.regime, dataSeed, list);
+        // When custom tickers are selected, use that universe size instead of the preset's default nAssets.
+        const nAssetsForPreset = list ? list.length : p.nAssets;
+        const d = generateMarketData(nAssetsForPreset, 504, p.regime, dataSeed, list);
         const r = runOptimisation(d, { objective: p.objective, wMin: p.minWeight, wMax: p.maxWeight });
         presets.push({
           key: `preset-${p.key}`,
           kind: "preset",
           name: p.name,
           chartLabel: strategyChartLabel(p.name),
-          profile: `${p.nAssets} assets · ${p.regime}`,
+          profile: list
+            ? `${list.length} assets · ${p.regime}`
+            : `${p.nAssets} assets · ${p.regime}`,
           sharpe: r.sharpe,
           ret: r.portReturn * 100,
           vol: r.portVol * 100,
@@ -1713,8 +1754,22 @@ export default function QuantumPortfolioDashboard() {
         overflow: "hidden",
         color: t.text,
         fontFamily: FONT.sans,
+        position: "relative",
       }}
     >
+      {/* Subtle ambient glow for dark mode */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 200,
+          background: "radial-gradient(ellipse at 30% 0%, rgba(0,230,184,0.06) 0%, transparent 70%)",
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
 
       {/* ── Header ── */}
       <header style={{ borderBottom: `1px solid ${t.border}`, padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>

@@ -72,7 +72,7 @@ export default function QuantumPage(props: NextClientPageProps) {
     health.tone === "ok"
       ? "text-ql-tertiary"
       : health.tone === "warn"
-        ? "text-amber-400"
+        ? "dark:text-amber-400 text-amber-600"
         : health.tone === "bad"
           ? "text-ql-error"
           : "text-ql-on-surface-variant";
@@ -86,7 +86,7 @@ export default function QuantumPage(props: NextClientPageProps) {
 
       <SessionBanner />
 
-      <div className="flex flex-col sm:flex-row sm:items-end gap-4 bg-ql-surface-low rounded-xl p-4 border border-ql-outline-variant/10">
+      <div className="flex flex-col sm:flex-row sm:items-end gap-4 bg-ql-surface-low rounded-xl p-4 border border-ql-outline-variant">
         <div className="flex-1 min-w-0">
           <label
             htmlFor="enterprise-select"
@@ -99,7 +99,7 @@ export default function QuantumPage(props: NextClientPageProps) {
             value={activeTenantId}
             onChange={(e) => void setActiveTenant(e.target.value)}
             disabled={bootstrapLoading || tenants.length === 0}
-            className="w-full max-w-md bg-ql-surface-lowest border border-ql-outline-variant/20 rounded-lg px-3 py-2.5 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
+            className="w-full max-w-md bg-ql-surface-lowest border border-ql-outline-variant rounded-lg px-3 py-2.5 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
           >
             {tenants.map((t) => (
               <option key={t.id} value={t.id}>
@@ -116,7 +116,7 @@ export default function QuantumPage(props: NextClientPageProps) {
         </div>
       </div>
 
-      <div className="rounded-lg bg-ql-surface-container/40 border border-ql-outline-variant/10 px-4 py-3 text-xs text-ql-on-surface-variant">
+      <div className="rounded-lg bg-ql-surface-container/40 border border-ql-outline-variant px-4 py-3 text-xs text-ql-on-surface-variant">
         <span className="material-symbols-outlined text-sm align-middle mr-1">info</span>
         IBM tokens are stored <strong className="text-ql-on-surface">per tenant</strong> in
         the API SQLite DB (encrypted when{" "}
@@ -128,7 +128,7 @@ export default function QuantumPage(props: NextClientPageProps) {
       </div>
 
       {ibm.integration_context ? (
-        <div className="rounded-lg border border-ql-outline-variant/15 bg-ql-surface-low/50 px-4 py-2 text-[11px] text-ql-on-surface-variant font-mono">
+        <div className="rounded-lg border border-ql-outline-variant bg-ql-surface-low/50 px-4 py-2 text-[11px] text-ql-on-surface-variant font-mono">
           <span className="text-ql-on-surface-variant font-sans font-bold uppercase tracking-wider text-[10px] mr-2">
             Server context
           </span>
@@ -138,7 +138,7 @@ export default function QuantumPage(props: NextClientPageProps) {
           DB <span className="text-ql-secondary">{ibm.integration_context.api_db_basename}</span>
           {" · "}
           secrets persist:{" "}
-          <span className={ibm.integration_context.secrets_persistence ? "text-ql-tertiary" : "text-amber-400"}>
+          <span className={ibm.integration_context.secrets_persistence ? "text-ql-tertiary" : "dark:text-amber-400 text-amber-600"}>
             {ibm.integration_context.secrets_persistence ? "yes" : "no"}
           </span>
         </div>
@@ -146,7 +146,7 @@ export default function QuantumPage(props: NextClientPageProps) {
 
       {bannerError && (
         <div
-          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm dark:text-amber-200 text-amber-800"
           role="alert"
         >
           {bannerError}
@@ -165,20 +165,27 @@ export default function QuantumPage(props: NextClientPageProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-8 bg-ql-surface-low rounded-xl p-6">
-          <h3 className="font-headline text-lg font-bold mb-6">
+          <h3 className="font-headline text-lg font-bold mb-2">
             Engine Telemetry
           </h3>
+          <p className="text-ql-on-surface-variant text-xs mb-6">
+            Current execution mode, available backends, API health, and active job count. Shows whether you're running on real quantum hardware or the local simulator.
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {[
               {
                 label: "Enterprise",
                 value: activeTenantId || "—",
                 color: "text-ql-secondary",
+                desc: "Tenant namespace — IBM tokens are scoped per tenant",
               },
               {
                 label: "Mode",
                 value: ibm.configured ? "Hardware" : "Simulator",
                 color: ibm.configured ? "text-ql-tertiary" : "text-ql-primary",
+                desc: ibm.configured
+                  ? "Real IBM QPU — queued execution, device noise affects results"
+                  : "Local simulator — fast, deterministic, no queue",
               },
               {
                 label: "Backends",
@@ -186,11 +193,13 @@ export default function QuantumPage(props: NextClientPageProps) {
                   ? String(ibm.backends.length)
                   : "0",
                 color: "",
+                desc: "Available QPU/simulator targets from IBM Runtime",
               },
               {
                 label: "API Status",
                 value: bootstrapLoading ? "…" : health.label,
                 color: bootstrapLoading ? "text-ql-on-surface-variant" : healthColor,
+                desc: "Flask API backend health — proxy for all requests",
               },
               {
                 label: "Portfolio jobs active",
@@ -200,6 +209,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                   ).length
                 ),
                 color: "text-ql-primary",
+                desc: "Async optimization jobs currently in progress on the server",
               },
               {
                 label: "IBM workloads listed",
@@ -207,11 +217,12 @@ export default function QuantumPage(props: NextClientPageProps) {
                   ? String(ibmWorkloads.length)
                   : "—",
                 color: "text-ql-secondary",
+                desc: "Historical IBM Quantum Runtime jobs from this session",
               },
             ].map((m) => (
               <div
                 key={m.label}
-                className="bg-ql-surface-container/60 backdrop-blur p-4 rounded-lg border border-ql-outline-variant/10"
+                className="bg-ql-surface-container/60 backdrop-blur p-4 rounded-lg border border-ql-outline-variant"
               >
                 <p className="text-[10px] text-ql-on-surface-variant uppercase font-bold tracking-widest">
                   {m.label}
@@ -234,7 +245,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                 {ibm.backends.map((b) => (
                   <span
                     key={b}
-                    className="px-3 py-1 bg-ql-surface-container text-xs font-mono rounded-lg border border-ql-outline-variant/10"
+                    className="px-3 py-1 bg-ql-surface-container text-xs font-mono rounded-lg border border-ql-outline-variant"
                   >
                     {b}
                   </span>
@@ -251,7 +262,7 @@ export default function QuantumPage(props: NextClientPageProps) {
 
           {ibm.configured &&
           (ibm.ibm_instances?.length || ibm.ibm_active_instance || ibm.ibm_instances_error) ? (
-            <div className="mt-4 rounded-lg border border-ql-outline-variant/15 bg-ql-surface-container/40 px-3 py-2 text-[11px] text-ql-on-surface-variant">
+            <div className="mt-4 rounded-lg border border-ql-outline-variant bg-ql-surface-container/40 px-3 py-2 text-[11px] text-ql-on-surface-variant">
               <p className="text-[10px] font-bold uppercase tracking-widest text-ql-on-surface-variant mb-1">
                 IBM account (runtime)
               </p>
@@ -271,7 +282,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                 </ul>
               ) : null}
               {ibm.ibm_instances_error ? (
-                <p className="text-amber-300 text-[10px] mt-1">{ibm.ibm_instances_error}</p>
+                <p className="dark:text-amber-300 text-amber-700 text-[10px] mt-1">{ibm.ibm_instances_error}</p>
               ) : null}
             </div>
           ) : null}
@@ -344,7 +355,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                     void handleConnect();
                   }
                 }}
-                className="w-full bg-ql-surface-lowest border border-ql-outline-variant/20 rounded-lg px-3 py-2.5 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
+                className="w-full bg-ql-surface-lowest border border-ql-outline-variant rounded-lg px-3 py-2.5 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
               />
               <div>
                 <label
@@ -360,7 +371,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                   placeholder="crn:v1:quantum:… (Open Plan / specific instance)"
                   value={instanceCrn}
                   onChange={(e) => setInstanceCrn(e.target.value)}
-                  className="w-full bg-ql-surface-lowest border border-ql-outline-variant/20 rounded-lg px-3 py-2.5 text-xs font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
+                  className="w-full bg-ql-surface-lowest border border-ql-outline-variant rounded-lg px-3 py-2.5 text-xs font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
                 />
               </div>
               <div className="flex gap-2">
@@ -368,7 +379,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                   type="button"
                   onClick={() => void handleVerify()}
                   disabled={verifying || connecting || !token.trim()}
-                  className="flex-1 py-2.5 border border-ql-outline-variant/30 rounded-lg text-sm font-bold text-ql-on-surface hover:bg-ql-surface-high transition-colors disabled:opacity-50"
+                  className="flex-1 py-2.5 border border-ql-outline-variant rounded-lg text-sm font-bold text-ql-on-surface hover:bg-ql-surface-high transition-colors disabled:opacity-50"
                 >
                   {verifying ? "Verifying…" : "Verify token"}
                 </button>
@@ -376,7 +387,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                   type="button"
                   onClick={() => void handleConnect()}
                   disabled={connecting || verifying || !token.trim()}
-                  className="flex-1 py-2.5 bg-ql-surface-high border border-ql-outline-variant/20 rounded-lg text-sm font-bold text-ql-primary hover:bg-ql-surface-highest transition-colors disabled:opacity-50"
+                  className="flex-1 py-2.5 bg-ql-surface-high border border-ql-outline-variant rounded-lg text-sm font-bold text-ql-primary hover:bg-ql-surface-highest transition-colors disabled:opacity-50"
                 >
                   {connecting ? "Connecting..." : "Connect"}
                 </button>
@@ -419,7 +430,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                         </ul>
                       ) : null}
                       {verifyPreview.ibm_instances_error ? (
-                        <p className="text-[10px] text-amber-300">
+                        <p className="dark:text-amber-300 text-amber-700 text-[10px]">
                           Instances: {verifyPreview.ibm_instances_error}
                         </p>
                       ) : null}
@@ -440,14 +451,14 @@ export default function QuantumPage(props: NextClientPageProps) {
               type="button"
               onClick={() => void handleDisconnect()}
               disabled={connecting}
-              className="w-full py-2.5 border border-ql-outline-variant/20 rounded-lg text-sm font-bold text-ql-error hover:bg-ql-error/10 transition-colors disabled:opacity-50"
+              className="w-full py-2.5 border border-ql-outline-variant rounded-lg text-sm font-bold text-ql-error hover:bg-ql-error/10 transition-colors disabled:opacity-50"
             >
               {connecting ? "Disconnecting..." : "Disconnect"}
             </button>
           )}
         </div>
 
-        <div className="md:col-span-12 bg-ql-surface-container rounded-xl p-6 border border-ql-outline-variant/10">
+        <div className="md:col-span-12 bg-ql-surface-container rounded-xl p-6 border border-ql-outline-variant">
           <h3 className="font-headline text-lg font-bold mb-4">
             Integration coverage
           </h3>
@@ -458,7 +469,7 @@ export default function QuantumPage(props: NextClientPageProps) {
             in server environment / IAM.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-ql-surface-low rounded-lg p-4 border border-ql-outline-variant/10">
+            <div className="bg-ql-surface-low rounded-lg p-4 border border-ql-outline-variant">
               <p className="text-[10px] font-bold uppercase text-ql-on-surface-variant mb-1">
                 IBM Quantum
               </p>
@@ -471,7 +482,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                   : "No backends listed"}
               </p>
             </div>
-            <div className="bg-ql-surface-low rounded-lg p-4 border border-ql-outline-variant/10">
+            <div className="bg-ql-surface-low rounded-lg p-4 border border-ql-outline-variant">
               <p className="text-[10px] font-bold uppercase text-ql-on-surface-variant mb-1">
                 AWS Braket
               </p>
@@ -528,7 +539,7 @@ export default function QuantumPage(props: NextClientPageProps) {
           ) : null}
 
           {!ibm.configured ? (
-            <p className="text-ql-on-surface-variant text-sm py-6 text-center border border-dashed border-ql-outline-variant/30 rounded-lg">
+            <p className="text-ql-on-surface-variant text-sm py-6 text-center border border-dashed border-ql-outline-variant rounded-lg">
               Connect IBM Quantum to list Runtime jobs for your API token.
             </p>
           ) : ibmWorkloadsLoading && ibmWorkloads.length === 0 ? (
@@ -536,15 +547,15 @@ export default function QuantumPage(props: NextClientPageProps) {
               Loading IBM workloads…
             </p>
           ) : ibmWorkloads.length === 0 ? (
-            <p className="text-ql-on-surface-variant text-sm py-6 text-center border border-dashed border-ql-outline-variant/30 rounded-lg">
+            <p className="text-ql-on-surface-variant text-sm py-6 text-center border border-dashed border-ql-outline-variant rounded-lg">
               No recent IBM Runtime jobs returned for this account (last 20). Submit
               jobs from Qiskit or the IBM console, then refresh.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-ql-outline-variant/10">
+            <div className="overflow-x-auto rounded-lg border border-ql-outline-variant">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-ql-outline-variant/20 text-[10px] uppercase tracking-widest text-ql-on-surface-variant">
+                  <tr className="border-b border-ql-outline-variant text-[10px] uppercase tracking-widest text-ql-on-surface-variant">
                     <th className="py-2 pr-3 font-bold">Job ID</th>
                     <th className="py-2 pr-3 font-bold">Status</th>
                     <th className="py-2 pr-3 font-bold">QPU</th>
@@ -557,7 +568,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                   {ibmWorkloads.map((w, idx) => (
                     <tr
                       key={w.job_id ?? `ibm-wl-${idx}`}
-                      className="border-b border-ql-outline-variant/10 last:border-0"
+                      className="border-b border-ql-outline-variant last:border-0"
                     >
                       <td
                         className="py-2 pr-3 font-mono text-xs max-w-[140px] truncate"
@@ -594,7 +605,7 @@ export default function QuantumPage(props: NextClientPageProps) {
           )}
         </div>
 
-        <div className="md:col-span-12 bg-ql-surface-container rounded-xl p-6 border border-ql-outline-variant/10">
+        <div className="md:col-span-12 bg-ql-surface-container rounded-xl p-6 border border-ql-outline-variant">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
             <div>
               <h3 className="font-headline text-lg font-bold">
@@ -634,7 +645,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                       className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                         selected
                           ? "border-ql-primary bg-ql-primary/15 text-ql-primary"
-                          : "border-ql-outline-variant/30 bg-ql-surface-low text-ql-on-surface-variant hover:border-ql-outline-variant/50 hover:text-ql-on-surface"
+                          : "border-ql-outline-variant bg-ql-surface-low text-ql-on-surface-variant hover:border-ql-outline-variant hover:text-ql-on-surface"
                       }`}
                     >
                       {preset.label}
@@ -652,7 +663,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                     setSmokeMode(e.target.value as "hardware" | "simulator")
                   }
                   disabled={!ibm.configured || smokeRunning}
-                  className="bg-ql-surface-low border border-ql-outline-variant/20 rounded-lg px-3 py-2 text-xs font-mono focus:border-ql-primary outline-none disabled:opacity-50 w-full sm:w-auto"
+                  className="bg-ql-surface-low border border-ql-outline-variant rounded-lg px-3 py-2 text-xs font-mono focus:border-ql-primary outline-none disabled:opacity-50 w-full sm:w-auto"
                 >
                   <option value="hardware">Hardware (QPU)</option>
                   <option value="simulator">Cloud simulator</option>
@@ -668,7 +679,7 @@ export default function QuantumPage(props: NextClientPageProps) {
               </div>
             </div>
           </div>
-          <details className="mt-4 group border border-ql-outline-variant/15 rounded-lg px-3 py-2 bg-ql-surface-low/50">
+          <details className="mt-4 group border border-ql-outline-variant rounded-lg px-3 py-2 bg-ql-surface-low/50">
             <summary className="text-[11px] font-bold text-ql-on-surface-variant cursor-pointer list-none flex items-center gap-2 [&::-webkit-details-marker]:hidden">
               <span className="text-ql-on-surface-variant group-open:rotate-90 transition-transform inline-block">
                 ▸
@@ -684,12 +695,12 @@ export default function QuantumPage(props: NextClientPageProps) {
               onChange={(e) => setSmokeTickersInput(e.target.value)}
               disabled={!ibm.configured || smokeRunning}
               placeholder="e.g. AAPL, MSFT, …"
-              className="w-full max-w-2xl ml-5 mb-1 bg-ql-surface-low border border-ql-outline-variant/20 rounded-lg px-3 py-2 text-xs font-mono focus:border-ql-primary outline-none disabled:opacity-50"
+              className="w-full max-w-2xl ml-5 mb-1 bg-ql-surface-low border border-ql-outline-variant rounded-lg px-3 py-2 text-xs font-mono focus:border-ql-primary outline-none disabled:opacity-50"
               aria-label="Custom smoke test tickers"
             />
           </details>
           {!ibm.configured ? (
-            <p className="text-ql-on-surface-variant text-sm py-4 border border-dashed border-ql-outline-variant/30 rounded-lg text-center">
+            <p className="text-ql-on-surface-variant text-sm py-4 border border-dashed border-ql-outline-variant rounded-lg text-center">
               Connect IBM Quantum above to run a Runtime smoke test.
             </p>
           ) : smokeResult ? (
@@ -779,14 +790,14 @@ export default function QuantumPage(props: NextClientPageProps) {
                   {ibm.configured ? (
                     <span className="text-ql-tertiary">connected</span>
                   ) : (
-                    <span className="text-amber-400">not connected — connect above to enable hardware</span>
+                    <span className="dark:text-amber-400 text-amber-600">not connected — connect above to enable hardware</span>
                   )}
                 </li>
                 <li>
                   Universe size: {portfolioJobsContext.tickerCount} / {MAX_IBM_VQE_ASSETS} (recommended
                   max for hardware)
                   {portfolioJobsContext.tickerCount > MAX_IBM_VQE_ASSETS ? (
-                    <span className="text-amber-400">
+                    <span className="dark:text-amber-400 text-amber-600">
                       {" "}
                       — server may fall back to simulation for large N
                     </span>
@@ -893,7 +904,7 @@ export default function QuantumPage(props: NextClientPageProps) {
                 return (
                 <li
                   key={j.localId}
-                  className="px-4 py-3 bg-ql-surface-container/40 rounded-lg border border-ql-outline-variant/5"
+                  className="px-4 py-3 bg-ql-surface-container/40 rounded-lg border border-ql-outline-variant"
                 >
                   <div className="flex items-start gap-3 flex-wrap">
                     <span

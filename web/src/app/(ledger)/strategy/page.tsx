@@ -23,10 +23,16 @@ const FAMILY_HEADINGS: Record<ObjectiveFamily, string> = {
   quantum: "Quantum",
 };
 
+const FAMILY_DESC: Record<ObjectiveFamily, string> = {
+  classical: "Continuous / convex optimization (Markowitz, HRP, min-variance). Fast, deterministic results.",
+  hybrid: "Multi-stage pipeline: score & screen assets → QUBO combinatorial selection → continuous refinement.",
+  quantum: "Variational quantum eigensolver (VQE) or QUBO-SA — runs on IBM Quantum Runtime or falls back to simulator.",
+};
+
 function familyBadgeClass(f: ObjectiveFamily): string {
   switch (f) {
     case "classical":
-      return "bg-ql-surface-container text-ql-on-surface-variant border-ql-outline-variant/20";
+      return "bg-ql-surface-container text-ql-on-surface-variant border-ql-outline-variant";
     case "hybrid":
       return "bg-ql-primary/15 text-ql-primary border-ql-primary/25";
     case "quantum":
@@ -68,7 +74,7 @@ function CopyPathButton({
 function PaperRoleBadge({ role }: { role?: PaperRole }) {
   if (!role || role === "foundational") {
     return (
-      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-ql-surface-container text-ql-on-surface-variant border border-ql-outline-variant/20">
+      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-ql-surface-container text-ql-on-surface-variant border border-ql-outline-variant">
         Foundational
       </span>
     );
@@ -262,7 +268,7 @@ ${doc ?? ""}`;
           <button
             type="button"
             onClick={copyLabLink}
-            className="px-4 py-3 rounded-lg text-sm font-bold border border-ql-outline-variant/20 text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
+            className="px-4 py-3 rounded-lg text-sm font-bold border border-ql-outline-variant text-ql-on-surface-variant hover:bg-ql-surface-container transition-colors"
           >
             <span className="material-symbols-outlined text-lg">link</span>
           </button>
@@ -294,9 +300,12 @@ ${doc ?? ""}`;
             ) : (
               groupedObjectives.map(({ family, entries }) => (
                 <div key={family}>
-                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-ql-on-surface-variant mb-2">
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-ql-on-surface-variant mb-1">
                     {FAMILY_HEADINGS[family]}
                   </h4>
+                  <p className="text-[10px] text-ql-on-surface-variant/70 mb-2 leading-relaxed">
+                    {FAMILY_DESC[family]}
+                  </p>
                   <div className="space-y-3">
                     {entries.map(([key, obj]) => (
                       <div
@@ -304,7 +313,7 @@ ${doc ?? ""}`;
                         className={`rounded-lg border overflow-hidden transition-all ${
                           selectedObj === key
                             ? "border-ql-primary/40 bg-ql-primary/5 ring-1 ring-ql-primary/20"
-                            : "border-ql-outline-variant/15 bg-ql-surface-lowest/50"
+                            : "border-ql-outline-variant bg-ql-surface-lowest/50"
                         }`}
                       >
                         <button
@@ -326,6 +335,9 @@ ${doc ?? ""}`;
                                     ? "bg-ql-tertiary/10 text-ql-tertiary"
                                     : "bg-amber-500/10 text-amber-400"
                                 }`}
+                                title={obj.fast
+                                  ? "Runs in < 1 s locally — deterministic, no external compute"
+                                  : "May take 10–60 s — involves iterative solve or external runtime"}
                               >
                                 {obj.fast ? "Fast" : "Compute"}
                               </span>
@@ -335,7 +347,7 @@ ${doc ?? ""}`;
                             {obj.description}
                           </p>
                         </button>
-                        <div className="px-4 pb-3 pt-0 space-y-2 border-t border-ql-outline-variant/10">
+                        <div className="px-4 pb-3 pt-0 space-y-2 border-t border-ql-outline-variant">
                           {obj.papers.length > 0 && (
                             <div>
                               <p className="text-[9px] font-bold uppercase text-ql-on-surface-variant mb-1">
@@ -398,7 +410,7 @@ ${doc ?? ""}`;
                                 {obj.notebooks.map((nb) => (
                                   <li
                                     key={nb.path}
-                                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono text-slate-500"
+                                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono text-ql-on-surface-variant"
                                   >
                                     <span className="break-all">
                                       {nb.title ? `${nb.title}: ` : ""}
@@ -437,7 +449,7 @@ ${doc ?? ""}`;
                                 {obj.codeRefs.map((c) => (
                                   <li
                                     key={`${c.path}-${c.label ?? ""}`}
-                                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono text-slate-500"
+                                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono text-ql-on-surface-variant"
                                   >
                                     <span className="break-all">
                                       {c.label ? `${c.label} — ` : ""}
@@ -488,7 +500,7 @@ ${doc ?? ""}`;
                   type="button"
                   onClick={() => applyPreset(key)}
                   title={p.description ?? p.label}
-                  className="text-left px-3 py-2.5 bg-ql-surface-container text-xs font-bold rounded-lg hover:bg-ql-surface-high transition-colors border border-ql-outline-variant/10"
+                  className="text-left px-3 py-2.5 bg-ql-surface-container text-xs font-bold rounded-lg hover:bg-ql-surface-high transition-colors border border-ql-outline-variant"
                 >
                   <span className="block text-ql-on-surface">{p.label}</span>
                   {p.description ? (
@@ -515,7 +527,7 @@ ${doc ?? ""}`;
                   placeholder="e.g. AAPL, MSFT, GOOGL — or leave blank for Lab default"
                   value={tickerLine}
                   onChange={(e) => setTickerLine(e.target.value)}
-                  className="w-full bg-ql-surface-lowest border border-ql-outline-variant/20 rounded-lg px-3 py-2 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
+                  className="w-full bg-ql-surface-lowest border border-ql-outline-variant rounded-lg px-3 py-2 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
                 />
                 {parsedTickers.length > 0 && (
                   <p className="text-[10px] text-ql-on-surface-variant mt-1">
@@ -560,6 +572,11 @@ ${doc ?? ""}`;
                     }
                     className="w-full h-1 appearance-none bg-ql-outline-variant/30 rounded-full cursor-pointer accent-ql-primary"
                   />
+                  <p className="text-[10px] text-ql-on-surface-variant/70 mt-1">
+                    {c.key === "weight_min"
+                      ? "Minimum allocation per asset — positions below this are excluded."
+                      : "Maximum allocation per asset — caps concentration risk."}
+                  </p>
                 </div>
               ))}
               {["K_screen", "K_select"].map((k) => (
@@ -574,17 +591,20 @@ ${doc ?? ""}`;
                     onChange={(e) =>
                       setConfig((prev) => ({ ...prev, [k]: e.target.value }))
                     }
-                    className="w-full bg-ql-surface-lowest border border-ql-outline-variant/20 rounded-lg px-3 py-2 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
+                    className="w-full bg-ql-surface-lowest border border-ql-outline-variant rounded-lg px-3 py-2 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
                   />
                 </div>
               ))}
+              <p className="text-[10px] text-ql-on-surface-variant/70 mt-2 leading-relaxed">
+                <strong className="text-ql-on-surface-variant">K_screen</strong>: number of assets kept after the initial scoring stage. <strong className="text-ql-on-surface-variant">K_select</strong>: number chosen by the QUBO combinatorial stage. Both default to &quot;auto&quot; (derived from universe size). Only used by Hybrid / QUBO-SA objectives.
+              </p>
             </div>
           </div>
         </div>
 
         {/* YAML Export */}
         <div className="lg:col-span-3 bg-ql-surface-low rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="font-headline text-lg font-bold">Manifest</h3>
             <button
               type="button"
@@ -594,7 +614,10 @@ ${doc ?? ""}`;
               Copy YAML
             </button>
           </div>
-          <pre className="text-[11px] font-mono text-slate-400 bg-ql-surface-lowest rounded-lg p-4 overflow-x-auto whitespace-pre leading-relaxed border border-ql-outline-variant/10">
+          <p className="text-[10px] text-ql-on-surface-variant/70 mb-3 leading-relaxed">
+            Deployment manifest — captures the objective, constraints, and provenance as a shareable YAML config. Used to reproduce runs or hand off to a CI/CD pipeline.
+          </p>
+          <pre className="text-[11px] font-mono text-ql-on-surface-variant bg-ql-surface-lowest rounded-lg p-4 overflow-x-auto whitespace-pre leading-relaxed border border-ql-outline-variant">
             {yamlManifest}
           </pre>
         </div>
