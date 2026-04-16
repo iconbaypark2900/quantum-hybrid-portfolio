@@ -763,9 +763,19 @@ def hardware_smoke_test(
         }
 
 
-def list_runtime_workloads(tenant_id: str, *, limit: int = 20) -> dict:
+def list_runtime_workloads(
+    tenant_id: str,
+    *,
+    limit: int = 20,
+    known_job_ids: set | None = None,
+) -> dict:
     """
-    List recent IBM Quantum Runtime jobs for the tenant's stored API token.
+    List IBM Quantum Runtime jobs for the tenant's stored API token.
+
+    When *known_job_ids* is supplied (a set of job-ID strings previously
+    recorded for this tenant), the result is filtered to only those jobs.
+    This prevents one tenant from seeing another tenant's job history even
+    though ``svc.jobs()`` returns every job on the IBM account.
 
     Requires qiskit-ibm-runtime. Uses QiskitRuntimeService.jobs(limit=...).
 
@@ -801,8 +811,12 @@ def list_runtime_workloads(tenant_id: str, *, limit: int = 20) -> dict:
         }
 
     try:
-        jobs = svc.jobs(limit=lim, descending=True)
-        workloads = [_runtime_job_to_dict(j) for j in jobs]
+        # Fetch a broader window so filtering doesn't starve the result set.
+        fetch_limit = lim if not known_job_ids else max(lim * 5, 200)
+        jobs = svc.jobs(limit=fetch_limit, descending=True)
+        if known_job_ids is not None:
+            jobs = [j for j in jobs if j.job_id() in known_job_ids]
+        workloads = [_runtime_job_to_dict(j) for j in jobs[:lim]]
         return {
             "ok": True,
             "configured": True,

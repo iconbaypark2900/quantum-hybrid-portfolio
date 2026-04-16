@@ -36,7 +36,6 @@ export default function QuantumPage(props: NextClientPageProps) {
     ibmWorkloadsLoading,
     ibmWorkloadsError,
     refreshIbmWorkloads,
-    tenants,
     activeTenantId,
     setActiveTenant,
     integrations,
@@ -85,64 +84,6 @@ export default function QuantumPage(props: NextClientPageProps) {
       />
 
       <SessionBanner />
-
-      <div className="flex flex-col sm:flex-row sm:items-end gap-4 bg-ql-surface-low rounded-xl p-4 border border-ql-outline-variant">
-        <div className="flex-1 min-w-0">
-          <label
-            htmlFor="enterprise-select"
-            className="text-[10px] font-bold uppercase tracking-widest text-ql-on-surface-variant block mb-2"
-          >
-            Enterprise (tenant)
-          </label>
-          <select
-            id="enterprise-select"
-            value={activeTenantId}
-            onChange={(e) => void setActiveTenant(e.target.value)}
-            disabled={bootstrapLoading || tenants.length === 0}
-            className="w-full max-w-md bg-ql-surface-lowest border border-ql-outline-variant rounded-lg px-3 py-2.5 text-sm font-mono focus:border-ql-primary focus:ring-1 focus:ring-ql-primary/30 outline-none"
-          >
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-          <p className="text-[10px] text-ql-on-surface-variant mt-2">
-            With a static admin API key, pick the tenant for IBM tokens and integration
-            status. The browser sends <code className="font-mono">X-Tenant-Id</code> on API
-            calls. Portfolio Lab uses the same header so optimizations resolve IBM access
-            for that enterprise.
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-lg bg-ql-surface-container/40 border border-ql-outline-variant px-4 py-3 text-xs text-ql-on-surface-variant">
-        <span className="material-symbols-outlined text-sm align-middle mr-1">info</span>
-        IBM tokens are stored <strong className="text-ql-on-surface">per tenant</strong> in
-        the API SQLite DB (encrypted when{" "}
-        <code className="font-mono text-[10px]">INTEGRATION_ENCRYPTION_KEY</code> is set).
-        You can also connect from{" "}
-        <a href="/portfolio" className="text-ql-primary font-bold hover:underline">Portfolio Lab</a>
-        — use the same enterprise selection so the token applies to the same{" "}
-        <code className="font-mono text-[10px]">tenant_id</code>.
-      </div>
-
-      {ibm.integration_context ? (
-        <div className="rounded-lg border border-ql-outline-variant bg-ql-surface-low/50 px-4 py-2 text-[11px] text-ql-on-surface-variant font-mono">
-          <span className="text-ql-on-surface-variant font-sans font-bold uppercase tracking-wider text-[10px] mr-2">
-            Server context
-          </span>
-          tenant{" "}
-          <span className="text-ql-primary">{ibm.integration_context.tenant_id}</span>
-          {" · "}
-          DB <span className="text-ql-secondary">{ibm.integration_context.api_db_basename}</span>
-          {" · "}
-          secrets persist:{" "}
-          <span className={ibm.integration_context.secrets_persistence ? "text-ql-tertiary" : "dark:text-amber-400 text-amber-600"}>
-            {ibm.integration_context.secrets_persistence ? "yes" : "no"}
-          </span>
-        </div>
-      ) : null}
 
       {bannerError && (
         <div
