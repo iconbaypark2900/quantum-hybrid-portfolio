@@ -218,20 +218,32 @@ export function useQuantumEngine() {
       try {
         const data = await getIntegrationTenants();
         const list = data.tenants ?? [];
-        let tid = getActiveIntegrationTenant();
-        if (!tid && list.length) tid = list[0].id;
-        if (tid && list.length && !list.some((x) => x.id === tid)) {
-          tid = list[0].id;
+
+        // Purge any stale "default" that old builds may have written to
+        // ql_active_tenant — it caused every anonymous user to share the same
+        // IBM token bucket.  After clearing it the interceptor falls back to
+        // the per-browser ql_session_tenant UUID automatically.
+        const storedTid = getActiveIntegrationTenant();
+        if (storedTid === "default") {
+          setActiveIntegrationTenant(null);
         }
-        if (tid) setActiveIntegrationTenant(tid);
+
+        // Display-only: show whichever tenant the API resolved for this session.
+        // We intentionally do NOT persist here — anonymous users should never
+        // have ql_active_tenant set; admin users manage it via the tenant
+        // selector explicitly.
+        const displayTid = storedTid && storedTid !== "default"
+          ? storedTid
+          : (list[0]?.id ?? "");
+
         if (!cancelled) {
           setTenants(list);
-          setActiveTenantIdState(tid ?? "");
+          setActiveTenantIdState(displayTid);
         }
       } catch {
         if (!cancelled) {
-          setTenants([{ id: "default", label: "Default" }]);
-          setActiveTenantIdState("default");
+          setTenants([]);
+          setActiveTenantIdState("");
         }
       }
 
