@@ -213,6 +213,20 @@ def _ensure_runtime_tables() -> None:
                 )
                 """
             )
+            # Per-tenant IBM job ID tracking — only show a user their own jobs.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tenant_jobs (
+                    tenant_id TEXT NOT NULL,
+                    ibm_job_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (tenant_id, ibm_job_id)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tenant_jobs_tid ON tenant_jobs(tenant_id)"
+            )
             conn.commit()
         finally:
             conn.close()
@@ -241,6 +255,39 @@ def _ensure_runtime_tables() -> None:
 
 def _db_conn():
     return sqlite3.connect(API_DB_PATH)
+
+
+def _record_tenant_jobs(tenant_id: str, job_ids: list) -> None:
+    """Persist IBM job IDs for a tenant so workload listing can filter to their own jobs."""
+    if not job_ids:
+        return
+    try:
+        conn = _db_conn()
+        cur = conn.cursor()
+        cur.executemany(
+            "INSERT OR IGNORE INTO tenant_jobs (tenant_id, ibm_job_id) VALUES (?, ?)",
+            [(tenant_id, str(jid)) for jid in job_ids if jid],
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logger.warning("tenant_jobs record failed tenant=%s: %s", tenant_id, exc)
+
+
+def _get_tenant_job_ids(tenant_id: str) -> set:
+    """Return the set of IBM job IDs previously submitted by this tenant."""
+    try:
+        conn = _db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ibm_job_id FROM tenant_jobs WHERE tenant_id = ?", (tenant_id,)
+        )
+        ids = {row[0] for row in cur.fetchall()}
+        conn.close()
+        return ids
+    except Exception as exc:
+        logger.warning("tenant_jobs fetch failed tenant=%s: %s", tenant_id, exc)
+        return set()
 
 
 _ensure_runtime_tables()
@@ -1032,12 +1079,15 @@ def optimize_portfolio():
 
         # ── Objective & method params ────────────────────────────────────────
         objective = data.get('objective', 'hybrid')
-        # Backward compatibility: legacy objective names
+        # Backward compatibility: legacy objective names.
+        # braket_annealing is NOT remapped to qubo_sa here — it is forwarded to
+        # services.portfolio_optimizer which dispatches to BraketAnnealingOptimizer
+        # (real QPU or classical fallback) when BRAKET_ENABLED=true. The legacy
+        # qubo_sa objective is kept for callers that want classical SA explicitly.
         braket_fallback = objective == 'braket_annealing'
         objective = {
             'max_sharpe': 'markowitz',
             'risk_parity': 'hrp',
-            'braket_annealing': 'qubo_sa',
         }.get(objective, objective)
         target_return = data.get('targetReturn') or data.get('target_return')
 
@@ -1188,8 +1238,14 @@ def optimize_portfolio():
             benchmarks = {}
 
         # ── Assemble response (backward-compatible shape) ────────────────────
+        # For braket_annealing, reflect the actual backend used (quantum or fallback).
+        if braket_fallback:
+            stage = getattr(result, 'stage_info', None) or {}
+            _bt = stage.get('backend') or 'classical_qubo'
+        else:
+            _bt = None
         response_payload = {
-            'backend_type': 'classical_qubo' if braket_fallback else None,
+            'backend_type': _bt,
             'qsw_result': {
                 'weights': result.weights.tolist(),
                 'sharpe_ratio': round(result.sharpe_ratio, 4),
@@ -1605,6 +1661,7 @@ def _run_optimize_for_run(run_id: str, tenant_id: str, data: dict, execution_kin
                 )
                 qmeta = dict(qmeta)
                 qmeta["execution_kind"] = "ibm_runtime"
+                _record_tenant_jobs(tenant_id, qmeta.get("ibm_job_ids") or [])
                 metrics = _portfolio_metrics(w, market_payload.returns, market_payload.covariance)
                 result_payload = _lab_run_holdings_and_payload(
                     w, metrics, assets,
@@ -1626,6 +1683,7 @@ def _run_optimize_for_run(run_id: str, tenant_id: str, data: dict, execution_kin
                 )
                 qmeta = dict(qmeta)
                 qmeta["execution_kind"] = "ibm_runtime"
+                _record_tenant_jobs(tenant_id, qmeta.get("ibm_job_ids") or [])
                 metrics = _portfolio_metrics(w, market_payload.returns, market_payload.covariance)
                 result_payload = _lab_run_holdings_and_payload(
                     w, metrics, assets,
@@ -1968,7 +2026,10 @@ def get_ibm_quantum_workloads():
     if raw_limit is None:
         raw_limit = 20
     tid = integration_effective_tenant_id()
-    result = ibm_quantum_service.list_runtime_workloads(tid, limit=raw_limit)
+    known_ids = _get_tenant_job_ids(tid)
+    result = ibm_quantum_service.list_runtime_workloads(
+        tid, limit=raw_limit, known_job_ids=known_ids if known_ids else None
+    )
     if not result.get('ok'):
         err = result.get('error') or 'Unable to list IBM Quantum workloads'
         err_l = err.lower()
@@ -2034,6 +2095,9 @@ def post_ibm_quantum_smoke_test():
     result = ibm_quantum_service.hardware_smoke_test(
         tid, mode=mode, market_payload=market_payload or None
     )
+    # Record the job ID so this tenant can retrieve their own workload history.
+    if result.get('ok') and result.get('job_id'):
+        _record_tenant_jobs(tid, [result['job_id']])
     if not result.get('ok'):
         err = result.get('error') or 'IBM Quantum smoke test failed'
         err_l = err.lower()
@@ -2068,23 +2132,104 @@ def post_ibm_quantum_smoke_test():
     return success_response(result)
 
 
+@app.route('/api/config/braket/smoke-test', methods=['POST'])
+@require_api_key
+def post_braket_smoke_test():
+    """
+    QUBO-shaped Braket / D-Wave smoke test.
+
+    Runs a small portfolio QUBO on the configured Braket backend (mock or real device)
+    and returns a machine-readable artifact with timing and portfolio metrics.
+
+    Body (all optional):
+      returns / covariance: matrix path (same shape as /api/portfolio/optimize)
+      asset_names: optional list of names (with matrix path)
+      n: number of synthetic assets when matrices are not supplied (default 5)
+      seed: random seed for synthetic data (default 42)
+
+    Requires X-API-Key header.
+    Uses BRAKET_* environment variables (no tenant-scoped token needed).
+    """
+    body = request.get_json(silent=True) or {}
+
+    market_payload: dict = {}
+    if body.get('returns') is not None and body.get('covariance') is not None:
+        market_payload['returns'] = body['returns']
+        market_payload['covariance'] = body['covariance']
+        if body.get('asset_names') is not None:
+            market_payload['asset_names'] = body['asset_names']
+    else:
+        if body.get('n') is not None:
+            market_payload['n'] = int(body['n'])
+        if body.get('seed') is not None:
+            market_payload['seed'] = int(body['seed'])
+
+    from services.braket_backend import braket_smoke_test
+    result = braket_smoke_test(market_payload or None)
+
+    if not result.get('ok'):
+        err = result.get('error') or 'Braket smoke test failed'
+        err_l = err.lower()
+        if 'not installed' in err_l or 'not available' in err_l:
+            http_status = 503
+        else:
+            http_status = 502
+        return error_response(err, code='BRAKET_SMOKE_TEST_FAILED', status=http_status)
+
+    try:
+        log_business_audit(
+            'braket_smoke_test',
+            {},
+            {
+                'backend': result.get('backend'),
+                'device': result.get('device'),
+                'use_mock': result.get('use_mock'),
+                'elapsed_ms': result.get('elapsed_ms'),
+                'n_assets': result.get('n_assets'),
+                'market_source': result.get('market_source'),
+                'smoke_profile': result.get('smoke_profile'),
+            },
+            200,
+        )
+    except Exception:
+        pass
+    return success_response(result)
+
+
 @app.route('/api/config/tenants', methods=['GET'])
 @limiter.exempt
 def list_integration_tenants():
-    """List tenant ids available for integration switching (admin static key) or current tenant."""
+    """
+    Return the tenant(s) visible to the caller.
+
+    Admin static API key  → full list from DB (enterprise management).
+    DB-issued API key     → single entry for that key's tenant.
+    Anonymous (session UUID in X-Tenant-Id) → single entry for that UUID.
+
+    Anonymous users NEVER see 'default' or any other tenant's ID —
+    each browser session is its own isolated namespace.
+    """
     client_key = request.headers.get("X-API-Key", "")
+
+    # Admin static key: enumerate all tenant IDs for enterprise management.
     if API_KEY and client_key == API_KEY:
         from services.tenant_integrations import list_tenant_ids
-
         tenants = list_tenant_ids(_db_conn)
         return success_response(
             {"tenants": [{"id": t, "label": t} for t in tenants]}
         )
+
+    # DB-issued API key: only that key's own tenant.
     tenant = _lookup_tenant_by_key(client_key) if client_key else None
     if tenant:
         t = str(tenant["tenant_id"])
-        return success_response({"tenants": [{"id": t, "label": t}]})
-    return success_response({"tenants": [{"id": "default", "label": "Default"}]})
+        return success_response({"tenants": [{"id": t, "label": "My Account"}]})
+
+    # Anonymous session: resolve to the UUID from X-Tenant-Id.
+    # integration_effective_tenant_id() already validates the UUID format
+    # and will NOT fall back to "default" for properly-formed UUIDs.
+    tid = integration_effective_tenant_id()
+    return success_response({"tenants": [{"id": tid, "label": "My Session"}]})
 
 
 @app.route('/api/config/integrations', methods=['GET'])
