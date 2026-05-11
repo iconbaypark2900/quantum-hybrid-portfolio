@@ -1,0 +1,108 @@
+/* Print-optimized CSS for Quantum Ledger PDF reports. */
+
+@page {
+  size: A4;
+  margin: 20mm 18mm;
+  @bottom-center {
+    content: "Quantum Ledger — Page " counter(page) " of " counter(pages);
+    font-size: 8pt;
+    color: #666;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+  margin: 0;
+  padding: 0;
+}
+
+header {
+  border-bottom: 2px solid #1a3a5c;
+  padding-bottom: 12pt;
+  margin-bottom: 16pt;
+}
+
+header h1 {
+  font-size: 18pt;
+  color: #1a3a5c;
+  margin: 0 0 6pt 0;
+}
+
+header p {
+  font-size: 9pt;
+  color: #555;
+  margin: 2pt 0;
+}
+
+h2 {
+  font-size: 12pt;
+  color: #1a3a5c;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4pt;
+  margin-top: 20pt;
+  margin-bottom: 8pt;
+}
+
+section {
+  page-break-inside: avoid;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12pt;
+}
+
+th, td {
+  padding: 5pt 8pt;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 9pt;
+}
+
+th {
+  font-weight: 600;
+  color: #333;
+  background: #f5f7fa;
+}
+
+.kpi-table table th {
+  width: 35%;
+}
+
+.kpi-table table td {
+  font-family: "Courier New", monospace;
+  font-weight: 600;
+}
+
+.holdings table tbody tr:nth-child(even) {
+  background: #fafbfc;
+}
+
+.chart img {
+  max-width: 100%;
+  height: auto;
+  margin: 8pt 0;
+}
+
+.disclaimer {
+  margin-top: 24pt;
+  padding-top: 12pt;
+  border-top: 1px solid #ccc;
+}
+
+.disclaimer p {
+  font-size: 8pt;
+  color: #777;
+  line-height: 1.4;
+}
+
+.na {
+  color: #999;
+  font-style: italic;
+}

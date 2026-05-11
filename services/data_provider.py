@@ -3,10 +3,14 @@ Data provider abstraction for optimization and analytics endpoints.
 
 Supports:
 - Matrix input (returns + covariance) for production fund integrations.
-- Ticker input via yfinance as a fallback/demo source.
+- Ticker input via the configured provider (Tiingo default) as a
+  fallback/demo source.
+
+When ``daily_returns`` is populated the risk-metrics layer can compute
+historical VaR/CVaR in addition to parametric estimates.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import os
@@ -21,7 +25,9 @@ class MarketPayload:
     returns: np.ndarray
     covariance: np.ndarray
     tickers: List[str]
-    source: str  # "matrix" or "yfinance"
+    source: str  # "matrix" | "tiingo" | "yfinance" | provider name
+    daily_returns: Optional[np.ndarray] = field(default=None, repr=False)
+    daily_dates: Optional[List[str]] = field(default=None, repr=False)
 
 
 def _assets_from_matrix(
@@ -84,12 +90,28 @@ def load_market_payload(data: Dict[str, Any]) -> MarketPayload:
             sectors=data.get("sectors"),
         )
         synthetic_tickers = [a["name"] for a in assets]
+
+        daily_returns_in = data.get("daily_returns")
+        daily_dates_in = data.get("daily_dates")
+        daily_returns: Optional[np.ndarray] = None
+        daily_dates: Optional[List[str]] = None
+        if daily_returns_in is not None:
+            daily_returns = np.array(daily_returns_in, dtype=float)
+            if daily_returns.ndim != 2 or daily_returns.shape[1] != len(returns):
+                raise ValueError(
+                    "daily_returns must be 2D with columns matching returns length"
+                )
+            if daily_dates_in is not None:
+                daily_dates = list(daily_dates_in)
+
         return MarketPayload(
             assets=assets,
             returns=returns,
             covariance=covariance,
             tickers=synthetic_tickers,
             source="matrix",
+            daily_returns=daily_returns,
+            daily_dates=daily_dates,
         )
 
     # Fallback path: yfinance ticker fetch
@@ -102,6 +124,7 @@ def load_market_payload(data: Dict[str, Any]) -> MarketPayload:
         tickers=tickers,
         start_date=data.get("startDate") or data.get("start_date"),
         end_date=data.get("endDate") or data.get("end_date"),
+        include_daily_returns=True,
     )
 
     returns = np.array(market_data["returns"], dtype=float)
@@ -122,11 +145,22 @@ def load_market_payload(data: Dict[str, Any]) -> MarketPayload:
             }
         )
 
+    daily_returns: Optional[np.ndarray] = None
+    daily_dates: Optional[List[str]] = None
+    raw_daily = market_data.get("daily_returns")
+    if raw_daily is not None:
+        daily_returns = np.array(raw_daily, dtype=float)
+        daily_dates = market_data.get("daily_dates")
+
+    provider = market_data.get("provider", "yfinance")
+
     return MarketPayload(
         assets=assets,
         returns=returns,
         covariance=covariance,
         tickers=list(tickers),
-        source="yfinance",
+        source=provider,
+        daily_returns=daily_returns,
+        daily_dates=daily_dates,
     )
 

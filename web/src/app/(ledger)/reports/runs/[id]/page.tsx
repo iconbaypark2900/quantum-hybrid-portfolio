@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import AnalystRunCharts from "@/components/AnalystRunCharts";
-import { getLabRun, type LabRun } from "@/lib/api";
+import DrawdownChart, { deriveDrawdowns } from "@/components/DrawdownChart";
+import EquityCurveChart from "@/components/EquityCurveChart";
+import { getLabRun, downloadReportPdf, type LabRun, type CircuitMetadata } from "@/lib/api";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
 import {
   buildAnalystRunBundle,
@@ -69,6 +71,67 @@ function SpecTable({ spec }: { spec: LabRun["spec"] }) {
   );
 }
 
+function CircuitMetadataCard({ meta }: { meta: CircuitMetadata }) {
+  const depthColor = !meta.depth_transpiled
+    ? ""
+    : meta.depth_transpiled < 50
+      ? "text-emerald-400"
+      : meta.depth_transpiled < 150
+        ? "text-amber-400"
+        : "text-red-400";
+
+  return (
+    <div className="rounded-lg border border-ql-border bg-ql-surface-light p-4 space-y-3">
+      <h4 className="text-[10px] uppercase tracking-wider text-ql-muted font-semibold">
+        Circuit Telemetry
+      </h4>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div>
+          <p className="text-[10px] text-ql-muted uppercase tracking-wide">Transpiled Depth</p>
+          <p className={`text-lg font-mono font-bold ${depthColor}`}>
+            {meta.depth_transpiled ?? "—"}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-ql-muted uppercase tracking-wide">2Q Gates</p>
+          <p className="text-lg font-mono font-bold text-ql-on-surface">
+            {meta.two_qubit_gate_count ?? "—"}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-ql-muted uppercase tracking-wide">Qubits</p>
+          <p className="text-lg font-mono font-bold text-ql-on-surface">{meta.n_qubits}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-ql-muted uppercase tracking-wide">Backend</p>
+          <p className="text-sm font-mono font-bold text-ql-on-surface truncate" title={meta.backend_name}>
+            {meta.backend_name}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs font-mono text-ql-muted">
+        <span>shots: {meta.shots}</span>
+        <span>noise: {meta.noise_model_type}</span>
+        <span>exec: {meta.execute_time_s.toFixed(1)}s</span>
+        {meta.depth_original != null && <span>original depth: {meta.depth_original}</span>}
+        {meta.n_parameters != null && <span>params: {meta.n_parameters}</span>}
+      </div>
+      {meta.gate_count_transpiled && Object.keys(meta.gate_count_transpiled).length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(meta.gate_count_transpiled).map(([gate, count]) => (
+            <span
+              key={gate}
+              className="px-2 py-0.5 bg-ql-surface text-[11px] font-mono rounded border border-ql-border"
+            >
+              {gate}: {count}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultSummary({ result }: { result: Record<string, unknown> }) {
   const sharpe = result.sharpe_ratio as number | undefined;
   const ret = result.expected_return as number | undefined;
@@ -95,23 +158,30 @@ function ResultSummary({ result }: { result: Record<string, unknown> }) {
       </div>
       {typeof result.quantum_metadata === "object" &&
         result.quantum_metadata !== null ? (
-        <details className="text-sm">
-          <summary className="cursor-pointer font-semibold text-ql-muted">
-            IBM Runtime metadata
-          </summary>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
-            {Object.entries(result.quantum_metadata as Record<string, unknown>).map(
-              ([k, v]) => (
-                <div key={k} className="contents">
-                  <dt className="text-ql-muted">{k}</dt>
-                  <dd className="break-all">
-                    {typeof v === "object" ? JSON.stringify(v) : String(v)}
-                  </dd>
-                </div>
-              )
-            )}
-          </dl>
-        </details>
+        <>
+          {(() => {
+            const qm = result.quantum_metadata as Record<string, unknown>;
+            const cm = qm.circuit_metadata as CircuitMetadata | undefined;
+            return cm ? <CircuitMetadataCard meta={cm} /> : null;
+          })()}
+          <details className="text-sm">
+            <summary className="cursor-pointer font-semibold text-ql-muted">
+              IBM Runtime metadata (raw)
+            </summary>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
+              {Object.entries(result.quantum_metadata as Record<string, unknown>)
+                .filter(([k]) => k !== "circuit_metadata")
+                .map(([k, v]) => (
+                  <div key={k} className="contents">
+                    <dt className="text-ql-muted">{k}</dt>
+                    <dd className="break-all">
+                      {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                    </dd>
+                  </div>
+                ))}
+            </dl>
+          </details>
+        </>
       ) : null}
       {holdings && holdings.length > 0 && (
         <details className="text-sm">
@@ -230,6 +300,19 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
       : undefined;
     downloadAnalystCsvFromBundle(bundle, ctx, "lab_run");
   }, [bundle, run]);
+
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const handleDownloadPdf = useCallback(async () => {
+    if (!run?.id) return;
+    setPdfLoading(true);
+    try {
+      await downloadReportPdf(run.id);
+    } catch (e) {
+      console.error("PDF download failed:", e);
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [run]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 print:max-w-none print:p-8">
@@ -375,6 +458,35 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
             </section>
           )}
 
+          {/* Backtest equity curve + drawdown (only shown when result has a results array) */}
+          {run.result && (() => {
+            const res = run.result as Record<string, unknown>;
+            const rows = res.results;
+            if (!Array.isArray(rows) || rows.length === 0) return null;
+            const dates = rows.map((r: Record<string, unknown>) => String(r.date ?? ""));
+            const values = rows.map((r: Record<string, unknown>) => Number(r.cumulative_value ?? 1));
+            const drawdowns = deriveDrawdowns(values);
+            const sm = res.summary_metrics as Record<string, unknown> | undefined;
+            const maxDd = typeof sm?.max_drawdown === "number" ? -Math.abs(sm.max_drawdown) : undefined;
+            return (
+              <section className="rounded-lg border border-ql-border bg-ql-surface p-5 space-y-6">
+                <h3 className="text-xs uppercase tracking-wider text-ql-muted font-semibold">
+                  Backtest performance
+                </h3>
+                <EquityCurveChart
+                  dates={dates}
+                  portfolioValues={values}
+                  title="Equity curve"
+                />
+                <DrawdownChart
+                  dates={dates}
+                  drawdowns={drawdowns}
+                  maxDrawdown={maxDd}
+                />
+              </section>
+            );
+          })()}
+
           <div className="flex items-center gap-3 flex-wrap print:hidden">
             <button
               onClick={handleDownloadBundle}
@@ -397,6 +509,15 @@ export default function RunReportPage(props: NextClientPagePropsWithId) {
               title="Use your browser's 'Save as PDF' destination for a PDF file"
             >
               Print / Save as PDF
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={!run?.id || run.status !== "completed" || pdfLoading}
+              className="rounded px-4 py-2 text-sm font-mono border border-ql-border text-ql-muted hover:text-ql-on-surface transition-colors disabled:opacity-40"
+              title="Download a formatted PDF report generated by the server"
+            >
+              {pdfLoading ? "Generating PDF…" : "Download PDF"}
             </button>
             <Link
               href="/reports"

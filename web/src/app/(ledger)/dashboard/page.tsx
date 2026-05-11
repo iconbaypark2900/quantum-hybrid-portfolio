@@ -4,7 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
 import { useLedgerSession } from "@/context/LedgerSessionContext";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
-import { healthCheck, optimizePortfolio } from "@/lib/api";
+import { healthCheck, optimizePortfolio, fetchRegime, type RegimeResult } from "@/lib/api";
 import { DEFAULT_TICKERS, DEFAULT_WEIGHT_MAX, DEFAULT_WEIGHT_MIN } from "@/lib/defaultUniverse";
 import { mergeOptimizeResponse } from "@/lib/reportExport";
 import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
@@ -230,11 +230,12 @@ interface FeedEvent {
 
 export default function DashboardPage(props: NextClientPageProps) {
   useNextPageProps(props);
-  const { session, setLastOptimize } = useLedgerSession();
+  const { session, setLastOptimize, setUniverse } = useLedgerSession();
 
   const [health, setHealth] = useState<HealthData | null>(null);
   const [result, setResult] = useState<OptResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [regime, setRegime] = useState<RegimeResult | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([
     {
       id: "boot",
@@ -252,6 +253,13 @@ export default function DashboardPage(props: NextClientPageProps) {
       .then((d) => setHealth(d))
       .catch(() => setHealth({ status: "unreachable" }));
   }, []);
+
+  useEffect(() => {
+    const tickers = session.tickers.length > 0 ? session.tickers : [...DEFAULT_TICKERS];
+    fetchRegime(tickers)
+      .then(setRegime)
+      .catch(() => {});
+  }, [session.tickers]);
 
   const addFeedEvent = useCallback(
     (ev: Omit<FeedEvent, "id" | "time">) => {
@@ -404,6 +412,54 @@ export default function DashboardPage(props: NextClientPageProps) {
           <KpiCard key={m.label} {...m} />
         ))}
       </div>
+
+      {/* Regime indicator */}
+      {regime && (
+        <div className="rounded-xl border border-ql-outline-variant bg-ql-surface-low p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
+                regime.regime.startsWith("bull")
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : regime.regime === "crisis"
+                    ? "bg-red-500/15 text-red-400"
+                    : "bg-amber-500/15 text-amber-400"
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm">
+                {regime.regime.startsWith("bull")
+                  ? "trending_up"
+                  : regime.regime === "crisis"
+                    ? "warning"
+                    : "trending_down"}
+              </span>
+              {regime.regime.replace(/_/g, " ")}
+            </span>
+            <span className="text-xs text-ql-on-surface-variant hidden sm:inline">
+              Vol {(regime.metrics.realized_vol_annualized * 100).toFixed(1)}% · Ret{" "}
+              {(regime.metrics.recent_return_annualized * 100).toFixed(1)}%
+            </span>
+          </div>
+          <p className="text-xs text-ql-on-surface-variant flex-1 min-w-0 hidden md:block">
+            {regime.description}
+          </p>
+          {regime.recommended_objective !== (session.objective || "hybrid") && (
+            <button
+              type="button"
+              onClick={() =>
+                setUniverse(
+                  session.tickers.length > 0 ? session.tickers : [...DEFAULT_TICKERS],
+                  regime.recommended_objective
+                )
+              }
+              className="shrink-0 text-xs font-bold text-ql-primary hover:text-ql-primary/80 transition-colors inline-flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-sm">swap_horiz</span>
+              Switch to {regime.recommended_objective}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Bento grid */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">

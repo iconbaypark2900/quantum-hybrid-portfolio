@@ -832,3 +832,31 @@ def list_runtime_workloads(
             "tenant_id": tenant_id,
             "error": str(exc),
         }
+
+
+# ─── Job status helpers (interface for future background poller) ─────────────
+
+def get_ibm_job_status(job_id: str, tenant_id: Optional[str] = None) -> str:
+    """Return IBM Runtime job status string ('QUEUED','RUNNING','DONE','ERROR','CANCELLED').
+
+    Raises RuntimeError if qiskit-ibm-runtime is unavailable or the tenant is
+    not configured.
+    """
+    svc = get_service(tenant_id)
+    if svc is None:
+        raise RuntimeError("IBM Quantum not configured for this tenant")
+    job = svc.job(job_id)
+    return str(job.status())
+
+
+def retrieve_ibm_job_result(job_id: str, tenant_id: Optional[str] = None) -> dict:
+    """Retrieve the result of a completed IBM Runtime job as a dict.
+
+    Raises RuntimeError if qiskit-ibm-runtime is unavailable or the tenant is
+    not configured.
+    """
+    svc = get_service(tenant_id)
+    if svc is None:
+        raise RuntimeError("IBM Quantum not configured for this tenant")
+    job = svc.job(job_id)
+    return _runtime_job_to_dict(job)

@@ -74,6 +74,10 @@ export interface QuantumJobEntry {
   errorMessage?: string | null;
   /** Short line after success (e.g. Sharpe) */
   summaryLine?: string | null;
+  /** Durable lab run ID for linking to /reports/runs/{id} */
+  runId?: string | null;
+  /** Raw API result payload (available after completion). */
+  result?: Record<string, unknown> | null;
 }
 
 type PendingOptimizeMeta = {
@@ -515,6 +519,12 @@ export function useQuantumEngine() {
                 ? summarizePortfolioJobResult(type, job.result)
                 : null;
 
+            const jobResult = job.result as Record<string, unknown> | undefined;
+            const resultRunId =
+              ui === "completed" && jobResult?.run_id
+                ? String(jobResult.run_id)
+                : null;
+
             setJobs((prev) =>
               prev.map((j) => {
                 if (j.localId !== localId) return j;
@@ -531,6 +541,8 @@ export function useQuantumEngine() {
                       : null,
                   summaryLine:
                     ui === "completed" ? (summary ?? j.summaryLine) : j.summaryLine,
+                  runId: resultRunId ?? j.runId ?? null,
+                  result: ui === "completed" ? (jobResult ?? null) : j.result ?? null,
                 };
               })
             );

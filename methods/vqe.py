@@ -175,6 +175,18 @@ def _vqe_weights_ibm(
 
     n_params = len(isa_circuit.parameters)
 
+    _ansatz_depth = None
+    _isa_depth = None
+    _isa_gate_count = None
+    _isa_two_qubit = None
+    try:
+        _ansatz_depth = ansatz.depth()
+        _isa_depth = isa_circuit.depth()
+        _isa_gate_count = dict(isa_circuit.count_ops())
+        _isa_two_qubit = isa_circuit.num_nonlocal_gates()
+    except Exception:
+        pass
+
     # ── Async job submission with polling (non-blocking) ──
     # Each VQE evaluation submits a job and polls for completion instead of
     # blocking on .result(). This prevents thread starvation when IBM queues
@@ -263,6 +275,18 @@ def _vqe_weights_ibm(
         # Async job tracking — IDs of all IBM Runtime jobs submitted during this run
         "ibm_job_ids": list(submitted_job_ids),
         "ibm_total_submissions": total_submissions,
+        "circuit_metadata": {
+            "n_qubits": n,
+            "n_parameters": n_params,
+            "depth_original": _ansatz_depth,
+            "depth_transpiled": _isa_depth,
+            "gate_count_transpiled": _isa_gate_count,
+            "two_qubit_gate_count": _isa_two_qubit,
+            "backend_name": backend.name,
+            "shots": SHOTS_PER_EVAL,
+            "noise_model_type": "ideal_simulator" if bool(cfg.simulator) else "hardware",
+            "execute_time_s": round(elapsed, 4),
+        },
     }
     if backend_name:
         meta["backend_requested"] = backend_name
