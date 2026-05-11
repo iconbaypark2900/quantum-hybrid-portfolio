@@ -411,3 +411,261 @@ class TestAdminKeys:
         resp = client.get('/api/admin/api-keys', headers={'X-Admin-Key': 'test-admin-key'})
         assert resp.status_code == 200
         assert 'keys' in _unwrap(resp)
+
+
+# ── 12. Constraint pass-through ──────────────────────────────────────────────
+
+class TestConstraintPassthrough:
+    """Integration tests for weight bounds and cardinality constraint enforcement."""
+
+    @pytest.mark.parametrize("objective", ["markowitz", "hrp"])
+    def test_weight_bounds_respected(self, client, objective):
+        """All non-zero weights respect weight_min / weight_max."""
+        payload = _optimize_payload(objective=objective, n=8)
+        payload["weight_min"] = 0.05
+        payload["weight_max"] = 0.20
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        weights = np.array(data["weights"])
+        nonzero = weights[weights > 1e-8]
+        tol = 1e-4
+        assert np.all(nonzero >= 0.05 - tol), (
+            f"weight below min: {nonzero.min():.6f}"
+        )
+        assert np.all(nonzero <= 0.20 + tol), (
+            f"weight above max: {nonzero.max():.6f}"
+        )
+
+    def test_cardinality_via_K(self, client):
+        """K limits the number of non-zero weights (qubo_sa)."""
+        payload = _optimize_payload(objective="qubo_sa", n=8)
+        payload["K"] = 3
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        weights = np.array(data["weights"])
+        n_active = int(np.sum(weights > 1e-6))
+        assert n_active <= 3, f"Expected at most 3 active, got {n_active}"
+
+    def test_constraint_report_present(self, client):
+        """Response includes constraint_report with expected keys."""
+        payload = _optimize_payload(objective="markowitz", n=6)
+        payload["weight_min"] = 0.05
+        payload["weight_max"] = 0.25
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        cr = data.get("constraint_report")
+        assert cr is not None, "constraint_report missing from response"
+        assert cr["weight_min_applied"] == 0.05
+        assert cr["weight_max_applied"] == 0.25
+        assert "n_clipped_min" in cr
+        assert "n_clipped_max" in cr
+        assert "k_select" in cr
+
+
+# ── 13. Run history persistence ──────────────────────────────────────────────
+
+class TestRunHistory:
+    """Integration tests for persistent run history (sync optimize path)."""
+
+    def test_run_id_in_optimize_response(self, client):
+        """POST /api/portfolio/optimize returns a run_id in the response."""
+        payload = _optimize_payload(objective="markowitz", n=5)
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert "run_id" in data, "run_id missing from optimize response"
+        assert isinstance(data["run_id"], str)
+        assert len(data["run_id"]) > 10
+
+    def test_get_run_after_optimize(self, client):
+        """After optimize, GET /api/runs/{run_id} returns a completed run."""
+        payload = _optimize_payload(objective="markowitz", n=5)
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        assert resp.status_code == 200
+        run_id = _unwrap(resp)["run_id"]
+
+        resp2 = client.get(f'/api/runs/{run_id}')
+        assert resp2.status_code == 200
+        run_data = _unwrap(resp2)
+        assert run_data["status"] == "completed"
+        assert run_data["execution_kind"] == "sync_optimize"
+        assert run_data["spec"]["objective"] == "markowitz"
+        assert run_data["result"] is not None
+        assert "weights" in run_data["result"]
+
+    def test_run_tenant_isolation(self, client):
+        """Run created under one tenant is not visible to a different tenant."""
+        payload = _optimize_payload(objective="markowitz", n=5)
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        assert resp.status_code == 200
+        run_id = _unwrap(resp)["run_id"]
+
+        from services import lab_run_service
+        run_as_other = lab_run_service.get_run(run_id, tenant_id="other-tenant")
+        assert run_as_other is None, "Run should not be visible to a different tenant"
+
+        run_as_anon = lab_run_service.get_run(run_id, tenant_id="anonymous")
+        assert run_as_anon is not None, "Run should be visible to same tenant"
+
+
+# ── 14. Job queue and SSE ────────────────────────────────────────────────────
+
+class TestJobQueue:
+    """Integration tests for the async job list and SSE stream endpoints."""
+
+    def test_list_jobs_empty(self, client):
+        """GET /api/jobs returns empty list when no jobs have been submitted."""
+        resp = client.get('/api/jobs')
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert data["jobs"] == []
+        assert data["count"] == 0
+
+    def test_list_jobs_after_submit(self, client):
+        """After POST /api/jobs/optimize, GET /api/jobs includes the job."""
+        payload = _optimize_payload(objective="markowitz", n=5)
+        submit_resp = client.post('/api/jobs/optimize', json={"payload": payload})
+        assert submit_resp.status_code == 202
+        job_id = _unwrap(submit_resp)["job_id"]
+
+        resp = client.get('/api/jobs')
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert data["count"] >= 1
+        ids = [j["job_id"] for j in data["jobs"]]
+        assert job_id in ids
+
+    def test_stream_run_returns_sse(self, client):
+        """GET /api/runs/{run_id}/stream returns text/event-stream and emits status."""
+        payload = _optimize_payload(objective="markowitz", n=5)
+        resp = client.post('/api/portfolio/optimize', json=payload)
+        assert resp.status_code == 200
+        run_id = _unwrap(resp)["run_id"]
+
+        sse_resp = client.get(f'/api/runs/{run_id}/stream')
+        assert sse_resp.status_code == 200
+        assert "text/event-stream" in sse_resp.content_type
+        body = sse_resp.get_data(as_text=True)
+        assert "data:" in body
+        assert '"completed"' in body
+
+
+# ── 15. Walk-Forward Backtest ─────────────────────────────────────────────────
+
+import pandas as pd
+from datetime import datetime
+
+
+def _make_synthetic_prices(tickers, start, end, trend=0.0003):
+    """Generate synthetic daily prices with per-asset drift variation."""
+    dates = pd.bdate_range(start, end)
+    np.random.seed(42)
+    data = {}
+    for i, t in enumerate(tickers):
+        drift = trend * (1 + 0.5 * i)
+        vol = 0.005 * (1 + 0.3 * i)
+        noise = np.random.normal(0, vol, len(dates))
+        log_rets = drift + noise
+        prices = 100 * np.exp(np.cumsum(log_rets))
+        data[t] = prices
+    return pd.DataFrame(data, index=dates)
+
+
+class TestWalkForward:
+    """Integration tests for POST /api/backtest/walkforward."""
+
+    @patch("services.backtest.fetch_price_panel")
+    def test_walkforward_period_count(self, mock_fetch, client):
+        """24-month window, 12+3 train/test -> expect 4 periods."""
+        tickers = ["AAA", "BBB", "CCC"]
+        mock_fetch.return_value = _make_synthetic_prices(tickers, "2020-01-01", "2022-01-01")
+
+        resp = client.post('/api/backtest/walkforward', json={
+            "tickers": tickers,
+            "start": "2020-01-01",
+            "end": "2022-01-01",
+            "train_months": 12,
+            "test_months": 3,
+            "objective": "hrp",
+            "cost_bps": 0,
+        })
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        data = _unwrap(resp)
+        assert data["metadata"]["n_periods"] == 4
+        assert len(data["periods"]) == 4
+        assert "run_id" in data
+
+    @patch("services.backtest.fetch_price_panel")
+    def test_walkforward_turnover_range(self, mock_fetch, client):
+        """All period turnovers should be in [0, 1]."""
+        tickers = ["AAA", "BBB", "CCC", "DDD"]
+        mock_fetch.return_value = _make_synthetic_prices(tickers, "2019-01-01", "2022-01-01")
+
+        resp = client.post('/api/backtest/walkforward', json={
+            "tickers": tickers,
+            "start": "2019-01-01",
+            "end": "2022-01-01",
+            "train_months": 12,
+            "test_months": 3,
+            "objective": "hrp",
+            "cost_bps": 5,
+        })
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        for p in data["periods"]:
+            assert 0.0 <= p["turnover"] <= 1.0, f"turnover out of range: {p['turnover']}"
+
+    @patch("services.backtest.fetch_price_panel")
+    def test_walkforward_cost_reduces_return(self, mock_fetch, client):
+        """cost_bps=100 should yield lower final equity than cost_bps=0."""
+        tickers = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+        prices = _make_synthetic_prices(tickers, "2019-01-01", "2022-01-01")
+        mock_fetch.side_effect = lambda *a, **kw: prices.copy()
+
+        resp0 = client.post('/api/backtest/walkforward', json={
+            "tickers": tickers,
+            "start": "2019-01-01",
+            "end": "2022-01-01",
+            "train_months": 12,
+            "test_months": 3,
+            "objective": "markowitz",
+            "cost_bps": 0,
+        })
+
+        resp100 = client.post('/api/backtest/walkforward', json={
+            "tickers": tickers,
+            "start": "2019-01-01",
+            "end": "2022-01-01",
+            "train_months": 12,
+            "test_months": 3,
+            "objective": "markowitz",
+            "cost_bps": 100,
+        })
+        assert resp0.status_code == 200, resp0.get_data(as_text=True)
+        assert resp100.status_code == 200, resp100.get_data(as_text=True)
+        eq0 = _unwrap(resp0)["equity_curve"]["portfolio"][-1]
+        eq100 = _unwrap(resp100)["equity_curve"]["portfolio"][-1]
+        assert eq0 > eq100, f"zero-cost equity {eq0} should exceed 100bps equity {eq100}"
+
+    @patch("services.backtest.fetch_price_panel")
+    def test_walkforward_equity_trend_zero_cost(self, mock_fetch, client):
+        """With monotonically rising prices and zero cost, final equity > 1.0."""
+        tickers = ["UP1", "UP2", "UP3"]
+        mock_fetch.return_value = _make_synthetic_prices(tickers, "2019-01-01", "2022-01-01", trend=0.001)
+
+        resp = client.post('/api/backtest/walkforward', json={
+            "tickers": tickers,
+            "start": "2019-01-01",
+            "end": "2022-01-01",
+            "train_months": 12,
+            "test_months": 3,
+            "objective": "hrp",
+            "cost_bps": 0,
+        })
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        final_equity = data["equity_curve"]["portfolio"][-1]
+        assert final_equity > 1.0, f"Expected rising equity, got {final_equity}"

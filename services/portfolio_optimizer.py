@@ -100,6 +100,10 @@ class _ResultAdapter:
     def asset_names(self):
         return self._core.asset_names
 
+    @property
+    def constraint_report(self):
+        return getattr(self._core, "constraint_report", None)
+
 
 def run_optimization(
     returns: np.ndarray,

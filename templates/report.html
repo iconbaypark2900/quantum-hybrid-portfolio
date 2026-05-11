@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Portfolio Report — {{ run.created_at }}</title>
+  <link rel="stylesheet" href="report.css" />
+</head>
+<body>
+  <header>
+    <h1>Quantum Ledger — Portfolio Optimization Report</h1>
+    <p>Generated: {{ run.created_at }} | Objective: {{ run.objective }}</p>
+    {% if run.tickers %}
+    <p>Universe: {{ run.tickers | join(', ') }}</p>
+    {% endif %}
+    <p>Run ID: {{ run.id }}</p>
+  </header>
+
+  <section class="kpi-table">
+    <h2>Performance Summary</h2>
+    <table>
+      <tr>
+        <th>Sharpe Ratio</th>
+        <td>{% if outputs.sharpe_ratio is not none %}{{ "%.3f" | format(outputs.sharpe_ratio) }}{% else %}<span class="na">N/A</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <th>Expected Return</th>
+        <td>{% if outputs.expected_return is not none %}{{ "%.2f" | format(outputs.expected_return * 100) }}%{% else %}<span class="na">N/A</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <th>Volatility</th>
+        <td>{% if outputs.volatility is not none %}{{ "%.2f" | format(outputs.volatility * 100) }}%{% else %}<span class="na">N/A</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <th>VaR (95%)</th>
+        <td>{% if outputs.risk_metrics.var_95 is not none %}{{ "%.2f" | format(outputs.risk_metrics.var_95 * 100) }}%{% else %}<span class="na">N/A</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <th>CVaR (95%)</th>
+        <td>{% if outputs.risk_metrics.cvar_95 is not none %}{{ "%.2f" | format(outputs.risk_metrics.cvar_95 * 100) }}%{% else %}<span class="na">N/A</span>{% endif %}</td>
+      </tr>
+      {% if outputs.n_active is not none %}
+      <tr>
+        <th>Active Holdings</th>
+        <td>{{ outputs.n_active }}</td>
+      </tr>
+      {% endif %}
+    </table>
+  </section>
+
+  {% if outputs.holdings %}
+  <section class="holdings">
+    <h2>Holdings</h2>
+    <table>
+      <thead>
+        <tr><th>Asset</th><th>Sector</th><th>Weight</th></tr>
+      </thead>
+      <tbody>
+        {% for h in outputs.holdings %}
+        <tr>
+          <td>{{ h.name }}</td>
+          <td>{{ h.sector | default('—') }}</td>
+          <td>{{ "%.1f" | format(h.weight * 100) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if chart_png %}
+  <section class="chart">
+    <h2>Equity Curve</h2>
+    <img src="data:image/png;base64,{{ chart_png }}" alt="Equity curve chart" />
+  </section>
+  {% endif %}
+
+  <section class="disclaimer">
+    <h2>Methodology &amp; Disclaimer</h2>
+    <p>
+      Optimization method: {{ run.objective }}.
+      Data source: {{ outputs.data_source | default('Tiingo') }}.
+      Past performance does not guarantee future results.
+      This report is for informational purposes only and does not constitute investment advice.
+    </p>
+  </section>
+</body>
+</html>

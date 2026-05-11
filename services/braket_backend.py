@@ -310,78 +310,96 @@ class BraketAnnealingOptimizer:
         K: int
     ) -> Dict[str, Any]:
         """
-        Execute on real Braket device.
-        
+        Execute on real D-Wave device via Amazon Braket.
+
+        Uses the Braket annealing SDK (``braket.annealing.Problem`` +
+        ``ProblemType.ISING``).  Key SDK facts:
+          - D-Wave problems must be submitted as a ``Problem`` object, not as
+            keyword args to ``device.run()``.
+          - Results are annealing ``AnnealingQuantumTaskResult`` objects; the
+            per-sample record array is at ``result.record_array`` (not
+            ``result.measurements`` which is gate-based).
+          - Task state is polled via ``task.state()``; ``task.result()`` blocks
+            until complete.
+
         Requires:
-        - Valid AWS credentials
-        - S3 bucket for results
-        - Device ARN configured
+        - Valid AWS credentials (instance profile, SSO, or env vars)
+        - S3 bucket for results (``BRAKET_S3_BUCKET``)
+        - Device ARN configured (``BRAKET_DEVICE_ARN``)
+        - ``n`` ≤ 100 (simplified qubit mapping; no minor-embedding performed)
         """
         if not BRAKET_AVAILABLE:
             raise RuntimeError("Braket SDK not installed")
-            
+
         if not self.config.s3_bucket:
             raise RuntimeError("S3 bucket not configured for Braket results")
-        
-        logger.info(f"Executing on Braket device: {self._device}")
-        
-        # Create D-Wave compatible problem
-        n = len(h)
-        
-        # Map indices to D-Wave coordinate system (simplified)
-        # In production, would need proper minor embedding
-        qubit_map = {i: i for i in range(min(n, 100))}  # D-Wave limit
-        
-        # Submit task to Braket
-        task = self._device.run(
-            problem_type="ising",
-            h={qubit_map[i]: float(h[i]) for i in range(n) if i in qubit_map},
-            J={(qubit_map[k[0]], qubit_map[k[1]]): float(v) for k, v in J.items() 
-               if k[0] in qubit_map and k[1] in qubit_map},
-            shots=self.config.shots,
-            s3_destination_folder=(self.config.s3_bucket, "braket-results"),
-        )
-        
-        # Wait for result with timeout
+
         try:
-            result = task.result(timeout=self.config.timeout)
-            
-            # Get best solution
-            measurements = result.measurements
-            if measurements is None or len(measurements) == 0:
-                raise RuntimeError("No measurements returned from device")
-            
-            # Find lowest energy solution
-            best_idx = 0
-            best_energy = float('inf')
-            for i, m in enumerate(measurements):
-                # Convert to Ising spins
-                spins = np.array([1 if bit == '1' else -1 for bit in m])
-                energy = self._ising_energy(spins, h, J)
-                if energy < best_energy:
-                    best_energy = energy
-                    best_idx = i
-            
-            best_solution = measurements[best_idx]
-            binary = np.array([1 if b == '1' else 0 for b in best_solution])
-            
-            # Pad if needed
-            if len(binary) < n:
-                binary = np.pad(binary, (0, n - len(binary)))
-            
-            # Enforce cardinality
-            binary = self._enforce_cardinality(binary, K)
-            
-            return {
-                'solution': binary,
-                'energy': best_energy,
-                'shots': self.config.shots,
-                'task_id': task.id,
-            }
-            
-        except TimeoutError:
-            task.cancel()
-            raise RuntimeError(f"Braket task timed out after {self.config.timeout}s")
+            from braket.annealing import Problem, ProblemType
+        except ImportError as exc:
+            raise RuntimeError(
+                "braket.annealing is not available in the installed Braket SDK. "
+                "Ensure amazon-braket-sdk >= 1.25 is installed."
+            ) from exc
+
+        logger.info("Executing on Braket device: %s", self._device)
+
+        n = len(h)
+        # Simplified qubit mapping (no minor-embedding; valid for n ≤ ~20 on
+        # a fully-connected subgraph test, and up to 100 for chain-embedded).
+        qubit_limit = min(n, 100)
+        linear = {i: float(h[i]) for i in range(qubit_limit)}
+        quadratic = {
+            (k[0], k[1]): float(v)
+            for k, v in J.items()
+            if k[0] < qubit_limit and k[1] < qubit_limit
+        }
+
+        problem = Problem(ProblemType.ISING, linear=linear, quadratic=quadratic)
+
+        task = self._device.run(
+            problem,
+            s3_destination_folder=(self.config.s3_bucket, "braket-results"),
+            shots=self.config.shots,
+        )
+
+        try:
+            result = task.result()
+        except Exception as exc:
+            try:
+                task.cancel()
+            except Exception:
+                pass
+            raise RuntimeError(f"Braket task failed (task_id={task.id}): {exc}") from exc
+
+        # Annealing result: record_array has fields 'sample', 'energy', 'num_occurrences'
+        record = getattr(result, "record_array", None)
+        if record is None or len(record) == 0:
+            raise RuntimeError("No samples returned from D-Wave device")
+
+        # Find lowest-energy sample
+        energies = record["energy"]
+        best_idx = int(np.argmin(energies))
+        best_energy = float(energies[best_idx])
+        best_sample_raw = record["sample"][best_idx]  # numpy array of spin values
+
+        # Convert Ising spins {-1, +1} → binary {0, 1}
+        spins = np.asarray(best_sample_raw, dtype=float)
+        binary = ((spins + 1) / 2).round().astype(int)
+
+        # Pad to full length if the device returned fewer variables
+        if len(binary) < n:
+            binary = np.pad(binary, (0, n - len(binary)))
+        binary = binary[:n]
+
+        binary = self._enforce_cardinality(binary, K)
+
+        return {
+            'solution': binary,
+            'energy': best_energy,
+            'shots': self.config.shots,
+            'task_id': task.id,
+        }
 
     def _ising_energy(
         self,
@@ -579,3 +597,94 @@ class BraketAnnealingOptimizer:
 def create_braket_optimizer(config: Optional[BraketConfig] = None) -> BraketAnnealingOptimizer:
     """Factory function to create Braket optimizer."""
     return BraketAnnealingOptimizer(config)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Smoke test helper (mirrors services/ibm_quantum.py :: hardware_smoke_test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SMOKE_N_ASSETS = 5
+_SMOKE_SEED = 42
+
+
+def braket_smoke_test(market_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    QUBO-shaped Braket smoke test.
+
+    Runs a small n-asset QUBO on the configured Braket backend (mock or real device)
+    and returns a machine-readable dict suitable for use as an API response artifact.
+
+    ``market_payload`` (optional) may include:
+      - ``returns`` + ``covariance`` (+ optional ``asset_names``) — matrix path
+      - ``n`` — number of synthetic assets (default 5) when matrices are not supplied
+
+    Returns a stable dict including: smoke_profile, backend, device, n_assets, seed,
+    shots, task_id, weights, sharpe_ratio, elapsed_ms, ok.
+    """
+    mp = dict(market_payload) if market_payload else {}
+    t0 = time.perf_counter()
+
+    # ── Market data ──────────────────────────────────────────────────────────
+    if mp.get("returns") is not None and mp.get("covariance") is not None:
+        mu = np.asarray(mp["returns"], dtype=float)
+        Sigma = np.asarray(mp["covariance"], dtype=float)
+        n = len(mu)
+        asset_names = mp.get("asset_names")
+        market_source = "matrix"
+        tickers = asset_names or [f"A{i}" for i in range(n)]
+    else:
+        n = int(mp.get("n", _SMOKE_N_ASSETS))
+        seed = int(mp.get("seed", _SMOKE_SEED))
+        rng = np.random.default_rng(seed)
+        mu = rng.uniform(0.05, 0.20, n)
+        raw = rng.standard_normal((n, n))
+        Sigma = (raw @ raw.T) / n + np.eye(n) * 0.01
+        tickers = [f"SYNTH_{i}" for i in range(n)]
+        market_source = "synthetic"
+
+    seed_used = int(mp.get("seed", _SMOKE_SEED))
+
+    # ── Run optimizer ────────────────────────────────────────────────────────
+    try:
+        optimizer = BraketAnnealingOptimizer()
+        result = optimizer.optimize(mu, Sigma, K=max(2, n // 2))
+    except Exception as exc:
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+        logger.warning("Braket smoke test failed: %s", exc)
+        return {
+            "ok": False,
+            "smoke_profile": "qubo_dwave_braket_shaped",
+            "error": str(exc),
+            "elapsed_ms": elapsed_ms,
+            "backend": "unknown",
+        }
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+    weights = np.asarray(result["weights"])
+    weights_sum = float(weights.sum())
+    sharpe = result.get("sharpe_ratio")
+
+    return {
+        "ok": bool(abs(weights_sum - 1.0) < 1e-3 and sharpe is not None and np.isfinite(sharpe)),
+        "smoke_profile": "qubo_dwave_braket_shaped",
+        "market_source": market_source,
+        "tickers": list(tickers),
+        "n_assets": n,
+        "seed": seed_used,
+        "backend": result.get("backend", "unknown"),
+        "device": result.get("device", "unknown"),
+        "task_id": result.get("task_id"),
+        "shots": int(result.get("shots", optimizer.config.shots)),
+        "energy": float(result["energy"]) if result.get("energy") is not None else None,
+        "ann_returns": [float(x) for x in mu.ravel()],
+        "weights": [float(w) for w in weights],
+        "weights_sum": weights_sum,
+        "n_active": int(result.get("n_active", 0)),
+        "sharpe_ratio": float(sharpe) if sharpe is not None else None,
+        "portfolio_return": float(result.get("expected_return", 0.0)),
+        "portfolio_volatility": float(result.get("volatility", 0.0)),
+        "elapsed_ms": elapsed_ms,
+        "braket_enabled": optimizer.config.enabled,
+        "use_mock": optimizer.config.use_mock,
+        "device_arn": optimizer.config.device_arn,
+    }

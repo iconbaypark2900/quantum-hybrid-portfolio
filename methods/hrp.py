@@ -10,20 +10,31 @@ Reference: López de Prado, M. (2016). Building Diversified Portfolios that
            Outperform Out-of-Sample. Journal of Portfolio Management.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage, leaves_list
 from scipy.spatial.distance import squareform
 
+logger = logging.getLogger(__name__)
 
-def hrp_weights(mu: np.ndarray, Sigma: np.ndarray = None) -> np.ndarray:
+
+def hrp_weights(
+    mu: np.ndarray,
+    Sigma: np.ndarray = None,
+    weight_min: float = 0.0,
+    weight_max: float = 1.0,
+) -> np.ndarray:
     """
     Hierarchical Risk Parity portfolio weights.
 
     Parameters
     ----------
-    mu    : Expected returns, shape (n,), or covariance if Sigma is None. Unused.
-    Sigma : Covariance matrix, shape (n, n). If None, mu is treated as Sigma.
+    mu         : Expected returns, shape (n,), or covariance if Sigma is None. Unused.
+    Sigma      : Covariance matrix, shape (n, n). If None, mu is treated as Sigma.
+    weight_min : Minimum weight per asset (post-HRP clipping).
+    weight_max : Maximum weight per asset (post-HRP clipping).
 
     Returns
     -------
@@ -86,4 +97,28 @@ def hrp_weights(mu: np.ndarray, Sigma: np.ndarray = None) -> np.ndarray:
 
     w = weights.values.astype(float)
     w = np.maximum(w, 0.0)
-    return w / w.sum()
+    w = w / w.sum()
+
+    # Post-HRP iterative clipping to honour weight bounds.
+    # Single clip+renorm can violate bounds after renorm; iterate until
+    # converged (guaranteed within n iterations for feasible bounds).
+    if weight_min > 0.0 or weight_max < 1.0:
+        pre_clip_sum = float(w.sum())
+        for _ in range(len(w)):
+            w_clipped = np.clip(w, weight_min, weight_max)
+            if np.allclose(w_clipped, w, atol=1e-10):
+                break
+            w = w_clipped
+            w_sum = w.sum()
+            if w_sum > 0:
+                w = w / w_sum
+        post_clip_sum = float(w.sum())
+        shift_pct = abs(post_clip_sum - pre_clip_sum) / max(pre_clip_sum, 1e-12) * 100
+        if shift_pct > 5.0:
+            logger.warning(
+                "HRP weight clipping shifted total by %.1f%% "
+                "(bounds=[%.4f, %.4f])",
+                shift_pct, weight_min, weight_max,
+            )
+
+    return w

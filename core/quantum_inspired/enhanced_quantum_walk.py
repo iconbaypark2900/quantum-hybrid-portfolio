@@ -17,6 +17,7 @@ from config.qsw_config import QSWConfig
 from core.quantum_inspired.graph_builder import FinancialGraphBuilder
 from core.quantum_inspired.evolution_dynamics import QuantumEvolution
 from core.quantum_inspired.stability_enhancer import StabilityEnhancer
+from services import factor_models
 
 @dataclass
 class EnhancedQSWResult:
@@ -310,7 +311,7 @@ class EnhancedQuantumStochasticWalkOptimizer:
         
         # Risk factor neutralization if requested
         if constraints and constraints.get('neutralize_factors', False):
-            weights = self._neutralize_risk_factors(weights, covariance, constraints)
+            weights = self._neutralize_risk_factors(weights, returns, covariance, constraints)
         
         # Cardinality constraints (minimum number of positions)
         min_positions = constraints.get('min_positions', 0) if constraints else 0
@@ -354,14 +355,27 @@ class EnhancedQuantumStochasticWalkOptimizer:
         
         return weights
 
-    def _neutralize_risk_factors(self, weights: np.ndarray, covariance: np.ndarray, 
-                                constraints: Dict) -> np.ndarray:
+    def _neutralize_risk_factors(
+        self,
+        weights: np.ndarray,
+        returns: np.ndarray,
+        covariance: np.ndarray,
+        constraints: Dict,
+    ) -> np.ndarray:
+        """Tilt weights toward high-scoring factor assets.
+
+        Computes cross-sectional 4-factor scores from (returns, covariance)
+        and blends the existing weights toward a factor-score-proportional
+        allocation.  The blend coefficient is small (default 10%) so the
+        primary optimizer signal dominates.
         """
-        Neutralize exposure to specific risk factors.
-        """
-        # This is a simplified implementation
-        # In practice, you'd have factor loadings and target exposures
-        return weights  # Placeholder - implement based on specific factor model
+        try:
+            sigma_diag = np.diag(covariance)
+            scores = factor_models.compute_factor_scores(returns, sigma_diag)
+            tilt_alpha = float(constraints.get("factor_tilt_alpha", 0.10))
+            return factor_models.factor_tilt_weights(weights, scores, tilt_alpha=tilt_alpha)
+        except Exception:
+            return weights
 
     def _apply_cardinality_constraint(self, weights: np.ndarray, min_positions: int) -> np.ndarray:
         """

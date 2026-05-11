@@ -28,21 +28,23 @@ from core.optimizers.qaoa import qaoa_weights
 from core.optimizers.vqe import vqe_weights
 from core.optimizers.hybrid_pipeline import hybrid_pipeline_weights
 from core.optimizers.hybrid_qaoa import hybrid_qaoa_weights
+from services import factor_models
 
 
 # ── Valid objectives ────────────────────────────────────────────────────────
 
 OBJECTIVES = {
-    "equal_weight":  "Equal Weight (1/N) — baseline",
-    "markowitz":     "Markowitz Max-Sharpe (Markowitz 1952)",
-    "min_variance":  "Global Minimum Variance",
-    "hrp":           "Hierarchical Risk Parity (López de Prado 2016)",
-    "qubo_sa":       "QUBO + Simulated Annealing (Orús et al. 2019)",
-    "qaoa":          "QAOA — Quantum Approx. Optimization (IBM Runtime / classical)",
-    "vqe":           "VQE PauliTwoDesign (Scientific Reports 2023)",
-    "hybrid":        "3-Stage Hybrid Pipeline — IC Screen → QUBO-SA → Markowitz",
-    "hybrid_qaoa":   "3-Stage Hybrid Pipeline — IC Screen → QAOA → Markowitz (IBM Runtime / classical)",
-    "target_return": "Minimum-variance at target return",
+    "equal_weight":    "Equal Weight (1/N) — baseline",
+    "markowitz":       "Markowitz Max-Sharpe (Markowitz 1952)",
+    "min_variance":    "Global Minimum Variance",
+    "hrp":             "Hierarchical Risk Parity (López de Prado 2016)",
+    "qubo_sa":         "QUBO + Simulated Annealing (Orús et al. 2019)",
+    "braket_annealing":"QUBO + D-Wave Quantum Annealing via AWS Braket (classical SA fallback when unavailable)",
+    "qaoa":            "QAOA — Quantum Approx. Optimization (IBM Runtime / classical)",
+    "vqe":             "VQE PauliTwoDesign (Scientific Reports 2023)",
+    "hybrid":          "3-Stage Hybrid Pipeline — IC Screen → QUBO-SA → Markowitz",
+    "hybrid_qaoa":     "3-Stage Hybrid Pipeline — IC Screen → QAOA → Markowitz (IBM Runtime / classical)",
+    "target_return":   "Minimum-variance at target return",
 }
 
 
@@ -61,6 +63,8 @@ class OptimizationResult:
     asset_names: Optional[List[str]] = None
     stage_info: Optional[Dict] = None   # populated by hybrid pipeline
     quantum_metadata: Optional[Dict[str, Any]] = None  # diagnostics for lab / IBM paths
+    constraint_report: Optional[Dict[str, Any]] = None
+    factor_exposures: Optional[Dict[str, Any]] = None  # cross-sectional 4-factor exposure
 
 
 # ── Portfolio metric helpers ────────────────────────────────────────────────
@@ -136,7 +140,7 @@ def run_optimization(
 
     # ── Dispatch ────────────────────────────────────────────────────────────
     if objective == "equal_weight":
-        w = equal_weight(mu, Sigma)
+        w = equal_weight(mu, Sigma, k_select=K_select or K)
 
     elif objective == "markowitz":
         w = markowitz_max_sharpe(mu, Sigma, weight_bounds=bounds, n_restarts=n_restarts)
@@ -145,7 +149,7 @@ def run_optimization(
         w = min_variance(mu, Sigma, weight_bounds=bounds)
 
     elif objective == "hrp":
-        w = hrp_weights(mu, Sigma)
+        w = hrp_weights(mu, Sigma, weight_min=weight_min, weight_max=weight_max)
 
     elif objective == "qubo_sa":
         w = qubo_sa_weights(
@@ -154,6 +158,8 @@ def run_optimization(
             lambda_risk=lambda_risk,
             gamma=gamma,
             seed=seed,
+            weight_min=weight_min,
+            weight_max=weight_max,
         )
         quantum_metadata = {
             "execution_kind": "qubo_sa",
@@ -279,11 +285,40 @@ def run_optimization(
             closest = min(frontier, key=lambda pt: abs(pt["target_return"] - target_return))
             w = np.asarray(closest["weights"])
 
+    elif objective == "braket_annealing":
+        # braket_annealing is intercepted by services.portfolio_optimizer before
+        # reaching this function and dispatched to BraketAnnealingOptimizer.
+        # If this branch is hit, caller bypassed the service layer — fall back to qubo_sa.
+        w = qubo_sa_weights(mu, Sigma, K=K, lambda_risk=lambda_risk, gamma=gamma, seed=seed,
+                            weight_min=weight_min, weight_max=weight_max)
+        quantum_metadata = {
+            "execution_kind": "braket_annealing_fallback_to_qubo_sa",
+            "note": "braket_annealing reached core optimizer — should be handled by services layer",
+        }
+
     else:
         w = equal_weight(mu, Sigma)  # unreachable, but safe fallback
 
     # ── Compute metrics ─────────────────────────────────────────────────────
     metrics = _portfolio_metrics(w, mu, Sigma)
+
+    # ── Constraint report ────────────────────────────────────────────────
+    effective_k = K_select or K
+    constraint_report = {
+        "weight_min_applied": weight_min,
+        "weight_max_applied": weight_max,
+        "n_clipped_min": int((w[w > 0] < weight_min + 1e-6).sum()) if weight_min > 0 else 0,
+        "n_clipped_max": int((w > weight_max - 1e-6).sum()),
+        "k_select": int(effective_k) if effective_k is not None else None,
+    }
+
+    # ── Factor exposures ─────────────────────────────────────────────────
+    _factor_exposures: Optional[Dict[str, Any]] = None
+    try:
+        _factor_scores = factor_models.compute_factor_scores(mu, np.diag(Sigma), asset_names=asset_names)
+        _factor_exposures = factor_models.compute_portfolio_factor_exposure(w, _factor_scores)
+    except Exception:
+        pass
 
     return OptimizationResult(
         weights=w,
@@ -295,6 +330,8 @@ def run_optimization(
         asset_names=asset_names,
         stage_info=stage_info,
         quantum_metadata=quantum_metadata,
+        constraint_report=constraint_report,
+        factor_exposures=_factor_exposures,
     )
 
 

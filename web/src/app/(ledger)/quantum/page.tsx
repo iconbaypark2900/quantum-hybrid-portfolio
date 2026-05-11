@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuantumEngine } from "@/hooks/useQuantumEngine";
 import {
   formatElapsedSince,
@@ -16,6 +17,7 @@ import {
   isCoreEtfInput,
   isMag7FinTiltInput,
 } from "@/lib/quantumSmokePresets";
+import type { CircuitMetadata } from "@/lib/api";
 
 export default function QuantumPage(props: NextClientPageProps) {
   useNextPageProps(props);
@@ -439,6 +441,121 @@ export default function QuantumPage(props: NextClientPageProps) {
             </div>
           </div>
         </div>
+
+        {(() => {
+          const lastIbmJob = jobs.find(
+            (j) =>
+              j.status === "completed" &&
+              typeof (j.result as Record<string, unknown>)?.quantum_metadata === "object"
+          );
+          const circuitMeta = (
+            (lastIbmJob?.result as Record<string, unknown>)?.quantum_metadata as
+              | Record<string, unknown>
+              | undefined
+          )?.circuit_metadata as CircuitMetadata | undefined;
+
+          if (!circuitMeta) return null;
+
+          const depthColor = !circuitMeta.depth_transpiled
+            ? "text-ql-on-surface-variant"
+            : circuitMeta.depth_transpiled < 50
+              ? "text-emerald-400"
+              : circuitMeta.depth_transpiled < 150
+                ? "text-amber-400"
+                : "text-red-400";
+
+          return (
+            <div className="md:col-span-12 bg-ql-surface-container rounded-xl p-6 border border-ql-outline-variant">
+              <h3 className="font-headline text-lg font-bold mb-1">
+                Quantum Circuit Telemetry
+              </h3>
+              <p className="text-xs text-ql-on-surface-variant mb-4">
+                From the last completed IBM portfolio job
+                {lastIbmJob?.serverJobId
+                  ? ` (${lastIbmJob.serverJobId.slice(0, 8)})`
+                  : ""}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {[
+                  {
+                    label: "Transpiled Depth",
+                    value: circuitMeta.depth_transpiled != null ? String(circuitMeta.depth_transpiled) : "—",
+                    color: depthColor,
+                  },
+                  {
+                    label: "2Q Gates",
+                    value: circuitMeta.two_qubit_gate_count != null ? String(circuitMeta.two_qubit_gate_count) : "—",
+                    color: "text-ql-primary",
+                  },
+                  {
+                    label: "Qubits",
+                    value: String(circuitMeta.n_qubits),
+                    color: "",
+                  },
+                  {
+                    label: "Backend",
+                    value: circuitMeta.backend_name,
+                    color: "text-ql-secondary",
+                  },
+                  {
+                    label: "Shots",
+                    value: String(circuitMeta.shots),
+                    color: "",
+                  },
+                  {
+                    label: "Noise Model",
+                    value: circuitMeta.noise_model_type,
+                    color: circuitMeta.noise_model_type === "hardware" ? "text-ql-tertiary" : "text-ql-on-surface-variant",
+                  },
+                  {
+                    label: "Exec Time",
+                    value: `${circuitMeta.execute_time_s.toFixed(1)}s`,
+                    color: "",
+                  },
+                  ...(circuitMeta.depth_original != null
+                    ? [{
+                        label: "Original Depth",
+                        value: String(circuitMeta.depth_original),
+                        color: "" as string,
+                      }]
+                    : []),
+                ].map((m) => (
+                  <div
+                    key={m.label}
+                    className="bg-ql-surface-low rounded-lg p-3 border border-ql-outline-variant"
+                  >
+                    <p className="text-[10px] text-ql-on-surface-variant uppercase font-bold tracking-widest">
+                      {m.label}
+                    </p>
+                    <p className={`text-lg font-headline font-bold mt-1 ${m.color}`}>
+                      {m.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {circuitMeta.gate_count_transpiled &&
+                Object.keys(circuitMeta.gate_count_transpiled).length > 0 ? (
+                <details className="mt-4 border border-ql-outline-variant rounded-lg px-3 py-2 bg-ql-surface-low/50">
+                  <summary className="text-[11px] font-bold text-ql-on-surface-variant cursor-pointer">
+                    Gate breakdown
+                  </summary>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.entries(circuitMeta.gate_count_transpiled).map(
+                      ([gate, count]) => (
+                        <span
+                          key={gate}
+                          className="px-2 py-1 bg-ql-surface-container text-xs font-mono rounded border border-ql-outline-variant"
+                        >
+                          {gate}: {count}
+                        </span>
+                      )
+                    )}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          );
+        })()}
 
         <div className="md:col-span-12 bg-ql-surface-low rounded-xl p-6">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
@@ -899,6 +1016,14 @@ export default function QuantumPage(props: NextClientPageProps) {
                         <p className="text-[11px] text-ql-tertiary font-mono font-bold">
                           {j.summaryLine}
                         </p>
+                      ) : null}
+                      {j.status === "completed" && j.runId ? (
+                        <Link
+                          href={`/reports/runs/${encodeURIComponent(j.runId)}`}
+                          className="text-[11px] text-ql-primary underline"
+                        >
+                          View run report →
+                        </Link>
                       ) : null}
                     </div>
                   </div>

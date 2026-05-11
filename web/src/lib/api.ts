@@ -142,6 +142,59 @@ export async function runBacktestBatch(
   return res.data;
 }
 
+// ─── Walk-Forward Backtest ──────────────────────────────────────────────────
+
+export interface WalkForwardParams {
+  tickers: string[];
+  start: string;
+  end: string;
+  train_months?: number;
+  test_months?: number;
+  objective?: string;
+  constraints?: { weight_min?: number; weight_max?: number };
+  cost_bps?: number;
+  benchmark_ticker?: string;
+}
+
+export interface WalkForwardPeriod {
+  train_start: string;
+  train_end: string;
+  test_start: string;
+  test_end: string;
+  turnover: number;
+  weights: Record<string, number>;
+  period_return: number;
+}
+
+export interface WalkForwardResult {
+  equity_curve: {
+    dates: string[];
+    portfolio: number[];
+    benchmark?: number[];
+  };
+  summary: {
+    annualized_return: number;
+    annualized_volatility: number;
+    sharpe_ratio: number;
+    max_drawdown: number;
+    avg_turnover: number;
+    total_cost_bps: number;
+  };
+  periods: WalkForwardPeriod[];
+  metadata: {
+    n_periods: number;
+    objective: string;
+    cost_bps: number;
+    data_source: string;
+  };
+  run_id: string;
+}
+
+export async function runWalkForwardBacktest(params: WalkForwardParams) {
+  const res = await api.post("/api/backtest/walkforward", params);
+  return res.data as WalkForwardResult;
+}
+
 export async function optimizeBatch(requests: unknown[], stopOnError = false) {
   const res = await api.post("/api/portfolio/optimize/batch", {
     requests,
@@ -414,6 +467,119 @@ export async function getLabRun(runId: string) {
 export async function listLabRuns(limit = 20) {
   const res = await api.get("/api/runs", { params: { limit } });
   return res.data as { runs: LabRun[]; count: number };
+}
+
+// ─── Async Job Queue ────────────────────────────────────────────────────────
+
+export async function listJobs(limit = 20) {
+  const res = await api.get("/api/jobs", { params: { limit } });
+  return res.data as {
+    jobs: Array<Record<string, unknown>>;
+    count: number;
+  };
+}
+
+/**
+ * Subscribe to SSE status updates for a lab run.
+ * Returns a cleanup function that closes the EventSource.
+ */
+export function streamRun(
+  runId: string,
+  onStatus: (status: string) => void
+): () => void {
+  const base = api.defaults.baseURL ?? "";
+  const url = `${base}/api/runs/${encodeURIComponent(runId)}/stream`;
+  const es = new EventSource(url);
+  es.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      onStatus(d.status);
+    } catch {
+      /* ignore parse errors */
+    }
+  };
+  return () => es.close();
+}
+
+/**
+ * Download a server-rendered PDF report for a lab run.
+ * Uses fetch+Blob to attach the X-API-Key header (plain <a> cannot).
+ */
+export async function downloadReportPdf(runId: string): Promise<void> {
+  const base = api.defaults.baseURL ?? "";
+  const url = `${base}/api/export/report/${encodeURIComponent(runId)}.pdf`;
+  const headers: Record<string, string> = {};
+  if (API_KEY) headers["X-API-Key"] = API_KEY;
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`PDF download failed: ${text}`);
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `report-${runId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
+export interface RegimeResult {
+  regime: string;
+  recommended_objective: string;
+  confidence: number;
+  metrics: {
+    realized_vol_annualized: number;
+    recent_return_annualized: number;
+    classification_method: string;
+  };
+  description: string;
+}
+
+export async function fetchRegime(
+  tickers: string[],
+  method: "threshold" | "hmm" = "threshold"
+): Promise<RegimeResult> {
+  const params = { tickers: tickers.join(","), method };
+  const res = await api.get<{ data: RegimeResult }>("/api/market/regime", { params });
+  return res.data.data;
+}
+
+export interface BraketSmokeTestResult {
+  ok: boolean;
+  backend?: string;
+  device?: string;
+  use_mock?: boolean;
+  elapsed_ms?: number;
+  n_assets?: number;
+  error?: string;
+}
+
+export async function runBraketSmokeTest(
+  opts?: { n?: number; seed?: number }
+): Promise<BraketSmokeTestResult> {
+  const res = await api.post("/api/config/braket/smoke-test", opts ?? {});
+  return res.data;
+}
+
+export async function createTenant(id: string): Promise<{ created: boolean; id: string }> {
+  const res = await api.post("/api/config/tenants", { id });
+  return res.data?.data ?? res.data;
+}
+
+export interface CircuitMetadata {
+  n_qubits: number;
+  n_parameters?: number;
+  depth_original?: number | null;
+  depth_transpiled: number | null;
+  gate_count_transpiled: Record<string, number> | null;
+  two_qubit_gate_count: number | null;
+  backend_name: string;
+  shots: number;
+  noise_model_type: string;
+  execute_time_s: number;
 }
 
 export default api;

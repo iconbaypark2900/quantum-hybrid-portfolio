@@ -188,8 +188,8 @@ def qaoa_weights(
     lambda_risk : Risk aversion coefficient in QUBO.
     gamma       : Cardinality penalty strength in QUBO.
     n_restarts  : Independent COBYLA restarts.
-    weight_min  : Informational lower bound (post-selection equal-weight ignores this).
-    weight_max  : Informational upper bound.
+    weight_min  : Lower bound — selected-asset weights are clipped and renormalised.
+    weight_max  : Upper bound — selected-asset weights are clipped and renormalised.
     seed        : Random seed.
 
     Returns
@@ -241,6 +241,13 @@ def qaoa_weights(
     final_state = _qaoa_statevector(n, p, best_params[:p], best_params[p:], cost_diag)
     probs = np.abs(final_state) ** 2
     w = _select_k_from_probs(probs, K, n)
+
+    selected = w > 0
+    if selected.any():
+        w[selected] = np.clip(w[selected], weight_min, weight_max)
+        w_sum = w.sum()
+        if w_sum > 0:
+            w = w / w_sum
 
     logger.info(
         "qaoa (classical): n=%d K=%d p=%d restarts=%d best_energy=%.4f",
@@ -346,6 +353,18 @@ def _qaoa_weights_ibm(
     isa_circuit = pm.run(qc)
     isa_hamiltonian = hamiltonian.apply_layout(isa_circuit.layout)
 
+    _qc_depth = None
+    _isa_depth = None
+    _isa_gate_count = None
+    _isa_two_qubit = None
+    try:
+        _qc_depth = qc.depth()
+        _isa_depth = isa_circuit.depth()
+        _isa_gate_count = dict(isa_circuit.count_ops())
+        _isa_two_qubit = isa_circuit.num_nonlocal_gates()
+    except Exception:
+        pass
+
     estimator = EstimatorV2(mode=backend)
 
     ibm_restarts = min(n_restarts, MAX_IBM_RESTARTS)
@@ -397,6 +416,12 @@ def _qaoa_weights_ibm(
 
     w = _select_k_from_probs(probs, K, n)
 
+    # Clip to weight bounds (caller-supplied via qaoa_weights_ibm_strict)
+    w = np.clip(w, 0.0, 1.0)
+    w_sum = w.sum()
+    if w_sum > 0:
+        w = w / w_sum
+
     elapsed = time.perf_counter() - t0
     cfg = backend.configuration()
     meta: Dict = {
@@ -413,6 +438,17 @@ def _qaoa_weights_ibm(
         "elapsed_seconds": round(elapsed, 4),
         "backend_mode": (backend_mode or "auto").lower(),
         "seed": seed,
+        "circuit_metadata": {
+            "n_qubits": n,
+            "depth_original": _qc_depth,
+            "depth_transpiled": _isa_depth,
+            "gate_count_transpiled": _isa_gate_count,
+            "two_qubit_gate_count": _isa_two_qubit,
+            "backend_name": backend.name,
+            "shots": SHOTS_PER_EVAL,
+            "noise_model_type": "ideal_simulator" if bool(cfg.simulator) else "hardware",
+            "execute_time_s": round(elapsed, 4),
+        },
     }
     if backend_name:
         meta["backend_requested"] = backend_name
