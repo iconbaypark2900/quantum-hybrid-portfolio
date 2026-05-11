@@ -15,7 +15,7 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 VALID_STATUSES = ("queued", "running", "completed", "failed")
-VALID_EXECUTION_KINDS = ("lab_sync", "async_optimize", "ibm_runtime")
+VALID_EXECUTION_KINDS = ("lab_sync", "async_optimize", "ibm_runtime", "sync_optimize", "walkforward_backtest")
 
 _db_conn_factory: Optional[Callable] = None
 

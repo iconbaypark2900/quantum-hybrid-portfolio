@@ -4,7 +4,7 @@ Provides REST API endpoints for the React frontend
 """
 from __future__ import annotations
 
-from flask import Flask, request, jsonify, g
+from flask import Flask, Response, request, jsonify, g
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -43,6 +43,8 @@ from config.api_config import OBJECTIVES_CONFIG, PRESETS_CONFIG
 from services.constraints import PortfolioConstraints
 from services import ibm_quantum as ibm_quantum_service
 from services import lab_run_service
+from services import report_generator
+from services import regime_detector
 from services.auth import (
     init_jwt,
     create_access_token,
@@ -56,12 +58,13 @@ from services.auth import (
 )
 
 # Import market data service (multi-provider: Tiingo (default), Alpaca, Polygon, yfinance fallback)
-from services.data_provider_v2 import MarketDataProvider, fetch_market_data
+from services.data_provider_v2 import MarketDataProvider, fetch_market_data, fetch_price_panel
 from services.market_data import validate_tickers
 
 # Import backtesting service
-from services.backtest import run_backtest as run_backtesting
+from services.backtest import run_backtest as run_backtesting, walk_forward_backtest
 from services.data_provider import load_market_payload
+from services.risk_models import build_risk_metrics_bundle
 
 # ─── Logging (JSON for prod/aggregation, console for dev readability) ───
 LOG_FORMAT = os.getenv('LOG_FORMAT', 'json')
@@ -614,7 +617,13 @@ def after_request_hook(response):
     return response
 
 def generate_mock_data(n_assets, regime):
-    """Generate mock market data for demonstration."""
+    """Generate mock market data for demonstration.
+
+    Gated: raises RuntimeError when FLASK_ENV is ``production`` to prevent
+    synthetic data from leaking into production responses.
+    """
+    if os.getenv("FLASK_ENV", "").lower() == "production":
+        raise RuntimeError("generate_mock_data is disabled in production")
     # Asset names
     names = ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","JPM","V","JNJ",
              "PG","UNH","HD","MA","BAC","DIS","NFLX","KO","PFE","CVX","WMT",
@@ -817,6 +826,30 @@ def get_market_data():
         return error_response(f'Internal server error: {str(e)}', code='INTERNAL_ERROR', status=500)
 
 
+@app.route('/api/market/regime', methods=['GET'])
+@require_api_key
+@limiter.limit("20 per minute")
+def get_market_regime():
+    """Classify current market regime and recommend an optimization objective."""
+    tickers_raw = request.args.get("tickers", "SPY")
+    method = request.args.get("method", "threshold")
+    tickers = [t.strip().upper() for t in tickers_raw.split(",") if t.strip()]
+    if not tickers:
+        tickers = ["SPY"]
+
+    from datetime import timedelta
+    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start_date = (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d")
+    try:
+        prices = fetch_price_panel(tickers, start_date, end_date)
+        ew_returns = prices.pct_change().dropna().mean(axis=1)
+        result = regime_detector.detect_regime(ew_returns, method=method)
+    except Exception as exc:
+        logger.exception("Regime detection failed")
+        return error_response(f"Regime detection failed: {exc}", code="REGIME_ERROR", status=500)
+    return success_response(result)
+
+
 @app.route('/api/portfolio/backtest', methods=['POST'])
 @require_api_key
 @limiter.limit("10 per minute")
@@ -886,6 +919,84 @@ def _run_backtest_payload(data):
         constraints=constraints
     )
 
+@app.route('/api/backtest/walkforward', methods=['POST'])
+@require_api_key
+@limiter.limit("5 per minute")
+def walkforward_backtest_endpoint():
+    """Walk-forward backtest: train/test split with turnover and transaction costs."""
+    try:
+        data = request.get_json(silent=True) or {}
+
+        tickers = data.get("tickers", [])
+        start = data.get("start")
+        end = data.get("end")
+        train_months = int(data.get("train_months", 12))
+        test_months = int(data.get("test_months", 3))
+        objective = data.get("objective", "hybrid")
+        cost_bps = float(data.get("cost_bps", 0))
+        benchmark_ticker = data.get("benchmark_ticker")
+        constraints_raw = data.get("constraints")
+        constraints = PortfolioConstraints.from_dict(constraints_raw) if constraints_raw else None
+
+        if not tickers or not isinstance(tickers, list):
+            return error_response("tickers must be a non-empty list", code='BAD_REQUEST', status=400)
+        if not start or not end:
+            return error_response("start and end dates are required", code='BAD_REQUEST', status=400)
+        if train_months < 6:
+            return error_response("train_months must be >= 6", code='BAD_REQUEST', status=400)
+        if test_months < 1:
+            return error_response("test_months must be >= 1", code='BAD_REQUEST', status=400)
+
+        result = walk_forward_backtest(
+            tickers=tickers,
+            start=start,
+            end=end,
+            train_months=train_months,
+            test_months=test_months,
+            objective=objective,
+            constraints=constraints,
+            cost_bps=cost_bps,
+            benchmark_ticker=benchmark_ticker,
+        )
+
+        run_id = str(uuid.uuid4())
+        try:
+            _spec = {
+                "objective": objective,
+                "train_months": train_months,
+                "test_months": test_months,
+                "cost_bps": cost_bps,
+                "tickers": tickers,
+                "n_assets": len(tickers),
+            }
+            _run = lab_run_service.create_run(
+                tenant_id=getattr(g, "tenant_id", "anonymous"),
+                spec=_spec,
+                execution_kind="walkforward_backtest",
+                request_payload=data,
+            )
+            run_id = _run["id"]
+            lab_run_service.update_status(run_id, "completed", result=result)
+        except Exception as _persist_err:
+            logger.warning("wf_run_persist_failed: %s", _persist_err)
+
+        result["run_id"] = run_id
+
+        log_business_audit(
+            action="walkforward_backtest",
+            payload=data,
+            result={"run_id": run_id, "n_periods": result["metadata"]["n_periods"]},
+            status=200,
+        )
+        return success_response(result)
+
+    except ValueError as e:
+        return error_response(str(e), code='BAD_REQUEST', status=400)
+    except Exception as e:
+        logger.error("walkforward_backtest error: %s", e, exc_info=True)
+        return error_response(f"Internal server error: {e}", code='INTERNAL_ERROR', status=500)
+
+
 def calculate_portfolio_metrics(weights, returns, covariance_matrix):
     """Calculate portfolio metrics from weights, returns and covariance."""
     # Expected return
@@ -912,122 +1023,9 @@ def calculate_portfolio_metrics(weights, returns, covariance_matrix):
         'n_effective': float(n_assets_effective)
     }
 
-def compute_var(assets, weights, confidence=0.95, n_simulations=2000):
-    """Compute Value at Risk (VaR) and Conditional VaR."""
-    n_assets = len(weights)
-    
-    # Simple VaR calculation using historical simulation
-    # Generate scenario returns based on asset correlations
-    np.random.seed(123)  # For consistency
-    scenario_returns = []
-    
-    # Use the correlation structure from the assets
-    # Create a basic correlation matrix and simulate returns
-    corr_matrix = []
-    for i, asset1 in enumerate(assets):
-        row = []
-        for j, asset2 in enumerate(assets):
-            # Approximate correlation
-            if i == j:
-                row.append(1.0)
-            elif i < j:
-                row.append(0.3)  # Placeholder correlation
-            else:
-                row.append(corr_matrix[j][i])
-        corr_matrix.append(row)
-    corr_matrix = np.array(corr_matrix)
-    
-    # Generate correlated random returns
-    for sim in range(n_simulations):
-        # Generate correlated random shocks using Cholesky decomposition
-        shocks = np.random.multivariate_normal(
-            mean=[0] * n_assets,
-            cov=corr_matrix * 0.01  # Adjusted for typical daily volatility
-        )
-        
-        # Calculate portfolio return for this scenario
-        portfolio_return = 0
-        for i, weight in enumerate(weights):
-            # Add random shock scaled by asset volatility
-            asset_vol = assets[i]['ann_vol'] / np.sqrt(252)  # Daily volatility
-            asset_return = shocks[i] * asset_vol
-            portfolio_return += weight * asset_return
-        
-        scenario_returns.append(portfolio_return)
-    
-    scenario_returns.sort()
-    
-    # Calculate VaR
-    var_idx = int(n_simulations * confidence)
-    var_95 = abs(scenario_returns[var_idx]) if var_idx < len(scenario_returns) else 0
-    
-    # Calculate CVaR (Conditional VaR)
-    tail_losses = scenario_returns[var_idx:]
-    cvar = abs(sum(tail_losses) / len(tail_losses)) if tail_losses else 0
-    
-    return {
-        'var_95': var_95 * 100,  # Convert to percentage
-        'cvar': cvar * 100       # Convert to percentage
-    }
 
-def run_benchmark_comparison(assets_data):
-    """Run benchmark algorithms for comparison."""
-    n = len(assets_data)
-
-    # Convert to numpy arrays
-    returns = np.array([a['ann_return'] for a in assets_data])
-    vols = np.array([a['ann_vol'] for a in assets_data])
-    sharpes = np.array([a['sharpe'] for a in assets_data])
-
-    def calc_metrics(w):
-        r = np.dot(w, returns)
-        # Simplified correlation matrix for benchmark calculations
-        corr_matrix = np.full((n, n), 0.3)  # Average correlation
-        np.fill_diagonal(corr_matrix, 1.0)
-        # Calculate portfolio variance with correlation
-        portfolio_variance = 0
-        for i in range(n):
-            for j in range(n):
-                portfolio_variance += w[i] * w[j] * corr_matrix[i, j] * vols[i] * vols[j]
-        vol = np.sqrt(portfolio_variance)
-        sharpe = r / vol if vol != 0 else 0
-        n_active = int(np.sum(w > 0.005))
-        return {
-            'weights': [float(x) for x in w],
-            'expected_return': float(r),
-            'volatility': float(vol),
-            'sharpe_ratio': float(sharpe),
-            'n_active': n_active
-        }
-
-    # Equal weight
-    ew = np.ones(n) / n
-
-    # Inverse volatility (min variance approximation)
-    inv_vols = 1 / (vols + 1e-8)
-    iv = inv_vols / np.sum(inv_vols)
-
-    # Risk parity (equal risk contribution approximation)
-    inv_risk = 1 / (vols**2 + 1e-8)
-    rp = inv_risk / np.sum(inv_risk)
-
-    # Max Sharpe
-    pos_sharpes = np.maximum(sharpes, 0)
-    ms = pos_sharpes / np.sum(pos_sharpes) if np.sum(pos_sharpes) > 0 else ew.copy()
-
-    # Hierarchical Risk Parity
-    from core.optimizers.hrp import hrp_weights
-    cov_approx = np.outer(vols, vols) * (np.full((n, n), 0.3))
-    np.fill_diagonal(cov_approx, vols ** 2)
-    hrp_w = hrp_weights(cov_approx)
-
-    return {
-        'equal_weight': {"name": "Equal Weight", **calc_metrics(ew)},
-        'min_variance': {"name": "Min Variance", **calc_metrics(iv)},
-        'risk_parity': {"name": "Risk Parity", **calc_metrics(rp)},
-        'max_sharpe': {"name": "Max Sharpe", **calc_metrics(ms)},
-        'hrp': {"name": "Hierarchical Risk Parity", **calc_metrics(hrp_w)}
-    }
+# Legacy demo helpers — not called by any API route.  Kept for test/notebook
+# use only; the optimize endpoint uses services.risk_models.build_risk_metrics_bundle.
 
 def serialize_numpy(obj):
     """Convert numpy objects to JSON serializable types."""
@@ -1209,10 +1207,13 @@ def optimize_portfolio():
                 "sector_allocation": [{"sector": s, "weight_pct": round(w * 100, 1)} for s, w in sector_alloc.items()],
             })
 
-        # ── Risk metrics (VaR / CVaR approximation) ───────────────────────────
-        port_vol = result.volatility
-        var_95 = -1.645 * port_vol / (252 ** 0.5)
-        cvar_95 = -2.063 * port_vol / (252 ** 0.5)
+        # ── Risk metrics (parametric + historical when daily panel available) ─
+        risk_metrics = build_risk_metrics_bundle(
+            portfolio_volatility=result.volatility,
+            weights=result.weights,
+            daily_returns=market_payload.daily_returns,
+            has_empirical_cov=True,
+        )
 
         # ── Benchmark comparison (light classical methods for reference) ────────
         try:
@@ -1262,7 +1263,7 @@ def optimize_portfolio():
             'objective': result.objective,
             'holdings': holdings,
             'sector_allocation': sector_data,
-            'risk_metrics': {'var_95': round(var_95, 6), 'cvar': round(cvar_95, 6)},
+            'risk_metrics': risk_metrics,
             'benchmarks': benchmarks,
             'stage_info': result.stage_info,
             'assets': [
@@ -1290,6 +1291,12 @@ def optimize_portfolio():
                 result.quantum_metadata
             )
 
+        if getattr(result, "constraint_report", None) is not None:
+            response_payload["constraint_report"] = result.constraint_report
+
+        if getattr(result, "factor_exposures", None) is not None:
+            response_payload["factor_exposures"] = result.factor_exposures
+
         # Include correlation matrix if tickers provided
         if tickers:
             vols = np.sqrt(np.maximum(np.diag(covariance), 1e-10))
@@ -1302,6 +1309,32 @@ def optimize_portfolio():
             result={'sharpe': result.sharpe_ratio, 'n_active': result.n_active},
             status=200,
         )
+
+        # Persist run record so GET /api/runs/{id} can retrieve it later.
+        run_id = str(uuid.uuid4())
+        try:
+            _spec = {
+                "objective": objective,
+                "weight_min": weight_min,
+                "weight_max": weight_max,
+                "seed": seed,
+                "tickers": tickers or None,
+                "n_assets": len(asset_names),
+                "K": K,
+                "K_screen": K_screen,
+                "K_select": K_select,
+            }
+            _run = lab_run_service.create_run(
+                tenant_id=getattr(g, "tenant_id", "anonymous"),
+                spec=_spec,
+                execution_kind="sync_optimize",
+                request_payload=data,
+            )
+            run_id = _run["id"]
+            lab_run_service.update_status(run_id, "completed", result=response_payload)
+        except Exception as _persist_err:
+            logger.warning("run_persist_failed: %s", _persist_err)
+        response_payload["run_id"] = run_id
 
         return success_response(_safe_serialize_metrics(response_payload))
 
@@ -1517,6 +1550,21 @@ def submit_backtest_job():
     return success_response({"job_id": job["job_id"], "status": job["status"]}, status=202)
 
 
+@app.route('/api/jobs', methods=['GET'])
+@require_api_key
+def list_jobs():
+    """List async in-memory jobs for the current tenant (most recent first)."""
+    tenant_id = getattr(g, "tenant_id", "anonymous")
+    limit = request.args.get("limit", 20, type=int)
+    with _jobs_lock:
+        tenant_jobs = [
+            j for j in _jobs.values()
+            if j.get("tenant_id") == tenant_id
+        ]
+    tenant_jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
+    return success_response({"jobs": tenant_jobs[:limit], "count": len(tenant_jobs)})
+
+
 @app.route('/api/jobs/<job_id>', methods=['GET'])
 @require_api_key
 def get_job_status(job_id):
@@ -1730,6 +1778,8 @@ def _run_optimize_for_run(run_id: str, tenant_id: str, data: dict, execution_kin
                 objective=None,
             )
             result_payload["objective"] = spec["objective"]
+            if getattr(result, "factor_exposures", None) is not None:
+                result_payload["factor_exposures"] = result.factor_exposures
 
         lab_run_service.update_status(run_id, "completed", result=result_payload)
         log_async_audit(tenant_id, "run_completed", {"run_id": run_id}, {"status": "completed"}, 200)
@@ -1809,6 +1859,36 @@ def list_runs():
     limit = request.args.get("limit", 20, type=int)
     runs = lab_run_service.list_runs(tenant_id, limit=limit)
     return success_response({"runs": runs, "count": len(runs)})
+
+
+@app.route('/api/runs/<run_id>/stream', methods=['GET'])
+@require_api_key
+def stream_run(run_id):
+    """Server-Sent Events stream for lab run status. Closes when run reaches terminal state."""
+    import time as _time
+    tenant_id = getattr(g, "tenant_id", "anonymous")
+
+    def _event_stream():
+        terminal = {"completed", "failed"}
+        for _ in range(120):
+            run = lab_run_service.get_run(run_id, tenant_id)
+            if run is None:
+                yield f"event: error\ndata: {json.dumps({'error': 'not found'})}\n\n"
+                return
+            yield f"data: {json.dumps({'status': run['status'], 'id': run_id})}\n\n"
+            if run["status"] in terminal:
+                return
+            _time.sleep(5)
+        yield f"event: timeout\ndata: {json.dumps({'status': 'timeout'})}\n\n"
+
+    return Response(
+        _event_stream(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def _admin_authorized() -> bool:
@@ -2230,6 +2310,35 @@ def list_integration_tenants():
     # and will NOT fall back to "default" for properly-formed UUIDs.
     tid = integration_effective_tenant_id()
     return success_response({"tenants": [{"id": tid, "label": "My Session"}]})
+
+
+@app.route('/api/config/tenants', methods=['POST'])
+@require_api_key
+def create_integration_tenant():
+    """Create a named tenant entry (admin static API key only)."""
+    client_key = request.headers.get("X-API-Key", "")
+    if not (API_KEY and client_key == API_KEY):
+        return error_response("Admin API key required", code="FORBIDDEN", status=403)
+    body = request.get_json(silent=True) or {}
+    tenant_id = (body.get("id") or "").strip()
+    if not tenant_id or not _SAFE_TENANT_RE.match(tenant_id):
+        return error_response(
+            "id must be 8-64 alphanumeric/hyphen/underscore chars",
+            code="BAD_REQUEST", status=400,
+        )
+    try:
+        conn = _db_conn()
+        conn.execute(
+            "INSERT OR IGNORE INTO api_keys (key_hash, tenant_id, label, is_active, created_at) "
+            "VALUES (?, ?, ?, 1, ?)",
+            (f"__placeholder__{tenant_id}", tenant_id, f"Tenant {tenant_id}",
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        return error_response(f"Could not create tenant: {exc}", code="DB_ERROR", status=500)
+    return success_response({"created": True, "id": tenant_id})
 
 
 @app.route('/api/config/integrations', methods=['GET'])
@@ -2817,4 +2926,25 @@ def export_config_manifest():
         "version": "1.0",
         "engine": "quantum_ledger",
     })
+
+
+@app.route('/api/export/report/<run_id>.pdf')
+@require_api_key
+@limiter.limit("10 per minute")
+def export_report_pdf(run_id):
+    """Generate and stream a formatted PDF report for a lab run."""
+    tenant_id = getattr(g, "tenant_id", "anonymous")
+    run = lab_run_service.get_run(run_id, tenant_id)
+    if not run:
+        return error_response("run not found", code="NOT_FOUND", status=404)
+    try:
+        pdf_bytes = report_generator.generate_pdf(run)
+    except Exception as exc:
+        logger.exception("PDF generation failed for run %s", run_id)
+        return error_response(f"PDF generation failed: {exc}", code="PDF_ERROR", status=500)
+    return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="report-{run_id}.pdf"'},
+    )
 

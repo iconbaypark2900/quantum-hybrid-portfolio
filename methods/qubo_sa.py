@@ -96,12 +96,14 @@ def qubo_sa_weights(
     T_start: float = 15.0,
     T_end: float = 0.001,
     seed: int = 42,
+    weight_min: float = 0.0,
+    weight_max: float = 1.0,
 ) -> np.ndarray:
     """
     QUBO portfolio selection via Simulated Annealing.
 
     Selects exactly K assets using QUBO+SA, then allocates equal weight
-    within the selected subset.
+    within the selected subset and clips to [weight_min, weight_max].
 
     Parameters
     ----------
@@ -115,11 +117,13 @@ def qubo_sa_weights(
     T_start     : Initial SA temperature.
     T_end       : Final SA temperature.
     seed        : Random seed for reproducibility.
+    weight_min  : Minimum weight per selected asset.
+    weight_max  : Maximum weight per selected asset.
 
     Returns
     -------
     weights : ndarray (n,), sum to 1.
-              Selected assets get equal weight; unselected assets get 0.
+              Selected assets get equal weight (clipped); unselected assets get 0.
     """
     mu = np.asarray(mu, dtype=float)
     Sigma = np.asarray(Sigma, dtype=float)
@@ -143,5 +147,11 @@ def qubo_sa_weights(
     selected = np.where(best_x == 1)[0]
     if len(selected) > 0:
         w[selected] = 1.0 / len(selected)
+
+    if (weight_min > 0.0 or weight_max < 1.0) and len(selected) > 0:
+        w[selected] = np.clip(w[selected], weight_min, weight_max)
+        w_sum = w.sum()
+        if w_sum > 0:
+            w = w / w_sum
 
     return w

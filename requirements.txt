@@ -13,6 +13,9 @@ networkx==3.5
 matplotlib==3.10.6
 seaborn==0.13.2
 
+# PDF report generation (requires system libs: libpango, libcairo — see Dockerfile.fly)
+weasyprint>=62.3
+
 # Web framework
 flask==3.1.2
 flask-cors==6.0.2
@@ -41,6 +44,9 @@ tqdm==4.67.1
 pyyaml==6.0.3
 python-dotenv==1.1.1
 cryptography>=42.0.0
+
+# Optional: HMM-based regime detection
+hmmlearn>=0.3.3
 
 # AWS Braket (optional: for quantum annealing backend)
 amazon-braket-sdk>=1.60.0

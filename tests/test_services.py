@@ -207,7 +207,10 @@ class TestRunOptimization:
             result = run_optimization(returns, cov, objective=obj)
             assert np.all(result.weights >= -1e-9), f"objective={obj}"
 
-    @pytest.mark.skip(reason="Constraints not supported in notebook-methods thin wrapper")
+    @pytest.mark.xfail(
+        strict=False,
+        reason="Sector-limit constraints deferred to roadmap item 08 (factor models)",
+    )
     def test_constraints_sector_limits_respected(self):
         """Sector limits are respected when sectors provided."""
         n = 6
@@ -226,10 +229,12 @@ class TestRunOptimization:
         for sector, limit in constraints.sector_limits.items():
             if sector in masks:
                 sector_weight = sum(result.weights[i] for i in masks[sector])
-                # Use looser tolerance for floating-point
                 assert sector_weight <= limit + 1e-3, f"Sector {sector} exceeded limit"
 
-    @pytest.mark.skip(reason="Constraints not supported in notebook-methods thin wrapper")
+    @pytest.mark.xfail(
+        strict=False,
+        reason="Blacklist constraints deferred to roadmap item 08 (factor models)",
+    )
     def test_blacklist_excludes_assets(self):
         """Blacklisted assets receive zero weight."""
         n = 5
@@ -242,11 +247,13 @@ class TestRunOptimization:
             constraints=constraints,
             asset_names=asset_names,
         )
-        # After filtering, universe is AAPL, MSFT, GOOGL. Weights are expanded back.
         assert result.weights[4] == 0  # TSLA
         assert result.weights[3] == 0  # AMZN
 
-    @pytest.mark.skip(reason="Constraints not supported in notebook-methods thin wrapper")
+    @pytest.mark.xfail(
+        strict=False,
+        reason="Whitelist constraints deferred to roadmap item 08 (factor models)",
+    )
     def test_whitelist_restricts_universe(self):
         """Whitelist restricts to only those assets."""
         n = 5
@@ -259,24 +266,22 @@ class TestRunOptimization:
             constraints=constraints,
             asset_names=asset_names,
         )
-        # Only AAPL and MSFT should have weight; others zero
         assert result.weights[2] == 0  # GOOGL
         assert result.weights[3] == 0  # AMZN
         assert result.weights[4] == 0  # TSLA
         assert np.abs(np.sum(result.weights) - 1.0) < 1e-5
 
-    @pytest.mark.skip(reason="Constraints not supported in notebook-methods thin wrapper")
     def test_cardinality_constraint(self):
-        """Cardinality limits number of active positions."""
+        """Cardinality via K limits number of active positions (QUBO-SA)."""
         n = 8
         returns, cov = make_returns_covariance(n)
-        constraints = PortfolioConstraints(cardinality=3)
         result = run_optimization(
             returns, cov,
-            objective="min_variance",
-            constraints=constraints,
+            objective="qubo_sa",
+            K=3,
         )
-        assert result.n_active <= 3
+        n_active = int(np.sum(result.weights > 1e-6))
+        assert n_active <= 3, f"Expected at most 3 active, got {n_active}"
         assert np.abs(np.sum(result.weights) - 1.0) < 1e-5
 
 
