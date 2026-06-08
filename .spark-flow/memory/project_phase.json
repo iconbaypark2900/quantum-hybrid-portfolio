@@ -1,0 +1,31 @@
+{
+  "phase": "mvp",
+  "lifecycle_status": "classified",
+  "updated_at": "2026-05-29T18:55:32",
+  "history": [
+    {
+      "phase": "unassessed",
+      "lifecycle_status": "registered",
+      "at": "2026-05-29T17:51:28",
+      "note": "memory-init"
+    },
+    {
+      "phase": "unassessed",
+      "lifecycle_status": "registered",
+      "at": "2026-05-29T17:51:28",
+      "note": "registered via register-project"
+    },
+    {
+      "phase": "unassessed",
+      "lifecycle_status": "assessed",
+      "at": "2026-05-29T18:55:32",
+      "note": "assessed; recommended mvp"
+    },
+    {
+      "phase": "mvp",
+      "lifecycle_status": "classified",
+      "at": "2026-05-29T18:55:32",
+      "note": "classified"
+    }
+  ]
+}
