@@ -28,6 +28,8 @@ class MarketPayload:
     source: str  # "matrix" | "tiingo" | "yfinance" | provider name
     daily_returns: Optional[np.ndarray] = field(default=None, repr=False)
     daily_dates: Optional[List[str]] = field(default=None, repr=False)
+    fallback_used: bool = False
+    data_timestamp: Optional[str] = None
 
 
 def _assets_from_matrix(
@@ -153,6 +155,8 @@ def load_market_payload(data: Dict[str, Any]) -> MarketPayload:
         daily_dates = market_data.get("daily_dates")
 
     provider = market_data.get("provider", "yfinance")
+    fallback_used = market_data.get("fallback_used", False)
+    data_timestamp = market_data.get("data_timestamp")
 
     return MarketPayload(
         assets=assets,
@@ -162,5 +166,7 @@ def load_market_payload(data: Dict[str, Any]) -> MarketPayload:
         source=provider,
         daily_returns=daily_returns,
         daily_dates=daily_dates,
+        fallback_used=fallback_used,
+        data_timestamp=data_timestamp,
     )
 

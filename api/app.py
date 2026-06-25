@@ -1361,6 +1361,31 @@ def optimize_portfolio():
         if getattr(result, "factor_exposures", None) is not None:
             response_payload["factor_exposures"] = result.factor_exposures
 
+        # Data provenance (data_source, fallback_used, staleness) for UI transparency.
+        data_timestamp = getattr(market_payload, "data_timestamp", None)
+        staleness_hours: Optional[float] = None
+        if data_timestamp:
+            try:
+                ts = data_timestamp.rstrip("Z")
+                fetched = datetime.fromisoformat(ts)
+                if fetched.tzinfo is None:
+                    fetched = fetched.replace(tzinfo=timezone.utc)
+                staleness_hours = round(
+                    (datetime.now(timezone.utc) - fetched).total_seconds() / 3600.0, 2
+                )
+            except (ValueError, TypeError):
+                staleness_hours = None
+        response_payload["data_provenance"] = {
+            "data_source": market_payload.source,
+            "fallback_used": market_payload.fallback_used,
+            "data_timestamp": data_timestamp,
+            "data_staleness_hours": staleness_hours,
+            "earliest_date": tickers[0] if tickers and market_payload.daily_dates is None else None,
+            "latest_date": (
+                market_payload.daily_dates[-1] if market_payload.daily_dates else None
+            ),
+        }
+
         # Include correlation matrix if tickers provided
         if tickers:
             vols = np.sqrt(np.maximum(np.diag(covariance), 1e-10))
@@ -2825,6 +2850,77 @@ def health_check():
             },
             status=200,
         )
+
+
+@app.route('/api/health/detailed', methods=['GET'])
+@limiter.exempt
+def health_check_detailed():
+    """Detailed health for load balancers and ops dashboards.
+
+    Adds nested ``dependencies`` and ``overall`` keys on top of the basic
+    ``/api/health`` body.  Each dependency has an independent status so a
+    single missing optional dep doesn't fail the whole probe.
+    """
+    import importlib
+
+    base_payload: dict = {
+        "status": "degraded",
+        "checks": {"api": "error"},
+        "details": {},
+        "cache_entries": 0,
+        "message": "Health check failed",
+    }
+    try:
+        envelope = _health_check_body(importlib)
+        inner = envelope[0].get_json() if hasattr(envelope[0], "get_json") else envelope[0]
+        if isinstance(inner, dict) and "data" in inner:
+            base_payload.update(inner["data"])
+    except Exception as exc:
+        logger.exception("health_check_detailed_failed: %s", exc)
+        base_payload["details"] = {"error": str(exc)[:500]}
+        base_payload["message"] = "Detailed health check raised an exception; see API logs."
+
+    checks = base_payload.get("checks", {})
+    details = base_payload.get("details", {})
+
+    dependencies: dict = {
+        "market_data": {
+            "status": checks.get("market_data", "unknown"),
+            "provider": details.get("data_provider"),
+            "available_providers": details.get("available_providers", []),
+        },
+        "database": {
+            "status": checks.get("database", "ok" if details.get("database_error") is None else "error"),
+            "error": details.get("database_error"),
+        },
+        "redis": {
+            "status": checks.get("redis", "unconfigured"),
+            "host": details.get("redis_host"),
+            "error": details.get("redis_error"),
+        },
+        "quantum": {
+            "ibm_connected": bool(os.getenv("IBM_QUANTUM_TOKEN")),
+            "braket_enabled": details.get("braket_enabled", False),
+            "mode": "simulator",
+        },
+        "dependencies": {
+            "status": checks.get("dependencies", "ok"),
+            "missing": details.get("missing_dependencies", []),
+        },
+    }
+
+    # Quantize overall: degraded if any required dependency is failing.
+    failing = [
+        name for name, dep in dependencies.items()
+        if dep.get("status") not in ("ok", "available", "installed", "unconfigured")
+        and name not in ("redis",)  # Redis is optional
+    ]
+    overall_status = "degraded" if failing else base_payload.get("status", "healthy")
+
+    base_payload["dependencies"] = dependencies
+    base_payload["overall"] = overall_status
+    base_payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return success_response(base_payload)
 
 
 def _health_check_body(importlib):

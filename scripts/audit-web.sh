@@ -178,11 +178,11 @@ fi
 if $WITH_ASYNC; then
   echo "[audit] Async optimize job ..."
   job_post=$(api_post /api/jobs/optimize '{"payload":{"objective":"markowitz","tickers":["AAPL","MSFT","GOOGL"],"weight_min":0.0,"weight_max":1.0,"data_mode":"synthetic"}}' || echo '{}')
-  job_id=$(echo "$job_post" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("job_id",""))' 2>/dev/null || echo '')
+  job_id=$(echo "$job_post" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("data",{}).get("job_id","") or d.get("job_id",""))' 2>/dev/null || echo '')
   if [[ -n "$job_id" ]]; then
     for _ in $(seq 1 60); do
       status_resp=$(curl -sS -H "X-API-Key: ${API_KEY:-}" -H "X-Tenant-Id: ${TENANT_ID}" "${API_BASE}/api/jobs/${job_id}")
-      status=$(echo "$status_resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || echo '')
+      status=$(echo "$status_resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("data",{}).get("status","") or d.get("status",""))' 2>/dev/null || echo '')
       [[ "$status" == "completed" || "$status" == "failed" ]] && break
       sleep 1
     done
