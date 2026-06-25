@@ -37,7 +37,7 @@ import time
 import logging
 from typing import List, Dict, Optional
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
@@ -598,10 +598,15 @@ class MarketDataProvider:
                 logger.info(f"Trying {provider_name}...")
                 prices = provider.fetch_prices(tickers, start_date, end_date)
 
+                fallback_used = provider_name != self.primary_provider
+                data_timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
                 # Process prices into standard format
                 return self._process_prices(
                     prices, tickers, start_date, end_date, provider_name,
                     include_daily_returns=include_daily_returns,
+                    fallback_used=fallback_used,
+                    data_timestamp=data_timestamp,
                 )
 
             except Exception as e:
@@ -639,6 +644,8 @@ class MarketDataProvider:
         end_date: str,
         provider_name: str,
         include_daily_returns: bool = False,
+        fallback_used: bool = False,
+        data_timestamp: str = "",
     ) -> Dict:
         """Process raw price DataFrame into standard market-data dict.
 
@@ -723,6 +730,8 @@ class MarketDataProvider:
                 "start_date": start_date,
                 "end_date": end_date,
                 "provider": provider_name,
+                "fallback_used": fallback_used,
+                "data_timestamp": data_timestamp,
                 "success": True,
                 "message": (
                     f"Successfully fetched data for {len(assets_list)} assets from "
@@ -741,6 +750,8 @@ class MarketDataProvider:
                 "start_date": start_date,
                 "end_date": end_date,
                 "provider": provider_name,
+                "fallback_used": fallback_used,
+                "data_timestamp": data_timestamp,
                 "success": True,
                 "message": f"Successfully fetched data for {len(assets_list)} assets from {provider_name}",
             }

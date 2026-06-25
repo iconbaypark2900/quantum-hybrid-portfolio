@@ -10,7 +10,7 @@ import {
   ScatterChart, Scatter, ReferenceLine, Brush,
 } from "recharts";
 import {
-  DashboardThemeContext, darkTheme, useTheme, themeForResolved,
+  DashboardThemeContext, useTheme, themeForResolved,
   CHART_COLORS, STRATEGY_COLORS, FONT,
 } from "@/lib/theme";
 import { useThemePreference } from "@/context/ThemeContext";
@@ -2985,7 +2985,7 @@ export default function QuantumPortfolioDashboard() {
           <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <DataSourceBadge source={isLiveLoaded ? "api" : "sim"} />
             {(marketMode === "historical" || marketMode === "live") && !isLiveLoaded && (
-              <span style={{ fontSize: 11, color: t.accentWarm, fontFamily: FONT.mono }}>Select tickers and click "Load market data" to fetch real prices.</span>
+              <span style={{ fontSize: 11, color: t.accentWarm, fontFamily: FONT.mono }}>Select tickers and click &quot;Load market data&quot; to fetch real prices.</span>
             )}
           </div>
 
@@ -3142,6 +3142,24 @@ export default function QuantumPortfolioDashboard() {
                 {!isApiMode && (
                   <div style={{ fontSize: 10, color: t.accentWarm, fontFamily: FONT.sans, marginBottom: 10, padding: "4px 8px", background: t.surfaceLight, borderRadius: 4, border: `1px solid ${t.border}` }}>
                     Showing client-side Quick Sim result. Click &ldquo;Run Backend API&rdquo; for the full optimizer with regime adjustments.
+                  </div>
+                )}
+                {isApiMode && apiResult?.data_provenance?.fallback_used && (
+                  <div
+                    role="alert"
+                    data-testid="data-fallback-banner"
+                    style={{ fontSize: 10, color: "#92400e", fontFamily: FONT.sans, marginBottom: 10, padding: "6px 10px", background: "rgba(245, 158, 11, 0.12)", borderRadius: 4, border: "1px solid rgba(245, 158, 11, 0.4)" }}
+                  >
+                    ⚠️ Primary data provider was unavailable. Results use {apiResult.data_provenance.data_source ?? "fallback"} — verify data quality before allocating.
+                  </div>
+                )}
+                {isApiMode && apiResult?.data_provenance?.data_staleness_hours != null && apiResult.data_provenance.data_staleness_hours > 24 && (
+                  <div
+                    role="alert"
+                    data-testid="data-staleness-banner"
+                    style={{ fontSize: 10, color: "#b91c1c", fontFamily: FONT.sans, marginBottom: 10, padding: "6px 10px", background: "rgba(239, 68, 68, 0.10)", borderRadius: 4, border: "1px solid rgba(239, 68, 68, 0.4)" }}
+                  >
+                    ⚠️ Market data is {apiResult.data_provenance.data_staleness_hours.toFixed(0)} hours old — prices may not reflect current market conditions.
                   </div>
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>

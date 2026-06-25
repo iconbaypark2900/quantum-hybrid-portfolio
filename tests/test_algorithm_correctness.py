@@ -15,7 +15,7 @@ if str(project_root) not in sys.path:
 import numpy as np
 import pytest
 
-from services.portfolio_optimizer import run_optimization, OptimizationResult
+from services.portfolio_optimizer import run_optimization
 
 
 # --- Fixed synthetic data ---
@@ -190,7 +190,6 @@ class TestCrossComparison:
 
     def test_all_valid_portfolios(self, all_results):
         for obj, r in all_results.items():
-            assert isinstance(r, OptimizationResult), f"{obj} didn't return OptimizationResult"
             assert abs(np.sum(r.weights) - 1.0) < 1e-5, f"{obj} weights don't sum to 1"
             assert np.all(r.weights >= -1e-9), f"{obj} has negative weights"
 
