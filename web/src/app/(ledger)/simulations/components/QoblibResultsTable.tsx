@@ -13,12 +13,18 @@ export default function QoblibResultsTable({ refreshKey }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     fetch("/api/simulations/qoblib/runs", { headers: flaskProxyFetchHeaders() })
       .then((r) => r.json())
-      .then((d) => setRuns(d.runs ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then((d) => {
+        if (cancelled) return;
+        setRuns(d.runs ?? []);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [refreshKey]);
 
   if (loading) return <div className="text-xs text-ql-on-surface-variant py-4">Loading run history…</div>;

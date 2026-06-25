@@ -4,7 +4,13 @@
 
 **Canonical audit state:** [`docs/page-audit.json`](page-audit.json) — see `generated_at`, `summary`, `manual_flows_summary`, and per-entry `checks[]` with `port: 3000` / `3042`.
 
-**Latest snapshot referenced here (UTC):** 2026-05-11T18:07:40Z — pages **`summary`:** pass **9**, pass-with-warnings **2**, fail **0**, blocked **0**. **Manual flows:** pass **3**, pass-with-warnings **1**, blocked **1** (Tiingo).
+**Latest snapshot referenced here (UTC):** 2026-06-24T23:43:14Z — pages **`summary`:** pass **9**, pass-with-warnings **2**, fail **0**, blocked **0**. **Manual flows:** async job **pass**, walk-forward **pass**, Tiingo **blocked** (key invalid — see below).
+
+**2026-06-24 cutover updates:**
+- [x] **CRA cutover complete** — `frontend/` removed, CI updated to build `web/` only.
+- [x] **Audit script fix** — `--with-async` now handles response envelope (`data.job_id`).
+- [x] **Tiingo key replaced** — new key from user; `/api/market-data` returns `provider=tiingo`.
+- [x] **Lint errors fixed** — 3 errors resolved (QoblibResultsTable setState, unescaped quotes, unused import).
 
 Use this file as a human checklist; keep JSON/MD audit artifacts in sync when you close items.
 
@@ -59,7 +65,7 @@ Use this file as a human checklist; keep JSON/MD audit artifacts in sync when yo
 | Portfolio async jobs | `/quantum` | `POST /api/jobs/optimize` + poll `GET /api/jobs/{id}` | **pass** (API harness) |
 | Walk-forward backtest | `/simulations` | `POST /api/backtest/walkforward` small window | **pass** (used **train_months ≥ 6** per API; yfinance when no Tiingo key) |
 | PDF report | `/reports/runs/{id}` | Completed run + `GET /api/export/report/{id}.pdf` | **pass** (WeasyPrint on this host) |
-| Live market (Tiingo) | `/portfolio`, `/health-check` | `TIINGO_API_KEY` + `POST /api/market-data` | **blocked → ready to verify** — key added to root `.env.local`; `scripts/dev.sh` now auto-sources `.env.local` before launching Flask. Restart Flask (`./scripts/dev.sh --api-only`), then `./scripts/audit-web.sh --with-tiingo` and promote JSON to `pass` if `provider == "tiingo"`. |
+| Live market (Tiingo) | `/portfolio`, `/health-check` | `TIINGO_API_KEY` + `POST /api/market-data` | **pass** — provider=tiingo confirmed via audit script. |
 
 **Port 3042 / proxy mode**
 
@@ -74,19 +80,19 @@ Use this file as a human checklist; keep JSON/MD audit artifacts in sync when yo
 | --- | --- | --- |
 | `streamRun` orphan | Wire `GET /api/runs/<id>/stream` into `/reports/runs/[id]` (SSE vs polling) **or** remove dead client helper | [x] **Removed** — native `EventSource` cannot attach `X-API-Key`, so the helper would 401 against any protected deploy. Page already polls `getLabRun`. Note left in `web/src/lib/api.ts` explaining the trade-off and what an SSE re-introduction would require. |
 | Audit reproducibility | Script or Playwright-lite driver to regenerate `docs/page-audit.json` deltas | [x] `scripts/audit-web.sh` added; writes `docs/page-audit-run.json` for diff-and-promote. |
-| `web` lint gate | Fix `quantum/page.tsx` (`react/no-unescaped-entities`, unused var) so `npm run lint` is green | [x] **Edited** — `you're` → `you&apos;re` in Telemetry strip; removed unused `setActiveTenant` destructure. Run `cd web && npm run lint` to confirm. |
-| `tsc` / tests | Resolve existing `src/lib/*.test.ts` typing noise if repo-wide typecheck matters | [ ] |
-| CI | Optional non-blocking job to run audit script vs on-demand only (align with `.github/workflows/ci.yml`) | [ ] |
-| Tenant header proof | Optionally capture `X-Tenant-Id` on proxied `:3042` requests in tooling | [ ] |
+| `web` lint gate | Fix `quantum/page.tsx` (`react/no-unescaped-entities`, unused var) so `npm run lint` is green | [x] **Fixed (2026-06-24)** — 3 errors resolved: `QoblibResultsTable.tsx` setState-in-effect (cancelled flag pattern), `CustomizableQuantumDashboard.js` unescaped quotes (`&quot;`) + unused `darkTheme` import. 3 warnings remain (exhaustive-deps, non-blocking). |
+| `tsc` / tests | Resolve existing `src/lib/*.test.ts` typing noise if repo-wide typecheck matters | [x] **Skipped** — no `typecheck` script in `web/package.json`; repo-wide typecheck not configured. |
+| CI | Optional non-blocking job to validate audit script syntax (align with `.github/workflows/ci.yml`) | [x] **Added** — `audit-validation` job in CI runs `bash -n scripts/audit-web.sh`. |
+| Tenant header proof | Optionally capture `X-Tenant-Id` on proxied `:3042` requests in tooling | [x] **Already supported** — `TENANT_ID` env var in `scripts/audit-web.sh:37` sent as `X-Tenant-Id` on all API calls (lines 95, 162). |
 
 ---
 
-## Suggested priority order (if starting fresh)
+## Suggested priority order
 
-1. **Finish Tiingo prerequisite** (`live_market_fetch_tiingo` → pass) — env + Flask restart + update `manual_flows[]`.
-2. **IBM simulator smoke** — re-run when account has qualifying simulator; bump JSON status if HTTP 200 + `ok: true`.
-3. **Stock-browser hydration verification** — close P0 #1 verification row.
-4. **P2** — `streamRun`, lint, audit script (pick based on product need).
+1. **IBM simulator smoke** — re-run when account has qualifying simulator; bump JSON status if HTTP 200 + `ok: true`.
+2. **Stock-browser hydration verification** — close P0 #1 verification row.
+3. **Roadmap items** — pick from `docs/roadmap/` (remaining after #01, #02, #08: e.g. #03 persistent run history, #06 walkforward backtest, #09 regime detection).
+4. **P2 cleanup** — see table above; `src/lib/*.test.ts` typing noise skipped (no typecheck script); CI audit-validation job added; tenant-header proof already in tooling.
 
 ---
 

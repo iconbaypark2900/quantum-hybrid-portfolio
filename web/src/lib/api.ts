@@ -400,6 +400,25 @@ export async function healthCheck() {
   return res.data;
 }
 
+export type HealthDependencies = {
+  market_data: { status: string; provider: string | null; available_providers: string[] };
+  database: { status: string; error?: string | null };
+  redis: { status: string; host?: string | null; error?: string | null };
+  quantum: { ibm_connected: boolean; braket_enabled: boolean; mode: string };
+  dependencies: { status: string; missing: string[] };
+};
+
+export async function healthCheckDetailed(): Promise<{
+  status: string;
+  overall: string;
+  dependencies: HealthDependencies;
+  timestamp: string;
+  details?: { data_provider?: string | null; [k: string]: unknown };
+}> {
+  const res = await api.get("/api/health/detailed");
+  return res.data;
+}
+
 /** Async job queue — see `api/app.py` `/api/jobs/*`. Body uses `payload` for optimize/backtest params. */
 export async function submitOptimizeJob(payload: Record<string, unknown>) {
   const res = await api.post("/api/jobs/optimize", { payload });
