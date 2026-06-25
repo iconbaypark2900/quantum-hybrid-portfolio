@@ -207,10 +207,6 @@ class TestRunOptimization:
             result = run_optimization(returns, cov, objective=obj)
             assert np.all(result.weights >= -1e-9), f"objective={obj}"
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="Sector-limit constraints deferred to roadmap item 08 (factor models)",
-    )
     def test_constraints_sector_limits_respected(self):
         """Sector limits are respected when sectors provided."""
         n = 6
@@ -231,10 +227,6 @@ class TestRunOptimization:
                 sector_weight = sum(result.weights[i] for i in masks[sector])
                 assert sector_weight <= limit + 1e-3, f"Sector {sector} exceeded limit"
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="Blacklist constraints deferred to roadmap item 08 (factor models)",
-    )
     def test_blacklist_excludes_assets(self):
         """Blacklisted assets receive zero weight."""
         n = 5
@@ -250,10 +242,6 @@ class TestRunOptimization:
         assert result.weights[4] == 0  # TSLA
         assert result.weights[3] == 0  # AMZN
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="Whitelist constraints deferred to roadmap item 08 (factor models)",
-    )
     def test_whitelist_restricts_universe(self):
         """Whitelist restricts to only those assets."""
         n = 5

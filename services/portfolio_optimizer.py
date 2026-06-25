@@ -6,6 +6,10 @@ Maps legacy objective names for backtest and benchmark compatibility:
   max_sharpe -> markowitz
   risk_parity -> hrp
   braket_annealing -> uses Braket backend (or qubo_sa fallback)
+
+Applies post-hoc constraints (sector limits, blacklist, whitelist) delegated
+by the API layer.  These are enforced after the core optimizer runs, so they
+work with any objective without modifying the core path.
 """
 from types import SimpleNamespace
 from typing import Dict, List, Optional
@@ -17,6 +21,7 @@ from core.portfolio_optimizer import (
     OBJECTIVES as _CORE_OBJECTIVES,
     compute_efficient_frontier as _core_compute_efficient_frontier,
 )
+from services.constraints import PortfolioConstraints, compute_sector_masks
 
 # Import Braket backend for quantum annealing
 try:
@@ -53,16 +58,82 @@ def get_config_for_preset(preset: str) -> SimpleNamespace:
     return presets.get(preset.lower(), SimpleNamespace(min_weight=0.005, max_weight=0.30))
 
 
+def _apply_blacklist(
+    weights: np.ndarray,
+    asset_names: List[str],
+    blacklist: List[str],
+) -> np.ndarray:
+    """Zero out blacklisted assets and redistribute."""
+    w = weights.copy()
+    blacklist_upper = {b.upper() for b in blacklist}
+    for i, name in enumerate(asset_names):
+        if name.upper() in blacklist_upper:
+            w[i] = 0.0
+    total = w.sum()
+    return w / total if total > 1e-12 else w
+
+
+def _apply_whitelist(
+    weights: np.ndarray,
+    asset_names: List[str],
+    whitelist: List[str],
+) -> np.ndarray:
+    """Zero out non-whitelisted assets and redistribute."""
+    w = weights.copy()
+    whitelist_upper = {b.upper() for b in whitelist}
+    for i, name in enumerate(asset_names):
+        if name.upper() not in whitelist_upper:
+            w[i] = 0.0
+    total = w.sum()
+    return w / total if total > 1e-12 else w
+
+
+def _enforce_sector_limits(
+    weights: np.ndarray,
+    sectors: List[str],
+    sector_limits: Dict[str, float],
+) -> np.ndarray:
+    """Iteratively scale down over-limit sectors, redistributing excess to others."""
+    masks = compute_sector_masks(sectors)
+    w = weights.copy()
+
+    for _ in range(len(w)):
+        modified = False
+        for sector, indices in masks.items():
+            limit = sector_limits.get(sector, 1.0)
+            sw = w[indices].sum()
+            if sw > limit + 1e-10:
+                excess = sw - limit
+                scale = limit / max(sw, 1e-12)
+                w[indices] *= scale
+                other = np.ones(len(w), dtype=bool)
+                other[indices] = False
+                other_total = w[other].sum()
+                if other_total > 1e-12:
+                    w[other] += w[other] * (excess / other_total)
+                modified = True
+        if not modified:
+            break
+
+    w = np.maximum(w, 0.0)
+    total = w.sum()
+    if total > 1e-12:
+        w /= total
+    return w
+
+
 class _ResultAdapter:
     """Adapter adding turnover and preserving requested objective for legacy callers."""
 
-    def __init__(self, core_result: _CoreOptimizationResult, requested_objective: str):
+    def __init__(self, core_result: _CoreOptimizationResult, requested_objective: str,
+                 modified_weights: Optional[np.ndarray] = None):
         self._core = core_result
         self._requested = requested_objective
+        self._modified_weights = modified_weights
 
     @property
     def weights(self):
-        return self._core.weights
+        return self._modified_weights if self._modified_weights is not None else self._core.weights
 
     @property
     def sharpe_ratio(self):
@@ -157,7 +228,28 @@ def run_optimization(
         weight_max=float(kwargs.get("weight_max", 0.30)),
         seed=int(kwargs.get("seed", 42)),
     )
-    return _ResultAdapter(core_result, requested)
+
+    # ── Post-hoc constraint enforcement ────────────────────────────────────
+    modified_weights: Optional[np.ndarray] = None
+    w = core_result.weights.copy()
+
+    if constraints is not None:
+        if isinstance(constraints, PortfolioConstraints):
+            c = constraints
+        else:
+            c = PortfolioConstraints.from_dict(constraints)
+
+        if c.blacklist and asset_names is not None:
+            w = _apply_blacklist(w, asset_names, c.blacklist)
+        if c.whitelist and asset_names is not None:
+            w = _apply_whitelist(w, asset_names, c.whitelist)
+        if c.sector_limits and sectors is not None:
+            w = _enforce_sector_limits(w, sectors, c.sector_limits)
+
+    if not np.allclose(w, core_result.weights):
+        modified_weights = w
+
+    return _ResultAdapter(core_result, requested, modified_weights=modified_weights)
 
 
 def _run_braket_optimization(

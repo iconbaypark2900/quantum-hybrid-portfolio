@@ -56,7 +56,7 @@ This project delivers a unified optimization platform: screening, discrete selec
 | Dimension | Summary |
 |---|---|
 | Domain | Portfolio optimization, backtesting, sensitivity analysis, QOBLIB benchmarking |
-| Runtime | Flask API (`python -m api`, port 5000), Next.js UI (`web/`, port 3042), optional CRA legacy UI |
+| Runtime | Flask API (`python -m api`, port 5000), Next.js UI (`web/`, port 3042) |
 | Decision layer | Hybrid 3-stage pipeline, QUBO+SA, VQE, QAOA, Markowitz, HRP, equal-weight, target-return |
 | Data | Tiingo (primary) or yfinance (fallback); SQLite tenant DB (`API_DB_PATH`) |
 | Evaluation | Pytest, QOBLIB benchmark harness, walk-forward / stress simulations in UI |
@@ -89,7 +89,7 @@ Quantum Hybrid Portfolio is organized into five layers:
 
 | Layer | Responsibility |
 |---|---|
-| Interface | Next.js Portfolio Lab (`web/`), legacy CRA (`frontend/`), CLI scripts, notebooks |
+| Interface | Next.js Portfolio Lab (`web/`), CLI scripts, notebooks |
 | Application | Flask routes (`api/app.py`), lab run service, async jobs, report generator |
 | Decision | Hybrid pipeline, QUBO-SA, VQE, QAOA, Markowitz, HRP, regime-aware presets |
 | Data | SQLite (`lab_runs`, tenant integrations), market cache, QOBLIB CSV/JSON artifacts |
@@ -99,7 +99,6 @@ Quantum Hybrid Portfolio is organized into five layers:
 flowchart TB
   subgraph interface [Interface Layer]
     WEB[Next.js Lab]
-    CRA[CRA Dashboard]
     NB[Notebooks]
   end
 
@@ -129,7 +128,6 @@ flowchart TB
   end
 
   WEB --> API
-  CRA --> API
   NB --> API
   API --> RUNS
   API --> HYB
@@ -353,6 +351,7 @@ classDiagram
     market_data
     lab_run_service
     report_generator
+    report_generator
     ibm_quantum
   }
 
@@ -397,7 +396,6 @@ quantum-hybrid-portfolio/
 ├── methods/                    # Optimizer implementations
 ├── services/                   # Business logic, market data, IBM Quantum, reports
 ├── web/                        # Next.js dashboard (PRIMARY UI, port 3042)
-├── frontend/                   # CRA dashboard (legacy reference, port 3000)
 ├── deps/                       # Python requirements — see deps/README.md
 ├── deploy/docker/              # Dockerfiles + compose — see deploy/docker/README.md
 ├── scripts/                    # dev.sh, run-next-web.sh, deploy helpers
@@ -484,8 +482,6 @@ cd web && npm install && cd ..
 ```
 
 Or start Flask + Next together: `./scripts/dev.sh` (`--api-only`, `--next-only` supported).
-
-**CRA (legacy):** `cd frontend && npm install && npm start` → http://localhost:3000
 
 Full guide: [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). Public demo: [docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md).
 

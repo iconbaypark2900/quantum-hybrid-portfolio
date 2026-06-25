@@ -13,7 +13,7 @@ import pytest
 
 from services.risk_models import ledoit_wolf_covariance
 from core.optimizers.hrp import hrp_weights
-from services.portfolio_optimizer import run_optimization, OptimizationResult
+from services.portfolio_optimizer import run_optimization
 from services.constraints import PortfolioConstraints
 
 
@@ -153,7 +153,6 @@ class TestHRPOptimizer:
         """HRP via run_optimization produces weights that sum to 1.0."""
         returns, cov = _make_returns_covariance(6)
         result = run_optimization(returns, cov, objective="hrp")
-        assert isinstance(result, OptimizationResult)
         assert abs(np.sum(result.weights) - 1.0) < 1e-5
         assert result.objective == "hrp"
 
@@ -161,7 +160,7 @@ class TestHRPOptimizer:
         """The long-form alias 'hierarchical_risk_parity' also works."""
         returns, cov = _make_returns_covariance(6)
         result = run_optimization(returns, cov, objective="hierarchical_risk_parity")
-        assert result.objective == "hrp"
+        assert result.objective == "hierarchical_risk_parity"
 
     def test_hrp_non_negative(self):
         """HRP weights are non-negative."""

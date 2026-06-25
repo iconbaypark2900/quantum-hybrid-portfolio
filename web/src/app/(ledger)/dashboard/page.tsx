@@ -4,7 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
 import { useLedgerSession } from "@/context/LedgerSessionContext";
 import LedgerPageHeader from "@/components/LedgerPageHeader";
-import { healthCheck, optimizePortfolio, fetchRegime, type RegimeResult } from "@/lib/api";
+import { healthCheck, healthCheckDetailed, optimizePortfolio, fetchRegime, type RegimeResult, type HealthDependencies } from "@/lib/api";
 import { DEFAULT_TICKERS, DEFAULT_WEIGHT_MAX, DEFAULT_WEIGHT_MIN } from "@/lib/defaultUniverse";
 import { mergeOptimizeResponse } from "@/lib/reportExport";
 import { useNextPageProps, type NextClientPageProps } from "@/lib/nextPageProps";
@@ -204,6 +204,11 @@ const PLATFORM_TOOLS: {
 interface HealthData {
   status: string;
   dependencies?: Record<string, unknown>;
+  details?: {
+    data_provider?: string | null;
+    available_providers?: string[];
+    [k: string]: unknown;
+  };
 }
 
 /** API tile in System Status grid — avoid showing Offline while the first health request is in flight. */
@@ -236,6 +241,10 @@ export default function DashboardPage(props: NextClientPageProps) {
   const { session, setLastOptimize, setUniverse } = useLedgerSession();
 
   const [health, setHealth] = useState<HealthData | null>(null);
+  const [detailedHealth, setDetailedHealth] = useState<{
+    overall: string;
+    dependencies: HealthDependencies;
+  } | null>(null);
   const [apiTileStatus, setApiTileStatus] =
     useState<DashboardApiTileStatus>("checking");
   const [result, setResult] = useState<OptResult | null>(null);
@@ -276,6 +285,18 @@ export default function DashboardPage(props: NextClientPageProps) {
       })
       .finally(() => {
         window.clearTimeout(timeoutId);
+      });
+
+    // Best-effort fetch of the detailed health endpoint so the System Status
+    // tiles can show the real provider name and IBM connection state.
+    healthCheckDetailed()
+      .then((d) => {
+        if (!cancelled) {
+          setDetailedHealth(d);
+        }
+      })
+      .catch(() => {
+        // Non-fatal: tiles fall back to neutral copy if detailed health is unavailable.
       });
 
     return () => {
@@ -642,15 +663,50 @@ export default function DashboardPage(props: NextClientPageProps) {
               },
               {
                 label: "Market Data",
-                value: "Connected",
-                color: "text-ql-tertiary",
-                desc: "Tiingo (primary) or synthetic data for returns &amp; covariance",
+                value: (() => {
+                  const provider = detailedHealth?.dependencies?.market_data?.provider;
+                  const status = detailedHealth?.dependencies?.market_data?.status;
+                  if (!provider) {
+                    return apiTileStatus === "online" ? "Connected" : "Unknown";
+                  }
+                  if (status === "ok" || status === "available") return provider;
+                  return `${provider} (${status})`;
+                })(),
+                color: (() => {
+                  const status = detailedHealth?.dependencies?.market_data?.status;
+                  if (status === "ok" || status === "available") return "text-ql-tertiary";
+                  if (status && status !== "unknown") return "text-ql-error";
+                  return "text-ql-tertiary";
+                })(),
+                desc: (() => {
+                  const available = detailedHealth?.dependencies?.market_data?.available_providers ?? [];
+                  if (available.length > 0) {
+                    return `Active provider: ${detailedHealth?.dependencies?.market_data?.provider ?? "?"} — available: ${available.join(", ")}`;
+                  }
+                  return "Tiingo (primary) or synthetic data for returns &amp; covariance";
+                })(),
               },
               {
                 label: "Quantum Engine",
-                value: "Simulator",
-                color: "text-ql-primary",
-                desc: "IBM Runtime or local simulator — controls QPU execution mode",
+                value: (() => {
+                  const q = detailedHealth?.dependencies?.quantum;
+                  if (!q) return "Simulator";
+                  if (q.ibm_connected) return "IBM Connected";
+                  if (q.braket_enabled) return "Braket";
+                  return "Simulator";
+                })(),
+                color: (() => {
+                  const q = detailedHealth?.dependencies?.quantum;
+                  if (q?.ibm_connected) return "text-ql-tertiary";
+                  return "text-ql-primary";
+                })(),
+                desc: (() => {
+                  const q = detailedHealth?.dependencies?.quantum;
+                  if (q?.ibm_connected) {
+                    return "IBM Runtime connected — real QPU jobs accepted";
+                  }
+                  return "IBM Runtime or local simulator — controls QPU execution mode";
+                })(),
               },
             ].map((s) => (
               <SystemStatusCard key={s.label} {...s} />
