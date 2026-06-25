@@ -46,6 +46,9 @@ def hrp_weights(
         Sigma = np.asarray(Sigma, dtype=float)
     n = Sigma.shape[0]
 
+    if n == 1:
+        return np.array([1.0])
+
     # ── Step 1: Correlation distance matrix ────────────────────────────────
     std = np.sqrt(np.diag(Sigma))
     # Guard against zero-vol assets
