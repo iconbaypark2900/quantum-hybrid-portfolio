@@ -5,7 +5,7 @@
 - Lifecycle status: classified
 - Current project phase: MVP
 - Phase id: `mvp`
-- Updated: 2026-05-29T18:55:32
+- Updated: 2026-05-30T23:25:55
 - Validation: required
 - Debrief required: true
 

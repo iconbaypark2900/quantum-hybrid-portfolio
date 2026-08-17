@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-06-05T03:02:28.693866Z",
+  "target_path": "docs/market-optimization/",
+  "files": [
+    "README.md",
+    "01_project_upgrade_brief.md",
+    "02_target_architecture.md",
+    "03_market_data_layer.md",
+    "04_risk_engine.md",
+    "05_optimizer_benchmark_harness.md",
+    "06_backtesting_and_experiments.md",
+    "07_quantum_execution_and_dgx.md",
+    "08_implementation_roadmap.md"
+  ]
+}
