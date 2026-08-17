@@ -1,7 +1,7 @@
 {
   "phase": "mvp",
   "lifecycle_status": "classified",
-  "updated_at": "2026-05-29T18:55:32",
+  "updated_at": "2026-05-30T23:25:55",
   "history": [
     {
       "phase": "unassessed",
@@ -25,6 +25,24 @@
       "phase": "mvp",
       "lifecycle_status": "classified",
       "at": "2026-05-29T18:55:32",
+      "note": "classified"
+    },
+    {
+      "phase": "unassessed",
+      "lifecycle_status": "registered",
+      "at": "2026-05-30T23:25:55",
+      "note": "registered via register-project"
+    },
+    {
+      "phase": "unassessed",
+      "lifecycle_status": "assessed",
+      "at": "2026-05-30T23:25:55",
+      "note": "assessed; recommended mvp"
+    },
+    {
+      "phase": "mvp",
+      "lifecycle_status": "classified",
+      "at": "2026-05-30T23:25:55",
       "note": "classified"
     }
   ]

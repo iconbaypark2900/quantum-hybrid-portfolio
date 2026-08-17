@@ -1,0 +1,32 @@
+project:
+  name: quantum-hybrid-portfolio
+  machine: dgx_spark
+  local_path: /home/iconbaypark2900/quantumGlobalGroup/quantum-hybrid-portfolio
+  origin: git@github.com:iconbaypark2900/quantum-hybrid-portfolio.git
+  branch: main
+  category: quantum_global
+  portfolio_status: active
+  maturity_phase: mvp
+  task_phase: intake
+runtime:
+  gpu_required: true
+  runtime_type: python
+  stack:
+  - python
+validation:
+  commands:
+  - cd ~/quantumGlobalGroup/quantum-hybrid-portfolio && python -m pytest tests/ -q
+risks:
+- financial
+- quantum-sim-vs-hardware
+- paper-trading-boundaries
+liaison:
+  recommended_agents:
+  - hermes
+  - QCA
+  - codex
+  patterns:
+  - python-cli
+next_actions:
+- Label all portfolio outputs as research; no live trading on DGX
+- Wire validation profile after test suite verified
